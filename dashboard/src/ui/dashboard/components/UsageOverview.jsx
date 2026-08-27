@@ -711,7 +711,7 @@ export function UsageOverview({
                       provider: provider.label,
                       percent: provider.totalPercent,
                       tokens: formatTokens(provider.usage) || "0",
-                      cost: formatCost(provider.usd, currency, rate) || `${getCurrencySymbol(currency)}0`,
+                      cost: formatCost(provider.usd, currency, rate) || copy("usage.overview.cost_unavailable"),
                       action: copy(isExpanded ? "usage.overview.collapse" : "usage.overview.expand"),
                     })}
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
@@ -725,11 +725,13 @@ export function UsageOverview({
                       <ProviderIcon provider={provider.label} size={32} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
                       <div className="tt-provider-card-nameplate min-w-0 flex-1">
                         <span className="tt-provider-card-name block text-sm font-medium leading-tight text-oai-black dark:text-oai-white truncate">{provider.label}</span>
-                        <BillingBadge
-                          className="tt-provider-card-badge mt-1"
-                          mode={sourceBillingMode}
-                          copyKey={sourceBillingKey}
-                        />
+                        {provider.collectionStatus !== "connected_no_precise_tokens" ? (
+                          <BillingBadge
+                            className="tt-provider-card-badge mt-1"
+                            mode={sourceBillingMode}
+                            copyKey={sourceBillingKey}
+                          />
+                        ) : null}
                       </div>
                     </div>
                     {provider.collectionStatus === "connected_no_precise_tokens" ? (

@@ -408,6 +408,44 @@ describe("RealtimeSessionsPage", () => {
     expect(screen.getByText("newer seven day response")).toBeInTheDocument();
   });
 
+  it("does not show the previous range while an uncached range is loading", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions
+      .mockResolvedValueOnce({
+        ...payload,
+        range_from: "2026-08-21",
+        range_to: "2026-08-21",
+        sessions: [{ ...session, task_label: "today-only task" }],
+      })
+      .mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<RealtimeSessionsPage />);
+    expect(await screen.findByText("today-only task")).toBeInTheDocument();
+
+    await act(async () => {
+      await user.selectOptions(
+        screen.getByRole("combobox", { name: copy("realtime.range.select") }),
+        "7d",
+      );
+    });
+
+    expect(screen.getByRole("combobox", { name: copy("realtime.range.select") })).toHaveValue("7d");
+    expect(screen.queryByText("today-only task")).not.toBeInTheDocument();
+    expect(screen.getByText(copy("realtime.loading"))).toBeInTheDocument();
+  });
+
+  it("gives every expandable side-card summary the shared press and focus contract", async () => {
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    await screen.findByText("完善价值对比与实时会话");
+
+    const summaries = document.querySelectorAll(".rt-side-card > summary");
+    expect(summaries).toHaveLength(3);
+    for (const summary of summaries) {
+      expect(summary).toHaveClass("tt-pressable", "tt-product-focusable");
+    }
+  });
+
   it("selects an Agent card with mouse and derives task, model, sparkline, and requests from that session", async () => {
     const user = userEvent.setup();
     const cursorSession = {

@@ -49,7 +49,10 @@ import { cn } from "../../lib/cn";
 import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { DASHBOARD_AGENTS } from "../../lib/agent-adapters-dashboard";
 import {
+  isTokenPlanActive,
   isTokenPlanExpired as canonicalIsTokenPlanExpired,
+  isTokenPlanScheduled,
+  tokenPlanStartValue,
   tokenPlanExpiryTimestamp as canonicalTokenPlanExpiryTimestamp,
   tokenPlanExpiryValue,
 } from "../../lib/token-plan-validity.js";
@@ -116,11 +119,22 @@ export const tokenPlanExpiryTimestamp = canonicalTokenPlanExpiryTimestamp;
 export const isTokenPlanExpired = canonicalIsTokenPlanExpired;
 
 function isUsableTokenPlan(record) {
-  return !isTokenPlanExpired(record);
+  return isTokenPlanActive(record);
 }
 
 function isExpiredTokenPlanRecord(record) {
   return isTokenPlanExpired(record);
+}
+
+function isScheduledTokenPlanRecord(record) {
+  return isTokenPlanScheduled(record);
+}
+
+function mergeUsableTokenPlanOrder(records, reorderedUsable) {
+  let activeIndex = 0;
+  return records.map((record) => (
+    isUsableTokenPlan(record) ? reorderedUsable[activeIndex++] : record
+  ));
 }
 
 const TOKEN_PLAN_PAGE_SIZE = 10;
@@ -134,6 +148,7 @@ function tokenPlanHasSyncFailure(record) {
 
 export function tokenPlanDisplayStatus(record, now = new Date()) {
   if (isTokenPlanExpired(record, now)) return { kind: "expired", reasons: ["expired"] };
+  if (isTokenPlanScheduled(record, now)) return { kind: "scheduled", reasons: ["scheduled"] };
 
   const reasons = [];
   const expiresAt = tokenPlanExpiryTimestamp(tokenPlanExpiryValue(record));
@@ -166,6 +181,7 @@ export function paginateTokenPlans(records, requestedPage = 0, pageSize = TOKEN_
 function tokenPlanStatusLabel(kind) {
   if (kind === "attention") return copy("settings.token_plan.status_attention");
   if (kind === "expired") return copy("settings.token_plan.status_expired");
+  if (kind === "scheduled") return copy("settings.token_plan.status_scheduled");
   return copy("settings.token_plan.status_active");
 }
 
@@ -1339,6 +1355,38 @@ function ExpiredTokenPlanRow({ record, onEdit }) {
   );
 }
 
+function ScheduledTokenPlanRow({ record, onEdit }) {
+  const providerKey = String(record.provider_id || record.source || "custom").toLowerCase();
+  const startsAt = tokenPlanStartValue(record) ?? "—";
+  const subscriptionCost = Number(record.subscription_amount) > 0
+    ? ` · ${record.subscription_currency || "USD"} ${Number(record.subscription_amount).toLocaleString()}`
+    : "";
+  return (
+    <div data-testid="scheduled-token-plan-row" className="flex items-center gap-3 rounded-md border border-oai-gray-200 px-3 py-2 dark:border-oai-gray-800">
+      <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${providerKey}`)} aria-hidden="true">
+        {["codex", "cursor", "trae"].includes(providerKey)
+          ? <ProviderIcon provider={providerKey} size={22} />
+          : String(record.source || "T").slice(0, 1).toUpperCase()}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-oai-gray-800 dark:text-oai-gray-200">
+          {record.source} / {record.plan_label || record.id}
+        </div>
+        <div className="mt-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("settings.token_plan.starts_at")} {startsAt}
+          {subscriptionCost}
+        </div>
+      </div>
+      <span className="shrink-0 rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+        {copy("settings.token_plan.status_scheduled")}
+      </span>
+      <button type="button" onClick={() => onEdit(record)} className="shrink-0 text-xs font-medium text-oai-brand hover:text-oai-brand-dark">
+        {copy("settings.token_plan.edit")}
+      </button>
+    </div>
+  );
+}
+
 function TokenPlanPagination({ pagination, onPageChange, testId }) {
   if (pagination.pageCount <= 1) return null;
   return (
@@ -1400,8 +1448,10 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [planRefreshTargetId, setPlanRefreshTargetId] = useState("");
   const [expiredPlansOpen, setExpiredPlansOpen] = useState(false);
+  const [scheduledPlansOpen, setScheduledPlansOpen] = useState(false);
   const [activePage, setActivePage] = useState(0);
   const [expiredPage, setExpiredPage] = useState(0);
+  const [scheduledPage, setScheduledPage] = useState(0);
   const [showFullEmail, setShowFullEmail] = useState(readTokenPlanFullEmailPreference);
   const [editorInitialized, setEditorInitialized] = useState(false);
   const [editorMissing, setEditorMissing] = useState(false);
@@ -4051,10 +4101,14 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   const handlePlanDragEnd = async ({ active, over }) => {
     if (!over || active.id === over.id) return;
     const previous = records;
-    const oldIndex = previous.findIndex((record) => record.id === active.id);
-    const newIndex = previous.findIndex((record) => record.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const optimistic = arrayMove(previous, oldIndex, newIndex)
+    const movableRecords = previous.filter(isUsableTokenPlan);
+    const oldIndex = movableRecords.findIndex((record) => record.id === active.id);
+    const newIndex = movableRecords.findIndex((record) => record.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const optimistic = mergeUsableTokenPlanOrder(
+      previous,
+      arrayMove(movableRecords, oldIndex, newIndex),
+    )
       .map((record, index) => ({ ...record, display_order: index }));
     setRecords(optimistic);
     setError("");
@@ -4068,11 +4122,13 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   };
 
   const handlePlanKeyboardMove = async (id, direction) => {
-    const oldIndex = records.findIndex((record) => record.id === id);
-    const newIndex = Math.max(0, Math.min(records.length - 1, oldIndex + direction));
-    if (oldIndex < 0 || oldIndex === newIndex) return;
+    const movableRecords = records.filter(isUsableTokenPlan);
+    const oldIndex = movableRecords.findIndex((record) => record.id === id);
+    const newIndex = Math.max(0, Math.min(movableRecords.length - 1, oldIndex + direction));
+    if (oldIndex === -1 || oldIndex === newIndex) return;
     const previous = records;
-    const optimistic = arrayMove(previous, oldIndex, newIndex)
+    const reorderedActive = arrayMove(movableRecords, oldIndex, newIndex);
+    const optimistic = mergeUsableTokenPlanOrder(previous, reorderedActive)
       .map((record, index) => ({ ...record, display_order: index }));
     setRecords(optimistic);
     setError("");
@@ -4120,9 +4176,12 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   }, [isCatalogPlan, selectedPlan, form.quota_kind, form.total_quota]);
 
   const activeRecords = records.filter(isUsableTokenPlan);
+  const scheduledRecords = records.filter(isScheduledTokenPlanRecord);
   const expiredRecords = records.filter(isExpiredTokenPlanRecord);
+  const hasScheduledRecords = Boolean(scheduledRecords.length);
   const hasExpiredRecords = Boolean(expiredRecords.length);
   const activePagination = paginateTokenPlans(activeRecords, activePage);
+  const scheduledPagination = paginateTokenPlans(scheduledRecords, scheduledPage);
   const expiredPagination = paginateTokenPlans(expiredRecords, expiredPage);
   const attentionCount = countAttentionTokenPlans(activeRecords);
   const activeCostCny = activeRecords.reduce((total, record) => (
@@ -4237,6 +4296,29 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             </SortableContext>
           </DndContext>
           <TokenPlanPagination pagination={activePagination} onPageChange={setActivePage} testId="active-token-plan-pagination" />
+          {hasScheduledRecords && (
+            <section data-testid="scheduled-token-plans" className="mt-3 rounded-md border border-oai-gray-200 dark:border-oai-gray-800">
+              <button
+                type="button"
+                onClick={() => setScheduledPlansOpen((open) => !open)}
+                aria-expanded={scheduledPlansOpen}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+              >
+                <strong className="text-sm font-medium text-oai-gray-700 dark:text-oai-gray-300">
+                  {copy("settings.token_plan.scheduled_group", { count: scheduledRecords.length })}
+                </strong>
+                {scheduledPlansOpen ? <ChevronUp className="h-4 w-4 text-oai-gray-400" /> : <ChevronDown className="h-4 w-4 text-oai-gray-400" />}
+              </button>
+              {scheduledPlansOpen ? (
+                <div className="border-t border-oai-gray-100 p-2 dark:border-oai-gray-800">
+                  <div className="tt-token-plan-grid tt-token-plan-grid--expired">
+                    {scheduledPagination.records.map((record) => <ScheduledTokenPlanRow key={record.id} record={record} onEdit={openRecordEditor} />)}
+                  </div>
+                  <TokenPlanPagination pagination={scheduledPagination} onPageChange={setScheduledPage} testId="scheduled-token-plan-pagination" />
+                </div>
+              ) : null}
+            </section>
+          )}
           {hasExpiredRecords && (
             <section data-testid="expired-token-plans" className="mt-3 rounded-md border border-oai-gray-200 dark:border-oai-gray-800">
               <button

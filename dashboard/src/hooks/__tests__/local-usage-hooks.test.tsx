@@ -6,9 +6,9 @@ import { useUsageSummary } from "../use-usage-summary";
 import { useUsageTrend } from "../use-usage-trend";
 import { useUsageFilterOptions } from "../use-usage-filter-options";
 import { useRequestUsageRecords } from "../use-request-usage-records";
-import { useProviderStats } from "../use-provider-stats";
+import { useProviderStats, useRecentApiProviderStats } from "../use-provider-stats";
 import { useModelStats } from "../use-model-stats";
-import { getUsageSummary, getSpendTimeseries, getProviderStats, getModelStats, getRequestUsageRecords } from "../../lib/api";
+import { getUsageSummary, getSpendTimeseries, getProviderStats, getRecentApiProviderStats, getModelStats, getRequestUsageRecords } from "../../lib/api";
 
 vi.mock("../../lib/auth-token", () => ({
   isAccessTokenReady: () => false,
@@ -22,6 +22,7 @@ vi.mock("../../lib/api", () => ({
   getUsageSummary: vi.fn(),
   getSpendTimeseries: vi.fn(),
   getProviderStats: vi.fn(),
+  getRecentApiProviderStats: vi.fn(),
   getModelStats: vi.fn(),
   getRequestUsageRecords: vi.fn(),
 }));
@@ -97,16 +98,18 @@ describe("local usage hooks", () => {
   });
 
   it("fetches usage filter options without a cloud token", async () => {
-    vi.mocked(getProviderStats).mockResolvedValue({ providers: [] } as any);
-    vi.mocked(getModelStats).mockResolvedValue({ models: [] } as any);
+    vi.mocked(getModelStats).mockResolvedValue({
+      models: [{ model: "gpt-5", source: "codex", source_display_name: "Codex" }],
+    } as any);
 
-    const { result } = renderHook(() => useUsageFilterOptions(), {
+    const { result } = renderHook(() => useUsageFilterOptions({ allowedSources: ["codex"] }), {
       wrapper: UsageFiltersProvider,
     });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(getProviderStats).toHaveBeenCalledTimes(1);
+    expect(getProviderStats).not.toHaveBeenCalled();
     expect(getModelStats).toHaveBeenCalledTimes(1);
+    expect(result.current.sources).toEqual([{ source: "codex", source_display_name: "Codex" }]);
   });
 
   it("fetches request usage records without a cloud token", async () => {
@@ -147,6 +150,66 @@ describe("local usage hooks", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(getProviderStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the previous Provider scope when the next range fails", async () => {
+    vi.mocked(getProviderStats)
+      .mockResolvedValueOnce({ providers: [{ provider_id: "openai", display_name: "OpenAI" }] } as any)
+      .mockRejectedValueOnce(new Error("next range unavailable"));
+
+    const { result, rerender } = renderHook(
+      ({ from, to }) => useProviderStats({ from, to }),
+      {
+        initialProps: { from: "2026-06-01", to: "2026-06-30" },
+        wrapper: UsageFiltersProvider,
+      },
+    );
+
+    await waitFor(() => expect(result.current.providers?.providers?.[0]?.provider_id).toBe("openai"));
+    rerender({ from: "2026-07-01", to: "2026-07-31" });
+    await waitFor(() => expect(result.current.error).toBe("next range unavailable"));
+
+    expect(result.current.providers).toBeNull();
+  });
+
+  it("clears Provider rows immediately when the account cache key changes", async () => {
+    let resolveNext: ((value: any) => void) | null = null;
+    vi.mocked(getProviderStats)
+      .mockResolvedValueOnce({ providers: [{ provider_id: "openai", display_name: "OpenAI" }] } as any)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNext = resolve; }));
+
+    const { result, rerender } = renderHook(
+      ({ cacheKey }) => useProviderStats({ from: "2026-06-01", to: "2026-06-30", cacheKey }),
+      {
+        initialProps: { cacheKey: "user-a" },
+        wrapper: UsageFiltersProvider,
+      },
+    );
+
+    await waitFor(() => expect(result.current.providers?.providers?.[0]?.provider_id).toBe("openai"));
+    rerender({ cacheKey: "user-b" });
+    expect(result.current.providers).toBeNull();
+
+    await act(async () => {
+      resolveNext?.({ providers: [] });
+    });
+  });
+
+  it("fetches the dedicated current seven-day API Provider view without forwarding page dates", async () => {
+    vi.mocked(getRecentApiProviderStats).mockResolvedValue({ providers: [] } as any);
+
+    const { result } = renderHook(
+      () => useRecentApiProviderStats({ from: "2020-01-01", to: "2030-12-31" }),
+      { wrapper: UsageFiltersProvider },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(getRecentApiProviderStats).toHaveBeenCalledTimes(1);
+    expect(getRecentApiProviderStats).toHaveBeenCalledWith(expect.not.objectContaining({
+      from: expect.anything(),
+      to: expect.anything(),
+    }));
+    expect(getProviderStats).not.toHaveBeenCalled();
   });
 
   it("fetches model stats without a cloud token", async () => {

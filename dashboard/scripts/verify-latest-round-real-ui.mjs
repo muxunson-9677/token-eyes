@@ -103,39 +103,44 @@ try {
 
   await open("/spend/usage");
   console.log("QA: usage loaded");
-  const pricingNote = page.getByText("计费统计来源于模型官方标价", { exact: true });
-  await pricingNote.waitFor({ state: "visible" });
-  const deepSeekFilter = page.getByRole("button", { name: /DeepSeek Harness/u });
-  await deepSeekFilter.waitFor({ state: "visible" });
+  const pricingLabel = page.getByText("API 标价等价价值", { exact: true }).first();
+  await pricingLabel.waitFor({ state: "visible" });
+  const legacyOfficialPriceClaim = page.getByText("计费统计来源于模型官方标价", { exact: true });
+  if (await legacyOfficialPriceClaim.count() > 0) {
+    throw new Error("Usage page still presents list-price estimates as official billing");
+  }
+  const codexFilter = page.locator(".tt-agent-switcher-card").filter({ hasText: /^Codex$/u });
+  await codexFilter.waitFor({ state: "visible" });
   const visibleAgentLabels = await page.locator(".tt-agent-switcher-card").allInnerTexts();
-  const expectedAgentLabels = ["全部", "DeepSeek Harness", "Codex", "Claude Code", "Cursor", "Hermes Agent"];
+  const expectedAgentLabels = ["全部", "Codex", "Claude Code", "Cursor", "Hermes Agent", "Kiro（含 CLI）"];
   if (JSON.stringify(visibleAgentLabels) !== JSON.stringify(expectedAgentLabels)) {
     throw new Error(`Usage agent filters do not match Limits Display: ${JSON.stringify(visibleAgentLabels)}`);
   }
   await page.screenshot({ path: path.join(outputDir, "02-usage-limits-display-agents.png"), fullPage: false });
-  await pricingNote.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: path.join(outputDir, "03-request-log-pricing-note.png"), fullPage: false });
+  await pricingLabel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(outputDir, "03-usage-api-equivalent-label.png"), fullPage: false });
   report.usage = {
-    pricingNote: await pricingNote.innerText(),
-    deepSeekFilterVisible: await deepSeekFilter.isVisible(),
+    apiEquivalentLabel: await pricingLabel.innerText(),
+    legacyOfficialPriceClaimRemoved: true,
+    codexFilterVisible: await codexFilter.isVisible(),
     visibleAgentLabels,
   };
   console.log("QA: usage note and agent passed");
 
   await open("/settings/basic");
   console.log("QA: settings loaded");
-  const harnessLabel = page.getByText("DeepSeek Harness", { exact: true });
-  await harnessLabel.waitFor({ state: "visible" });
-  const harnessRow = harnessLabel.locator("xpath=ancestor::*[self::li or self::div][.//button or .//input][1]");
-  const harnessIcon = page.locator('img[src="/brand-logos/deepseek-harness.svg"]').first();
-  await harnessIcon.waitFor({ state: "visible" });
-  await harnessRow.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: path.join(outputDir, "04-settings-deepseek-harness.png"), fullPage: false });
-  report.deepSeekHarness = {
-    labelVisible: await harnessLabel.isVisible(),
-    iconSource: await harnessIcon.getAttribute("src"),
+  const hermesLabel = page.getByText("Hermes", { exact: true });
+  await hermesLabel.waitFor({ state: "visible" });
+  const hermesRow = hermesLabel.locator("xpath=ancestor::*[self::li or self::div][.//button or .//input][1]");
+  const hermesIcon = page.locator('img[src="/brand-logos/hermes.svg"]').first();
+  await hermesIcon.waitFor({ state: "visible" });
+  await hermesRow.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(outputDir, "04-settings-hermes.png"), fullPage: false });
+  report.hermes = {
+    labelVisible: await hermesLabel.isVisible(),
+    iconSource: await hermesIcon.getAttribute("src"),
   };
-  console.log("QA: DeepSeek Harness icon passed");
+  console.log("QA: Hermes icon passed");
 
   await open("/spend/cost");
   console.log("QA: cost loaded");
@@ -146,14 +151,16 @@ try {
   await equivalentLabel.waitFor({ state: "visible" });
   await scopeNote.waitFor({ state: "visible" });
   const roiTitle = page.getByText("回本倍数", { exact: true });
-  const roiOrEmpty = roiTitle.or(page.getByTestId("subscription-roi-empty-note"));
-  await roiOrEmpty.first().waitFor({ state: "visible" });
+  const roiEmptyNote = page.getByTestId("subscription-roi-empty-note");
+  if (await roiTitle.count() > 0 || await roiEmptyNote.count() > 0) {
+    throw new Error("Cost page still renders removed ROI UI");
+  }
   await page.screenshot({ path: path.join(outputDir, "05-cost-semantics.png"), fullPage: false });
   report.costSemantics = {
     actualCashVisible: await cashLabel.isVisible(),
     equivalentValueVisible: await equivalentLabel.isVisible(),
     scopeNote: await scopeNote.innerText(),
-    roiState: await roiOrEmpty.first().innerText(),
+    roiRemoved: true,
   };
 
   if (pageErrors.length) throw new Error(`Page errors: ${pageErrors.join(" | ")}`);

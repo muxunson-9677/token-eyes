@@ -1211,16 +1211,33 @@ export function getMockUsageCategoryBreakdown({ from, to, source = "claude" }: A
   };
 }
 
-/** Mock mode mirrors the production seven-day true-Provider response shape. */
-export function getMockProviderStats({ from, to, seed, timeZone = "UTC" }: AnyRecord = {}) {
-  const effectiveToDate = parseUtcDate(to) || parseUtcDate(formatDateLocal(new Date())) || new Date();
+/** Mock mode mirrors both explicit true-Provider response contracts. */
+export function getMockProviderStats({
+  from,
+  to,
+  seed,
+  timeZone = "UTC",
+  sources,
+  models,
+  agentIds,
+  view = "range",
+}: AnyRecord = {}) {
+  const currentDate = parseUtcDate(formatDateLocal(new Date())) || new Date();
+  const requestedToDate = parseUtcDate(to) || currentDate;
+  const effectiveToDate = view === "recent_api_7d" ? currentDate : requestedToDate;
   const effectiveTo = formatDateUTC(effectiveToDate);
-  const effectiveFrom = formatDateUTC(addUtcDays(effectiveToDate, -6));
+  const requestedFromDate = parseUtcDate(from) || addUtcDays(effectiveToDate, -6);
+  const effectiveFromDate = view === "recent_api_7d" || requestedFromDate > effectiveToDate
+    ? addUtcDays(effectiveToDate, -6)
+    : requestedFromDate;
+  const effectiveFrom = formatDateUTC(effectiveFromDate);
   const rows = buildDailyRows({ from: effectiveFrom, to: effectiveTo, seed });
   const totals = sumDailyRows(rows);
-  const period = { from: effectiveFrom, to: effectiveTo, days: 7, time_zone: timeZone || "UTC" };
+  const period = { from: effectiveFrom, to: effectiveTo, days: rows.length, time_zone: timeZone || "UTC" };
   const money = (tokens: number, rate: number) => Number(((tokens * rate) / 1_000_000).toFixed(9));
-  const costBasis = { authority: "local_list_price_estimate", accuracy: "estimated" } as const;
+  const costBasis = view === "recent_api_7d"
+    ? { authority: "official_invoice", accuracy: "exact" } as const
+    : { authority: "local_list_price_estimate", accuracy: "estimated" } as const;
 
   const definitions = [
     {
@@ -1249,7 +1266,18 @@ export function getMockProviderStats({ from, to, seed, timeZone = "UTC" }: AnyRe
     },
   ];
 
-  const providers = definitions.map((definition) => {
+  const sourceFilter = new Set([
+    ...(Array.isArray(sources) ? sources : []),
+    ...(Array.isArray(agentIds) ? agentIds : []),
+  ].map((value) => String(value || "").toLowerCase()));
+  const modelFilter = new Set((Array.isArray(models) ? models : [])
+    .map((value) => String(value || "").toLowerCase()));
+  const providers = definitions
+    .filter((definition) => sourceFilter.size === 0
+      || definition.agents.some(([id]) => sourceFilter.has(id)))
+    .filter((definition) => modelFilter.size === 0
+      || definition.models.some(([id]) => modelFilter.has(id)))
+    .map((definition) => {
     const scaled = scaleTotals(totals, definition.weight);
     const conversationCount = Math.max(1, Math.round(totals.conversation_count * definition.weight));
     const costUsd = money(scaled.total_tokens, definition.rate);
@@ -1325,12 +1353,15 @@ export function getMockProviderStats({ from, to, seed, timeZone = "UTC" }: AnyRe
 
   return {
     ok: true,
+    view,
     from: effectiveFrom,
     to: effectiveTo,
     requested_from: from || null,
     requested_to: to || null,
     period,
-    totals_scope: "api_key_attributed_cost_positive",
+    totals_scope: view === "recent_api_7d"
+      ? "api_key_attributed_official_billed_cost_positive"
+      : "all_provider_attributed",
     providers,
     totals: {
       provider_count: providers.length,

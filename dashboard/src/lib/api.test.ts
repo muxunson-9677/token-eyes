@@ -6,6 +6,8 @@ import {
   getSpendTimeseries,
   getUsageBounds,
   getUsageAttribution,
+  getProviderStats,
+  getRecentApiProviderStats,
   getUsageModelBreakdown,
   fetchCloudUsageModelBreakdown,
   getTokenPlans,
@@ -108,6 +110,25 @@ it("routes local function requests to the Tauri-reported loopback CLI API", asyn
       headers: expect.objectContaining({ Accept: "application/json" }),
     }),
   );
+});
+
+it("separates selected-range Provider statistics from the current seven-day API view", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ ok: true, providers: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await getProviderStats({ from: "2026-06-01", to: "2026-06-30", timeZone: "UTC" });
+  await getRecentApiProviderStats({ from: "2020-01-01", to: "2030-12-31", timeZone: "UTC" });
+
+  expect(String(fetchMock.mock.calls[0][0])).toContain("/functions/tokentracker-provider-stats");
+  expect(String(fetchMock.mock.calls[0][0])).toContain("from=2026-06-01");
+  expect(String(fetchMock.mock.calls[0][0])).toContain("to=2026-06-30");
+  expect(String(fetchMock.mock.calls[1][0])).toContain("/functions/tokentracker-provider-api-stats");
+  expect(String(fetchMock.mock.calls[1][0])).not.toContain("from=");
+  expect(String(fetchMock.mock.calls[1][0])).not.toContain("to=");
 });
 
 it("reads plan market state and authenticates the manual refresh mutation", async () => {

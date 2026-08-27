@@ -7,7 +7,7 @@ import { formatChineseTokenCount } from "../../../lib/format";
 import { deriveDataConfidence } from "../../../lib/data-confidence";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
 import { TokenServiceList } from "./TokenServiceList.jsx";
-import { isTokenPlanExpired } from "../../../lib/token-plan-validity.js";
+import { isTokenPlanActive } from "../../../lib/token-plan-validity.js";
 
 const COST_ICON_TONES = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300",
@@ -384,13 +384,12 @@ function CostSummaryCards({
           comparison("api-equivalent", apiEquivalentUsd, summary.previousMonthApiCostUsd),
           { compactCny: true },
         )}
-        confidence={confidence(
+        confidence={stale ? confidence(
           "cost",
           apiEquivalentUsd,
-          "estimated",
-          copy("data.confidence.source.pricing"),
-          copy("data.confidence.method.api_pricing"),
-        )}
+          "unknown",
+          copy("spend.cost.summary.api_equivalent"),
+        ) : null}
         confidenceTestId="cost-confidence-api-equivalent"
         comparison={comparison("api-equivalent", apiEquivalentUsd, summary.previousMonthApiCostUsd)}
         metrics={[
@@ -544,7 +543,7 @@ function OtherAiGroupCostSection({ groups = [], selectedMonth, estimatedTotalUsd
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
         { label: copy("spend.cost.design.month_total"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), tone: "orange" },
-        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%`, tone: "orange" },
+        { label: copy("spend.cost.row.api_equivalent_share"), value: `${share.toFixed(1)}%`, tone: "orange" },
         { label: copy("spend.cost.design.group_count"), value: groups.length.toLocaleString() },
         { label: copy("spend.cost.design.highest_group"), value: Math.max(...groups.map((group) => Number(group.month_usd || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
       ]}
@@ -600,7 +599,7 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
     sync_status: pkg.sync_status || pkg.syncStatus,
     expires_at: pkg.expires_at || pkg.expiresAt,
   }));
-  const activePackages = displayPackages.filter((item) => !isTokenPlanExpired(item, now));
+  const activePackages = displayPackages.filter((item) => isTokenPlanActive(item, now));
   const monthUsd = activePackages.reduce((sum, item) => sum + Number(item.monthCostUsd || 0), 0);
   const share = estimatedTotalUsd > 0 ? (monthUsd / estimatedTotalUsd) * 100 : 0;
   const quota = activePackages.find((item) => item.availableQuotaDisplay)?.availableQuotaDisplay || copy("spend.cost.row.unavailable");
@@ -614,8 +613,8 @@ function TokenPackageSection({ packages, loading, estimatedTotalUsd = 0, section
       count={activePackages.length}
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
-        { label: copy("spend.cost.row.month_estimate"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-        { label: copy("spend.cost.row.estimate_share"), value: `${share.toFixed(1)}%` },
+        { label: copy("spend.cost.row.month_amount"), value: monthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { label: copy("spend.cost.row.api_equivalent_share"), value: `${share.toFixed(1)}%` },
         { label: copy("spend.cost.design.package_count"), value: activePackages.length.toLocaleString() },
         { label: copy("spend.cost.row.available_quota"), value: quota },
       ]}
@@ -868,7 +867,7 @@ function ApiBillingSection({ accounts, loading, estimatedTotalUsd = null, sectio
       initiallyOpen={sectionsInitiallyOpen}
       summaryMetrics={[
         { label: copy("spend.cost.summary.official_api_cash"), value: officialMonthValues.length > 0 ? officialMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "green" },
-        { label: copy("spend.cost.row.month_estimate"), value: hasEstimatedTotal || estimatedMonthValues.length > 0 ? estimatedMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "orange" },
+        { label: copy("spend.cost.summary.api_equivalent"), value: hasEstimatedTotal || estimatedMonthValues.length > 0 ? estimatedMonthUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : unavailable, tone: "orange" },
         { label: copy("spend.cost.api_billing.summary.unavailable_accounts"), value: unavailableAccounts.toLocaleString() },
         { label: copy("spend.cost.design.error_rate"), value: unavailable, tone: "green" },
       ]}
@@ -912,9 +911,6 @@ function ApiBillingCard({ account }) {
             <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-400">
               {account.provider}
             </span>
-            <span className="shrink-0 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-400">
-              {getSpendAuthorityLabel(account.spendAuthority)}
-            </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
             {monthCost ? <span>{copy("spend.cost.api_billing.month_cost")}: {monthCost}</span> : null}
@@ -945,13 +941,6 @@ function ApiBillingCard({ account }) {
       </div>
     </div>
   );
-}
-
-function getSpendAuthorityLabel(authority) {
-  const normalized = ["official_invoice", "local_list_price_estimate", "unavailable"].includes(authority)
-    ? authority
-    : "unavailable";
-  return copy(`spend.cost.api_billing.authority.${normalized}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,6 +1006,7 @@ function SubscriptionSection({ records, loading, onAdd, onEdit, onDelete, sectio
 function SubscriptionCard({ record, onEdit, onDelete }) {
   const statusConfig = {
     active: { label: copy("spend.cost.subscription.status.active"), color: "text-green-600 dark:text-green-400" },
+    scheduled: { label: copy("spend.cost.subscription.status.scheduled"), color: "text-oai-blue-500 dark:text-oai-blue-300" },
     expired: { label: copy("spend.cost.subscription.status.expired"), color: "text-oai-gray-400" },
     cancelled: { label: copy("spend.cost.subscription.status.cancelled"), color: "text-red-600 dark:text-red-400" },
   };

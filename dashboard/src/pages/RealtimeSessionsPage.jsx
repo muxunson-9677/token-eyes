@@ -276,12 +276,12 @@ function SidePanels({ data, stateCounts }) {
   const estimated = all.filter(function isEstimated(session) { return session.api_equivalent_usd?.evidence_state === "estimated"; }).length;
   const coverage = data.pricing_coverage || { covered_models: 0, total_models: 0, percent: 0, uncovered_models: [] };
   return <aside className="rt-side">
-    <details className="vr-card rt-side-card" open><summary>{copy("realtime.status")} <Info size={15} className="ml-2 text-slate-400" /></summary><div className="rt-side-content rt-status-grid">
+    <details className="vr-card rt-side-card" open><summary className="tt-pressable tt-product-focusable">{copy("realtime.status")} <Info size={15} className="ml-2 text-slate-400" /></summary><div className="rt-side-content rt-status-grid">
       <span><i className="rt-status-dot rt-status-dot--exact" />{copy("realtime.status.exact")}<strong>{copy("realtime.count_unit", { count: exact })}</strong></span>
       <span><i className="rt-status-dot rt-status-dot--estimated" />{copy("realtime.status.estimated")}<strong>{copy("realtime.count_unit", { count: estimated })}</strong></span>
       <span><i className="rt-status-dot rt-status-dot--cached" />{copy("realtime.status.observed")}<strong>{copy("realtime.count_unit", { count: all.filter((session) => session.state !== "running").length })}</strong></span>
     </div></details>
-    <details className="vr-card rt-side-card" open><summary>{copy("realtime.coverage")}</summary>{showUncovered ? <div className="rt-side-content rt-uncovered"><button type="button" onClick={() => setShowUncovered(false)}>{copy("realtime.coverage.back")}</button>{coverage.uncovered_models.length ? coverage.uncovered_models.map((model) => <span key={model}>{model}</span>) : <p>{copy("realtime.coverage.full")}</p>}</div> : <div className="rt-side-content rt-coverage"><div className="rt-coverage-ring" style={{ "--coverage": `${coverage.percent}%` }}><strong>{coverage.percent}%<small>{copy("realtime.coverage.in_progress")}</small></strong></div><p><span>{copy("realtime.covered_models")}</span><strong>{coverage.covered_models} / {coverage.total_models}</strong><button type="button" onClick={() => setShowUncovered(true)}>{copy("realtime.coverage.uncovered")} <ChevronRight size={14} /></button></p></div>}</details>
+    <details className="vr-card rt-side-card" open><summary className="tt-pressable tt-product-focusable">{copy("realtime.coverage")}</summary>{showUncovered ? <div className="rt-side-content rt-uncovered"><button type="button" onClick={() => setShowUncovered(false)}>{copy("realtime.coverage.back")}</button>{coverage.uncovered_models.length ? coverage.uncovered_models.map((model) => <span key={model}>{model}</span>) : <p>{copy("realtime.coverage.full")}</p>}</div> : <div className="rt-side-content rt-coverage"><div className="rt-coverage-ring" style={{ "--coverage": `${coverage.percent}%` }}><strong>{coverage.percent}%<small>{copy("realtime.coverage.in_progress")}</small></strong></div><p><span>{copy("realtime.covered_models")}</span><strong>{coverage.covered_models} / {coverage.total_models}</strong><button type="button" onClick={() => setShowUncovered(true)}>{copy("realtime.coverage.uncovered")} <ChevronRight size={14} /></button></p></div>}</details>
     <ValueRealtimeEvidence evidence={data.summary?.realtime_tokens?.evidence} className="vr-card rt-side-card" />
   </aside>;
 }
@@ -349,6 +349,12 @@ export function RealtimeSessionsPage() {
   const focus = focusSession(visibleSessions.filter((session) => sourceId(session?.source) === activeSource));
   const monthOptions = data?.month_options?.length ? data.month_options : data?.available_months || [];
   const selectedMonth = range === "month" && month ? month : data?.data_month || monthOptions[0] || "";
+  const changePeriod = (nextRange, nextMonth = month) => {
+    const requestedMonth = nextRange === "month" ? nextMonth || undefined : undefined;
+    setData(peekRealtimeSessions(nextRange, requestedMonth) || null);
+    setError(false);
+    setPeriod({ range: nextRange, month: nextMonth });
+  };
   const stateCounts = useMemo(() => sessions.reduce((counts, session) => ({ ...counts, [session.state]: (counts[session.state] || 0) + 1 }), {}), [sessions]);
   function delta(key) { return data?.summary?.[key]?.value != null && previousSummary.current?.[key]?.value != null ? data.summary[key].value - previousSummary.current[key].value : null; }
   const focusUsesAgentDay = focus?.total_tokens?.value == null && focus?.agent_day_usage?.total_tokens?.value != null;
@@ -367,8 +373,8 @@ export function RealtimeSessionsPage() {
 
   return <main className="vr-page vr-page--realtime flex flex-1 flex-col px-5 py-7 dark:bg-oai-gray-950 dark:text-oai-white">
     <header className="vr-head"><div><h1>{copy("realtime.page.title")}</h1><p>{copy("realtime.page.subtitle")} <Info size={15} className="inline" /></p></div><div className="rt-head-actions">
-      <label className="rt-range"><CalendarDays size={18} /><select aria-label={copy("realtime.range.select")} value={range} onChange={(event) => setPeriod((current) => ({ range: event.target.value, month: event.target.value === "month" ? current.month || selectedMonth : current.month }))}>{RANGES.map((item) => <option key={item} value={item}>{copy(`realtime.range.${item}`)}</option>)}</select><ChevronDown size={15} /></label>
-      <label className="rt-range rt-month-range"><select aria-label={copy("realtime.month.select")} value={selectedMonth} onChange={(event) => setPeriod({ range: "month", month: event.target.value })}>{monthOptions.map((item) => <option key={item} value={item}>{item.replace("-", "年")}月</option>)}</select><ChevronDown size={15} /></label>
+      <label className="rt-range"><CalendarDays size={18} /><select aria-label={copy("realtime.range.select")} value={range} onChange={(event) => changePeriod(event.target.value, event.target.value === "month" ? month || selectedMonth : month)}>{RANGES.map((item) => <option key={item} value={item}>{copy(`realtime.range.${item}`)}</option>)}</select><ChevronDown size={15} /></label>
+      <label className="rt-range rt-month-range"><select aria-label={copy("realtime.month.select")} value={selectedMonth} onChange={(event) => changePeriod("month", event.target.value)}>{monthOptions.map((item) => <option key={item} value={item}>{item.replace("-", "年")}月</option>)}</select><ChevronDown size={15} /></label>
       <button type="button" className="rt-refresh" onClick={() => load(true, true)}><i className="rt-updated-dot" />{refreshing ? copy("realtime.refreshing") : `${copy("realtime.updated")} ${formatTime(data?.observed_at)}`}<RefreshCw size={16} className={refreshing ? "animate-spin" : ""} /></button>
     </div></header>
     {error ? <div className="vr-alert" role="alert">{copy("realtime.error")}</div> : null}

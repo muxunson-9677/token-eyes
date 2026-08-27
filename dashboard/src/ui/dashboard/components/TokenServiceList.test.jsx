@@ -136,6 +136,35 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
+  it("keeps a future subscription in its own collapsed not-started group", async () => {
+    const user = userEvent.setup();
+    render(
+      <TokenServiceList
+        now={new Date(2026, 7, 27, 12, 0, 0, 0)}
+        plans={[
+          plan("active", 100, 1_000, { subscription_end_date: "2026-09-30" }),
+          plan("scheduled", 100, 1_000, {
+            subscription_start_date: "2026-09-01",
+            subscription_end_date: "2026-09-30",
+          }),
+          plan("expired", 100, 1_000, { subscription_end_date: "2026-08-01" }),
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("token-service-row")).toHaveLength(1);
+    expect(screen.getByText("Service active")).toBeInTheDocument();
+    expect(screen.queryByText("Service scheduled")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "未生效 (1)" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "已过期 (1)" })).toHaveAttribute("aria-expanded", "false");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "未生效 (1)" }));
+    });
+    expect(screen.getByTestId("scheduled-token-service-cards")).toHaveTextContent("Service scheduled");
+    expect(screen.getByTestId("scheduled-token-service-cards")).toHaveTextContent("2026");
+  });
+
   it("renders five compact independent cards without hiding multi-lane quota values", () => {
     const sharedReset = "2026-08-06T14:31:29.000Z";
     const cursor = plan("cursor-live", 0, 0, {
@@ -404,7 +433,7 @@ describe("TokenServiceList", () => {
     const user = userEvent.setup();
     render(<TokenServiceList plans={[plan("expired", 1_000, 1_000, { expires_at: "2020-01-01" })]} />);
 
-    expect(screen.getByText("暂无未过期的 Token 服务")).toBeInTheDocument();
+    expect(screen.getByText("暂无当前有效的 Token 服务")).toBeInTheDocument();
     expect(screen.queryByTestId("token-service-row")).not.toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: "已过期 (1)" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -534,7 +563,7 @@ describe("TokenServiceList", () => {
     expect(xiaomiIcon).toBeInTheDocument();
     expect(xiaomiIcon.querySelector("img")).toHaveAttribute(
       "src",
-      "https://cdn.cnbj1.fds.api.mi-img.com/aife/mimo-blog-fe/doc_build/mimo.ico",
+      "/plan-market-icons/xiaomi-mimo.png",
     );
     expect(within(xiaomiRow).getByText("Standard")).toHaveClass("text-oai-gray-400");
     expect(within(xiaomiRow).getByTestId("token-service-validity")).toHaveTextContent("有效期：");

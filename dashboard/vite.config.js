@@ -1251,6 +1251,7 @@ const DEV_LOCAL_DATA_FALLBACK_PATHS = new Set([
   "/functions/tokentracker-provider-api-refresh",
   "/api/local-auth",
   "/functions/tokentracker-provider-stats",
+  "/functions/tokentracker-provider-api-stats",
   "/functions/tokentracker-model-stats",
   "/functions/tokentracker-request-usage-records",
 ]);

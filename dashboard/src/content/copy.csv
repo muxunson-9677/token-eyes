@@ -73,8 +73,8 @@ data_sources.storage_path,data_sources,DataSourcesPage,Privacy,storage_path,"Sto
 data_sources.delete_instructions,data_sources,DataSourcesPage,Privacy,delete_instructions,"Use Clear locally imported data below to remove Token Eyes' imported ledger and scan cursors. This does not delete the original logs owned by Codex, Claude, Cursor, or other tools. Disable optional cloud features separately before deleting any uploaded copy.",,active
 nav.data_sources,navigation,Sidebar,NavItem,data_sources,"Data sources",,active
 nav.group.more,navigation,Sidebar,NavGroup,more,"More",,active
-spend.cost.summary.estimated_usage,spend,SpendCostPage,CostSummaryCards,estimated_usage,"Estimated usage cost",,active
-spend.cost.summary.estimated_usage_suffix,spend,SpendCostPage,CostSummaryCards,estimated_usage_suffix,"estimated usage cost",,active
+spend.cost.summary.estimated_usage,spend,SpendCostPage,CostSummaryCards,estimated_usage,"API list-price equivalent",,active
+spend.cost.summary.estimated_usage_suffix,spend,SpendCostPage,CostSummaryCards,estimated_usage_suffix,"API list-price equivalent",,active
 spend.cost.summary.actual_subscription,spend,SpendCostPage,CostSummaryCards,actual_subscription,"Recorded subscription fees",,active
 spend.cost.summary.actual_subscription_suffix,spend,SpendCostPage,CostSummaryCards,actual_subscription_suffix,"recorded subscription fees",,active
 spend.cost.summary.scope_note,spend,SpendCostPage,CostSummaryCards,scope_note,"Actual cash spend uses the complete financial ledger and includes recorded subscriptions, official Billing/API amounts, and custom spend. API list-price equivalent follows the visible usage scope and is never added to actual cash spend.",,active
@@ -816,6 +816,7 @@ usage.overview.usage_evidence_label,ui,DashboardPage,UsageOverview,usage_evidenc
 usage.overview.distribution_aria,ui,DashboardPage,UsageOverview,distribution_aria,"Provider distribution: {{items}}",,active
 usage.overview.distribution_item,ui,DashboardPage,UsageOverview,distribution_item,"{{label}} {{percent}}%",,active
 usage.overview.provider_card_aria,ui,DashboardPage,UsageOverview,provider_card_aria,"{{provider}}: {{percent}}%, {{tokens}} tokens, {{cost}}. Click to {{action}} details",,active
+usage.overview.cost_unavailable,ui,DashboardPage,UsageOverview,cost_unavailable,"Cost unavailable",,active
 usage.overview.expand,ui,DashboardPage,UsageOverview,expand,"expand",,active
 usage.overview.collapse,ui,DashboardPage,UsageOverview,collapse,"collapse",,active
 usage.overview.model_count,ui,DashboardPage,UsageOverview,model_count,"{{count}} models",,active
@@ -1400,7 +1401,7 @@ spend.page.title,dashboard,SpendPage,SpendPage,title,"支出",,active
 spend.page.subtitle,dashboard,SpendPage,SpendPage,subtitle,"查看真实 Token 消耗、API 成本、订阅记录与累计花销。",,active
 spend.tab.usage,dashboard,SpendPage,SpendPage,tab_usage,"使用统计",,active
 spend.tab.cost,dashboard,SpendPage,SpendPage,tab_cost,"成本累积",,active
-spend.monthly_api,dashboard,SpendPage,SpendPage,monthly_api,"Monthly estimated API cost",,active
+spend.monthly_api,dashboard,SpendPage,SpendPage,monthly_api,"Monthly API list-price equivalent",,active
 spend.monthly_subscription,dashboard,SpendPage,SpendPage,monthly_subscription,"Monthly subscription cost",,active
 spend.monthly_combined,dashboard,SpendPage,SpendPage,monthly_combined,"Monthly total cost",,active
 spend.lifetime_combined,dashboard,SpendPage,SpendPage,lifetime_combined,"Lifetime total cost",,active
@@ -1691,10 +1692,6 @@ ticket04.request.cache_read_prefix,dashboard,SpendPage,RequestUsageLog,cache_rea
 ticket04.request.latency_none,dashboard,SpendPage,RequestUsageLog,latency_none,"-",,active
 ticket04.request.all_sources,dashboard,SpendPage,RequestUsageLog,all_sources,"All",,active
 ticket04.request.kind_filter,dashboard,SpendPage,RequestUsageLog,kind_filter,"Per-message only",,active
-ticket04.request.kind.request_event,dashboard,SpendPage,RequestUsageLog,kind_request_event,"Per-message",,active
-ticket04.request.kind.aggregate,dashboard,SpendPage,RequestUsageLog,kind_aggregate,"30-min aggregate",,active
-ticket04.request.kind.request_event_title,dashboard,SpendPage,RequestUsageLog,kind_request_event_title,"Real usage of a single request/message",,active
-ticket04.request.kind.aggregate_title,dashboard,SpendPage,RequestUsageLog,kind_aggregate_title,"This provider's logs are aggregated into half-hour buckets; per-message detail is not available yet",,active
 ticket04.request.load_more,dashboard,SpendPage,RequestUsageLog,load_more,"Load more",,active
 ticket04.request.showing,dashboard,SpendPage,RequestUsageLog,showing,"Showing {{count}} of {{total}} records",,active
 ticket04.request.page_loading,dashboard,SpendPage,RequestUsageLog,page_loading,"正在加载第 {{page}} 页…",,active
@@ -1937,6 +1934,7 @@ spend.cost.subscription.started_at,dashboard,SpendPage,CostAccumulation,subscrip
 spend.cost.subscription.renews_at,dashboard,SpendPage,CostAccumulation,subscription_renews_at,"Renews",,active
 spend.cost.subscription.status,dashboard,SpendPage,CostAccumulation,subscription_status,"Status",,active
 spend.cost.subscription.status.active,dashboard,SpendPage,CostAccumulation,subscription_status_active,"Active",,active
+spend.cost.subscription.status.scheduled,dashboard,SpendPage,CostAccumulation,subscription_status_scheduled,"Not started",,active
 spend.cost.subscription.status.expired,dashboard,SpendPage,CostAccumulation,subscription_status_expired,"Expired",,active
 spend.cost.subscription.status.cancelled,dashboard,SpendPage,CostAccumulation,subscription_status_cancelled,"Cancelled",,active
 spend.cost.summary.month_api,dashboard,SpendPage,CostAccumulation,summary_month_api,"本月 API 成本",,active
@@ -1992,13 +1990,42 @@ spend.usage.token_services.duration.days_hours,dashboard,SpendPage,TokenServiceL
 spend.usage.token_services.duration.hours_minutes,dashboard,SpendPage,TokenServiceList,token_services_duration_hours_minutes,"{{hours}}h {{minutes}}m",,active
 spend.usage.token_services.duration.minutes,dashboard,SpendPage,TokenServiceList,token_services_duration_minutes,"{{minutes}}m",,active
 spend.usage.token_services.duration.elapsed,dashboard,SpendPage,TokenServiceList,token_services_duration_elapsed,"due now",,active
+spend.usage.token_services.mode.label,dashboard,SpendPage,TokenServiceModePanel,token_services_mode_label,"Token service type",,active
+spend.usage.token_services.mode.subscription,dashboard,SpendPage,TokenServiceModePanel,token_services_mode_subscription,"Subscription",,active
+spend.usage.token_services.mode.api,dashboard,SpendPage,TokenServiceModePanel,token_services_mode_api,"API",,active
+spend.usage.metric.no_request_samples,dashboard,SpendPage,ProviderUsageTable,metric_no_request_samples,"No request samples",,active
+spend.usage.metric.request_total_unavailable,dashboard,SpendPage,ProviderUsageTable,metric_request_total_unavailable,"Complete request total unavailable",,active
+spend.usage.metric.no_status_samples,dashboard,SpendPage,ProviderUsageTable,metric_no_status_samples,"No status samples",,active
+spend.usage.metric.no_completed_status_samples,dashboard,SpendPage,ProviderUsageTable,metric_no_completed_status_samples,"No completed status samples",,active
+spend.usage.metric.no_latency_samples,dashboard,SpendPage,ProviderUsageTable,metric_no_latency_samples,"No latency samples",,active
+spend.usage.metric.sample_count,dashboard,SpendPage,ProviderUsageTable,metric_sample_count,"{{count}} samples",,active
+spend.usage.provider_api.account_unavailable,dashboard,SpendPage,ProviderApiServiceList,provider_api_account_unavailable,"Account not provided",,active
+spend.usage.provider_api.agent_count,dashboard,SpendPage,ProviderApiServiceList,provider_api_agent_count,"Agents: {{count}}",,active
+spend.usage.provider_api.model_count,dashboard,SpendPage,ProviderApiServiceList,provider_api_model_count,"Models: {{count}}",,active
+spend.usage.provider_api.period,dashboard,SpendPage,ProviderApiServiceList,provider_api_period,"{{days}} days",,active
+spend.usage.provider_api.balance,dashboard,SpendPage,ProviderApiServiceList,provider_api_balance,"Balance",,active
+spend.usage.provider_api.cost_axis,dashboard,SpendPage,ProviderApiServiceList,provider_api_cost_axis,"Spend",,active
+spend.usage.provider_api.loading,dashboard,SpendPage,ProviderApiServiceList,provider_api_loading,"Loading API Provider usage…",,active
+spend.usage.provider_api.error,dashboard,SpendPage,ProviderApiServiceList,provider_api_error,"API Provider usage could not be loaded.",,active
+spend.usage.provider_api.retry,dashboard,SpendPage,ProviderApiServiceList,provider_api_retry,"Retry",,active
+spend.usage.provider_api.empty,dashboard,SpendPage,ProviderApiServiceList,provider_api_empty,"No positive API Provider cost in the last 7 days.",,active
+spend.usage.provider_api.total_cost,dashboard,SpendPage,ProviderApiServiceList,provider_api_total_cost,"7-day spend",,active
+spend.usage.provider_api.requests,dashboard,SpendPage,ProviderApiServiceList,provider_api_requests,"Requests",,active
+spend.usage.provider_api.tokens,dashboard,SpendPage,ProviderApiServiceList,provider_api_tokens,"Tokens",,active
+spend.usage.provider_api.peak,dashboard,SpendPage,ProviderApiServiceList,provider_api_peak,"Peak",,active
+spend.usage.provider_api.synced,dashboard,SpendPage,ProviderApiServiceList,provider_api_synced,"Synced {{from}} to {{to}}",,active
+spend.usage.provider_api.tooltip.agents,dashboard,SpendPage,ProviderApiServiceList,provider_api_tooltip_agents,"Agent breakdown",,active
+spend.usage.provider_api.tooltip.models,dashboard,SpendPage,ProviderApiServiceList,provider_api_tooltip_models,"Model breakdown",,active
+spend.usage.provider_api.tooltip.cost,dashboard,SpendPage,ProviderApiServiceList,provider_api_tooltip_cost,"Spend",,active
+spend.usage.provider_api.tooltip.requests,dashboard,SpendPage,ProviderApiServiceList,provider_api_tooltip_requests,"Requests",,active
+spend.usage.provider_api.tooltip.tokens,dashboard,SpendPage,ProviderApiServiceList,provider_api_tooltip_tokens,"Tokens",,active
 app.boot.loading,ui,App,AppBootSplash,app_boot_loading,"正在启动本地仪表盘…",,active
 app.boot.loading_aria,ui,App,AppBootSplash,app_boot_loading_aria,"Token Eyes 正在启动",,active
 settings.cost.loading,ui,SettingsPage,SettingsCostFallback,settings_cost_loading,"正在加载成本设置…",,active
 spend.cost.page.title,dashboard,SpendPage,SpendPage,cost_page_title,"Cost & quota",,active
-spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"Review estimated usage cost, recorded subscription fees, provider balances, and plan quota without combining them.",,active
-spend.cost.row.month_estimate,dashboard,SpendPage,CostAccumulation,row_month_estimate,"Monthly estimate (USD)",,active
-spend.cost.row.estimate_share,dashboard,SpendPage,CostAccumulation,row_estimate_share,"Share of estimated total",,active
+spend.cost.page.subtitle,dashboard,SpendPage,SpendPage,cost_page_subtitle,"Review API list-price equivalent value, recorded subscription fees, provider balances, and plan quota without combining them.",,active
+spend.cost.row.month_amount,dashboard,SpendPage,CostAccumulation,row_month_amount,"Monthly amount (USD)",,active
+spend.cost.row.api_equivalent_share,dashboard,SpendPage,CostAccumulation,row_api_equivalent_share,"Share of API list-price equivalent",,active
 spend.cost.row.subscription_usd,dashboard,SpendPage,CostAccumulation,row_subscription_usd,"Subscription fees (USD)",,active
 spend.cost.row.available_quota,dashboard,SpendPage,CostAccumulation,row_available_quota,"Available quota",,active
 spend.cost.row.available_balance,dashboard,SpendPage,CostAccumulation,row_available_balance,"Available balance (USD)",,active
@@ -2007,7 +2034,7 @@ spend.cost.row.month_subscription,dashboard,SpendPage,CostAccumulation,row_month
 spend.cost.row.lifetime_subscription,dashboard,SpendPage,CostAccumulation,row_lifetime_subscription,"Lifetime subscriptions (USD)",,active
 spend.cost.row.unavailable,dashboard,SpendPage,CostAccumulation,row_unavailable,"Unavailable",,active
 spend.cost.design.daily_average,dashboard,SpendPage,CostAccumulation,design_daily_average,"Daily average cost",,active
-spend.cost.design.month_usage,dashboard,SpendPage,CostAccumulation,design_month_usage,"Monthly usage (estimated)",,active
+spend.cost.design.month_usage,dashboard,SpendPage,CostAccumulation,design_month_usage,"Monthly tokens",,active
 spend.cost.design.highest_daily,dashboard,SpendPage,CostAccumulation,design_highest_daily,"Highest daily cost",,active
 spend.cost.design.month_daily_average,dashboard,SpendPage,CostAccumulation,design_month_daily_average,"Monthly daily average",,active
 spend.cost.design.subscription_count,dashboard,SpendPage,CostAccumulation,design_subscription_count,"Subscriptions",,active
@@ -2033,11 +2060,6 @@ spend.cost.design.refunds_credit,dashboard,SpendPage,CostAccumulation,design_ref
 leaderboard.table.rank,dashboard,LeaderboardPage,LeaderboardPage,table_rank,"Rank",,active
 leaderboard.table.user_share,dashboard,LeaderboardPage,LeaderboardPage,table_user_share,"User / model usage share",,active
 leaderboard.table.token_cost,dashboard,LeaderboardPage,LeaderboardPage,table_token_cost,"Token total / estimated spend",,active
-spend.cost.roi.title,dashboard,SpendPage,CostAccumulation,roi_title,"回本倍数",,active
-spend.cost.roi.subtitle,dashboard,SpendPage,CostAccumulation,roi_subtitle,"订阅的每 1 元，本月套餐用量已产生 {{value}} 元的 API 等价价值",,active
-spend.cost.roi.below_one,dashboard,SpendPage,CostAccumulation,roi_below_one,"本月套餐用量的 API 等价价值为订阅费的 {{percent}}%",,active
-spend.cost.roi.empty,dashboard,SpendPage,CostAccumulation,roi_empty,"添加订阅记录后，这里会显示订阅回本倍数（套餐用量的 API 等价价值 ÷ 订阅支出）。",,active
-spend.cost.roi.formula,dashboard,SpendPage,CostAccumulation,roi_formula,"本月套餐用量的 API 等价价值 ÷ 本月订阅支出（USD 口径，汇率与定价引擎一致）",,active
 nav.spend.plans,ui,Sidebar,Sidebar,nav_spend_plans,"套餐行情",,active
 nav.spend.realtime_sessions,ui,Sidebar,Sidebar,nav_spend_realtime_sessions,"实时会话",,active
 realtime.page.title,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,title,"实时会话",,active
@@ -2707,13 +2729,16 @@ settings.token_plan.collapsed_summary,ui,SettingsPage,TokenPlanSection,collapsed
 settings.token_plan.count_active,ui,SettingsPage,TokenPlanSection,count_active,"已激活 {{count}} 个",,active
 settings.token_plan.count_watch,ui,SettingsPage,TokenPlanSection,count_watch,"需关注 {{count}} 个",,active
 settings.token_plan.expired_group,ui,SettingsPage,TokenPlanSection,expired_group,"Expired ({{count}})",,active
+settings.token_plan.scheduled_group,ui,SettingsPage,TokenPlanSection,scheduled_group,"Not started ({{count}})",,active
 settings.token_plan.status_expired,ui,SettingsPage,TokenPlanSection,status_expired,"已过期",,active
+settings.token_plan.status_scheduled,ui,SettingsPage,TokenPlanSection,status_scheduled,"Not started",,active
 settings.token_plan.status_active,ui,SettingsPage,TokenPlanSection,status_active,"已激活",,active
 settings.token_plan.status_attention,ui,SettingsPage,TokenPlanSection,status_attention,"需关注",,active
 settings.token_plan.pagination.previous,ui,SettingsPage,TokenPlanSection,pagination_previous,"上一页",,active
 settings.token_plan.pagination.next,ui,SettingsPage,TokenPlanSection,pagination_next,"下一页",,active
 settings.token_plan.pagination.status,ui,SettingsPage,TokenPlanSection,pagination_status,"第 {{current}} / {{total}} 页",,active
 settings.token_plan.expired_at,ui,SettingsPage,TokenPlanSection,expired_at,"到期",,active
+settings.token_plan.starts_at,ui,SettingsPage,TokenPlanSection,starts_at,"Starts",,active
 settings.cost.provider_api.summary.aria_label,ui,SettingsPage,ProviderApiConfigSection,summary_aria_label,"供应商连接概览",,active
 settings.cost.other_ai.collapsed_summary,ui,SettingsPage,OtherAiSpendSection,collapsed_summary,"{{count}} 个分组",,active
 settings.cost.other_ai.summary_counts,ui,SettingsPage,OtherAiSpendSection,summary_counts,"共 {{groups}} 个分组 · {{records}} 笔花销",,active
@@ -2771,7 +2796,6 @@ spend.cost.summary.api_equivalent_suffix,spend,SpendCostPage,CostSummaryCards,ap
 spend.cost.summary.subscription_cash,spend,SpendCostPage,CostSummaryCards,subscription_cash,"Subscription payments",,active
 spend.cost.summary.official_api_cash,spend,SpendCostPage,CostSummaryCards,official_api_cash,"Official API billing",,active
 spend.cost.api_billing.authority.official_invoice,spend,SpendCostPage,ApiBillingCard,authority_official_invoice,"Official bill",,active
-spend.cost.api_billing.authority.local_list_price_estimate,spend,SpendCostPage,ApiBillingCard,authority_local_list_price_estimate,"List-price estimate",,active
 spend.cost.api_billing.authority.unavailable,spend,SpendCostPage,ApiBillingCard,authority_unavailable,"Billing unavailable",,active
 spend.cost.api_billing.ambiguous_config,spend,SpendCostPage,ApiBillingCard,ambiguous_config,"Detected {{count}} official billing configs. Disable duplicates.",,active
 spend.cost.api_billing.refresh_failed_stale,spend,SpendCostPage,ApiBillingCard,refresh_failed_stale,"Billing refresh failed; showing the last successful value.",,active
@@ -2780,7 +2804,6 @@ spend.cost.summary.custom_cash,spend,SpendCostPage,CostSummaryCards,custom_cash,
 spend.cost.summary.coverage,spend,SpendCostPage,CostSummaryCards,coverage,"Coverage",,active
 spend.cost.accuracy.exact,spend,SpendCostPage,CostSummaryCards,accuracy_exact,"Exact",,active
 spend.cost.accuracy.partial,spend,SpendCostPage,CostSummaryCards,accuracy_partial,"Partial",,active
-spend.cost.accuracy.estimated,spend,SpendCostPage,CostSummaryCards,accuracy_estimated,"Estimated",,active
 spend.cost.accuracy.equivalent,spend,SpendCostPage,CostSummaryCards,accuracy_equivalent,"Equivalent",,active
 spend.cost.accuracy.unknown,spend,SpendCostPage,CostSummaryCards,accuracy_unknown,"Unknown",,active
 widget.limit.reset_at,ui,DesktopWidgetPage,ExpandedLimits,reset_at,"Resets {{time}}",,active

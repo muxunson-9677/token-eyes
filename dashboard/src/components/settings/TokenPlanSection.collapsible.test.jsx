@@ -628,6 +628,70 @@ it("moves a plan with the keyboard handle and persists the complete order", asyn
   ]);
 });
 
+it("moves between visible active plans without using an interleaved expired record as the keyboard target", async () => {
+  const user = userEvent.setup();
+  const records = [
+    { ...RECORD, id: "active-A", plan_label: "Active A", display_order: 0 },
+    { ...RECORD, id: "expired-X", plan_label: "Expired X", expires_at: "2026-01-01", display_order: 1 },
+    { ...RECORD, id: "active-B", plan_label: "Active B", display_order: 2 },
+  ];
+  getTokenPlans.mockResolvedValue({ records });
+  reorderTokenPlans.mockImplementation(async (ids) => ({
+    ok: true,
+    records: ids.map((id, index) => ({
+      ...records.find((record) => record.id === id),
+      display_order: index,
+    })),
+  }));
+  render(<TokenPlanSection />);
+
+  const handle = await screen.findByRole("button", { name: "拖动 Active A" });
+  handle.focus();
+  await act(async () => {
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+  });
+
+  await waitFor(() => expect(reorderTokenPlans).toHaveBeenCalledWith([
+    "active-B",
+    "expired-X",
+    "active-A",
+  ]));
+  expect(screen.getAllByTestId("token-plan-card").map((card) => card.textContent)).toEqual([
+    expect.stringContaining("Active B"),
+    expect.stringContaining("Active A"),
+  ]);
+});
+
+it("keeps a future plan editable in a separate collapsed group without counting it active", async () => {
+  const user = userEvent.setup();
+  getTokenPlans.mockResolvedValue({
+    records: [
+      { ...RECORD, id: "active-now", plan_label: "Active now", subscription_end_date: "2099-12-31" },
+      {
+        ...RECORD,
+        id: "scheduled-later",
+        plan_label: "Scheduled later",
+        subscription_start_date: "2099-01-01",
+        subscription_end_date: "2099-12-31",
+      },
+      { ...RECORD, id: "expired-before", plan_label: "Expired before", subscription_end_date: "2020-01-01" },
+    ],
+  });
+
+  render(<TokenPlanSection />);
+
+  expect(await screen.findAllByTestId("token-plan-card")).toHaveLength(1);
+  expect(screen.getByText("已激活 1 个")).toBeInTheDocument();
+  expect(screen.queryByText("Scheduled later")).not.toBeInTheDocument();
+  const scheduledToggle = screen.getByRole("button", { name: "未生效 (1)" });
+  expect(scheduledToggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByRole("button", { name: "已过期 (1)" })).toHaveAttribute("aria-expanded", "false");
+
+  await user.click(scheduledToggle);
+  expect(screen.getByTestId("scheduled-token-plans")).toHaveTextContent("Scheduled later");
+  expect(within(screen.getByTestId("scheduled-token-plans")).getByText("编辑")).toBeInTheDocument();
+});
+
 it("list-only mode navigates to child editor routes without mounting the editor form", async () => {
   const user = userEvent.setup();
   const onNavigate = vi.fn();

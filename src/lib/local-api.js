@@ -130,6 +130,7 @@ const USAGE_AGGREGATE_RESPONSE_PATHS = new Set([
   "/functions/tokentracker-usage-bounds",
   "/functions/tokentracker-usage-summary",
   "/functions/tokentracker-provider-stats",
+  "/functions/tokentracker-provider-api-stats",
   "/functions/tokentracker-model-stats",
   "/functions/tokentracker-spend-records",
   "/functions/tokentracker-spend-timeseries",
@@ -1420,11 +1421,25 @@ function roundProviderMoney(value) {
   return Number(Number(value || 0).toFixed(9));
 }
 
-function providerCostBasis() {
-  return {
-    authority: SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE,
-    accuracy: "estimated",
-  };
+function providerCostBasis(costMode = "estimated") {
+  return costMode === "actual"
+    ? { authority: SPEND_AUTHORITIES.OFFICIAL_INVOICE, accuracy: "exact" }
+    : { authority: SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE, accuracy: "estimated" };
+}
+
+function providerActualCostUsd(row) {
+  const authority = row?.spend_authority
+    ?? row?.spendAuthority
+    ?? row?.cost_basis?.authority;
+  const value = Number(row?.actual_cost_usd);
+  if (
+    authority !== SPEND_AUTHORITIES.OFFICIAL_INVOICE
+    || row?.actual_cost_usd === null
+    || row?.actual_cost_usd === undefined
+    || !Number.isFinite(value)
+    || value < 0
+  ) return null;
+  return value;
 }
 
 function finalizeProviderBreakdown(map) {
@@ -1472,6 +1487,16 @@ function providerDayKeys(fromKey, toKey) {
   return keys;
 }
 
+function providerRangeDays(fromKey, toKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/u.test(toKey)) {
+    return 0;
+  }
+  const fromMs = Date.parse(`${fromKey}T00:00:00.000Z`);
+  const toMs = Date.parse(`${toKey}T00:00:00.000Z`);
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) return 0;
+  return Math.floor((toMs - fromMs) / 86_400_000) + 1;
+}
+
 function providerTimeZoneLabel(timeZoneContext) {
   if (timeZoneContext?.timeZone) return timeZoneContext.timeZone;
   const offset = Number(timeZoneContext?.offsetMinutes);
@@ -1483,7 +1508,7 @@ function providerTimeZoneLabel(timeZoneContext) {
   return `UTC${sign}${hours}:${minutes}`;
 }
 
-function finalizeProviderDay(day, period) {
+function finalizeProviderDay(day, period, costMode) {
   return {
     date: day.date,
     agents: finalizeProviderBreakdown(day.agentMap),
@@ -1492,7 +1517,7 @@ function finalizeProviderDay(day, period) {
     request_count: day.requestCountUnavailable ? null : day.request_count,
     request_count_basis: providerRequestBasis(day.requestBases, day.requestCountUnavailable),
     cost_usd: roundProviderMoney(day.cost_usd),
-    cost_basis: providerCostBasis(),
+    cost_basis: providerCostBasis(costMode),
     period,
   };
 }
@@ -1507,13 +1532,16 @@ function aggregateByProvider(rows, options = {}) {
     pricingOptions = {},
     sources = null,
     models = null,
+    includeDaily = true,
+    requireApiKey = true,
+    requirePositiveCost = true,
+    costMode = "estimated",
   } = options;
-  const dayKeys = providerDayKeys(fromKey, toKey);
-  const dayKeySet = new Set(dayKeys);
+  const dayKeys = includeDaily ? providerDayKeys(fromKey, toKey) : [];
   const period = {
     from: fromKey,
     to: toKey,
-    days: dayKeys.length,
+    days: providerRangeDays(fromKey, toKey),
     time_zone: providerTimeZoneLabel(timeZoneContext),
   };
   const map = new Map();
@@ -1524,10 +1552,13 @@ function aggregateByProvider(rows, options = {}) {
     const modelKey = String(row.model || "").trim().toLowerCase();
     if (models && !models.includes(modelKey)) continue;
     const dayKey = rowDayKey(row, timeZoneContext);
-    if (!dayKeySet.has(dayKey)) continue;
+    if (!dayKey || dayKey < fromKey || dayKey > toKey) continue;
     const attribution = normalizeUsageAttribution(row);
     const providerId = attribution.provider_id || "";
-    if (attribution.billing_mode !== "api_key" || !providerId || providerId === "unknown") continue;
+    if (!providerId || providerId === "unknown") continue;
+    if (requireApiKey && attribution.billing_mode !== "api_key") continue;
+    const actualCostUsd = costMode === "actual" ? providerActualCostUsd(row) : null;
+    if (costMode === "actual" && actualCostUsd === null) continue;
     if (!map.has(providerId)) {
       map.set(providerId, {
         provider_id: providerId,
@@ -1576,7 +1607,9 @@ function aggregateByProvider(rows, options = {}) {
     } else acc.requestCountUnavailable = true;
     acc.conversation_count += Number(row.conversation_count || 0);
     acc.tokens += Number(row.total_tokens || 0);
-    const rowCost = computeRowCostDetailed(row, pricingOptions);
+    const rowCost = costMode === "actual"
+      ? { cost_usd: actualCostUsd, priced_tokens: 0, unpriced_tokens: 0 }
+      : computeRowCostDetailed(row, pricingOptions);
     const costUsd = Number.isFinite(Number(rowCost.cost_usd)) ? Number(rowCost.cost_usd) : 0;
     acc.rawCostUsd += costUsd;
     acc.cost_usd += costUsd;
@@ -1592,14 +1625,16 @@ function aggregateByProvider(rows, options = {}) {
     addProviderBreakdown(acc.agentMap, src || "unknown", getSourceDisplayName(src), row, costUsd, requestFact.count);
     addProviderBreakdown(acc.modelMap, modelId, String(row.model || "unknown"), row, costUsd, requestFact.count);
     const day = acc.dailyMap.get(dayKey);
-    day.tokens += Number(row.total_tokens || 0);
-    day.cost_usd += costUsd;
-    if (requestFact.count !== null) {
-      day.request_count = Number(day.request_count || 0) + requestFact.count;
-      day.requestBases.add(requestFact.basis);
-    } else day.requestCountUnavailable = true;
-    addProviderBreakdown(day.agentMap, src || "unknown", getSourceDisplayName(src), row, costUsd, requestFact.count);
-    addProviderBreakdown(day.modelMap, modelId, String(row.model || "unknown"), row, costUsd, requestFact.count);
+    if (day) {
+      day.tokens += Number(row.total_tokens || 0);
+      day.cost_usd += costUsd;
+      if (requestFact.count !== null) {
+        day.request_count = Number(day.request_count || 0) + requestFact.count;
+        day.requestBases.add(requestFact.basis);
+      } else day.requestCountUnavailable = true;
+      addProviderBreakdown(day.agentMap, src || "unknown", getSourceDisplayName(src), row, costUsd, requestFact.count);
+      addProviderBreakdown(day.modelMap, modelId, String(row.model || "unknown"), row, costUsd, requestFact.count);
+    }
 
     // Only explicit request events can contribute request-quality samples.
     if (row.record_kind === "request_event") {
@@ -1618,7 +1653,7 @@ function aggregateByProvider(rows, options = {}) {
     }
   }
   const providers = Array.from(map.values())
-    .filter((provider) => provider.rawCostUsd > 0)
+    .filter((provider) => !requirePositiveCost || roundProviderMoney(provider.rawCostUsd) > 0)
     .map((provider) => {
       const completedStatusCount = provider.success_count + provider.failure_count;
       const accountRefs = Array.from(provider.accountRefs);
@@ -1626,7 +1661,7 @@ function aggregateByProvider(rows, options = {}) {
         provider_id: provider.provider_id,
         display_name: provider.display_name,
         account_label: null,
-        account_ref: accountRefs.length === 1 ? accountRefs[0] : null,
+        account_ref: costMode === "actual" && accountRefs.length === 1 ? accountRefs[0] : null,
         agents: finalizeProviderBreakdown(provider.agentMap),
         models: finalizeProviderBreakdown(provider.modelMap),
         period,
@@ -1640,7 +1675,7 @@ function aggregateByProvider(rows, options = {}) {
         request_count_basis: providerRequestBasis(provider.requestBases, provider.requestCountUnavailable),
         conversation_count: provider.conversation_count,
         cost_usd: roundProviderMoney(provider.cost_usd),
-        cost_basis: providerCostBasis(),
+        cost_basis: providerCostBasis(costMode),
         priced_tokens: provider.priced_tokens,
         unpriced_tokens: provider.unpriced_tokens,
         pricing_coverage: providerPricingCoverage(provider.priced_tokens, provider.unpriced_tokens),
@@ -1663,7 +1698,7 @@ function aggregateByProvider(rows, options = {}) {
         metric_availability: provider.status_sample_count > 0 || provider.latency_sample_count > 0
           ? "measured"
           : "unavailable",
-        daily: Array.from(provider.dailyMap.values()).map((day) => finalizeProviderDay(day, period)),
+        daily: Array.from(provider.dailyMap.values()).map((day) => finalizeProviderDay(day, period, costMode)),
         balance: null,
       };
       return result;
@@ -2154,19 +2189,21 @@ function hasAllowedLoopbackOrigin(headers = {}) {
 }
 
 const PRIVATE_LOCAL_GET_PATHS = new Set([
+  "/functions/tokentracker-provider-api-stats",
   "/functions/tokentracker-realtime-sessions",
   "/functions/tokentracker-workbuddy-quota",
   "/functions/tokentracker-token-plans",
   "/functions/tokentracker-token-plan-console-sessions",
 ]);
 
-function privateLocalJson(req, res, data, status = 200) {
+function privateLocalJson(req, res, data, status = 200, extraHeaders = {}) {
   const headers = {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
     "Access-Control-Allow-Methods": "GET",
     "Access-Control-Allow-Headers": "Content-Type",
     Vary: "Origin",
+    ...extraHeaders,
   };
   const origin = req?.headers?.origin;
   if (typeof origin === "string" && isAllowedLocalAppOrigin(origin)) {
@@ -2976,12 +3013,22 @@ function createLocalApiHandler({
     const cached = usageAggregateResponseCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt <= USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS) {
       let responseBody = cached.body;
-      if (url.pathname === "/functions/tokentracker-provider-stats") {
+      if (url.pathname === "/functions/tokentracker-provider-api-stats") {
         try {
           responseBody = JSON.stringify(overlayProviderRuntimeFacts(JSON.parse(cached.body)));
         } catch {
           responseBody = cached.body;
         }
+        let privateBody;
+        try {
+          privateBody = JSON.parse(responseBody);
+        } catch {
+          privateBody = { ok: false, error: "Invalid cached response" };
+        }
+        privateLocalJson(req, res, privateBody, cached.statusCode, {
+          "X-TokenTracker-Usage-Cache": "hit",
+        });
+        return true;
       }
       res.writeHead(cached.statusCode, {
         "Content-Type": "application/json",
@@ -3007,7 +3054,7 @@ function createLocalApiHandler({
         const serializedBody = Buffer.isBuffer(body) ? body.toString("utf8") : String(body);
         usageAggregateResponseCache.delete(cacheKey);
         usageAggregateResponseCache.set(cacheKey, {
-          body: url.pathname === "/functions/tokentracker-provider-stats"
+          body: url.pathname === "/functions/tokentracker-provider-api-stats"
             ? providerAggregateCacheBody(serializedBody)
             : serializedBody,
           cachedAt: Date.now(),
@@ -8073,11 +8120,15 @@ function createLocalApiHandler({
       return true;
     }
 
-    // --- provider-stats (A4) ---
-    // The API subpage is always a seven-local-day Provider view. Only rows
-    // carrying trusted api_key + provider_id evidence can enter this response;
-    // source/Agent is retained only as a Provider breakdown.
-    if (p === "/functions/tokentracker-provider-stats") {
+    // Provider statistics have two explicit contracts. The general endpoint
+    // follows the selected range and retains every explicitly attributed
+    // Provider. The API-card endpoint is always the actual current seven local
+    // days and includes only positive-cost API-key usage.
+    if (
+      p === "/functions/tokentracker-provider-stats"
+      || p === "/functions/tokentracker-provider-api-stats"
+    ) {
+      const recentApiView = p === "/functions/tokentracker-provider-api-stats";
       const requestedFrom = url.searchParams.get("from") || "";
       const requestedTo = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
@@ -8087,11 +8138,14 @@ function createLocalApiHandler({
         return Number.isFinite(timestamp)
           && new Date(timestamp).toISOString().slice(0, 10) === value;
       };
-      const to = validDayKey(requestedTo)
-        ? requestedTo
-        : formatPartsDayKey(getZonedParts(nowProvider(), timeZoneContext))
-          || nowProvider().toISOString().slice(0, 10);
-      const from = shiftDayKey(to, -6);
+      const currentDay = formatPartsDayKey(getZonedParts(nowProvider(), timeZoneContext))
+        || nowProvider().toISOString().slice(0, 10);
+      const to = recentApiView || !validDayKey(requestedTo) ? currentDay : requestedTo;
+      const from = recentApiView
+        ? shiftDayKey(to, -6)
+        : validDayKey(requestedFrom) && requestedFrom <= to
+          ? requestedFrom
+          : shiftDayKey(to, -6);
       const { rows: baseScopedRows, scope, excludedSources } = scopedQueueRows(qp, url, {
         dedupeMode: "provider",
       });
@@ -8113,23 +8167,30 @@ function createLocalApiHandler({
         pricingOptions,
         sources: effectiveSources,
         models: modelsParam,
+        includeDaily: recentApiView,
+        requireApiKey: recentApiView,
+        requirePositiveCost: recentApiView,
+        costMode: recentApiView ? "actual" : "estimated",
       });
 
       const totals = summarizeProviderTotals(providers);
       const period = {
         from,
         to,
-        days: 7,
+        days: providerRangeDays(from, to),
         time_zone: providerTimeZoneLabel(timeZoneContext),
       };
       const response = {
         ok: true,
+        view: recentApiView ? "recent_api_7d" : "range",
         from,
         to,
         requested_from: requestedFrom || null,
         requested_to: requestedTo || null,
         period,
-        totals_scope: "api_key_attributed_cost_positive",
+        totals_scope: recentApiView
+          ? "api_key_attributed_official_billed_cost_positive"
+          : "all_provider_attributed",
         scope,
         excluded_sources: excludedSources,
         sources: effectiveSources || [],
@@ -8137,8 +8198,12 @@ function createLocalApiHandler({
         providers,
         totals,
       };
-      overlayProviderRuntimeFacts(response);
-      json(res, response);
+      if (recentApiView) {
+        overlayProviderRuntimeFacts(response);
+        privateLocalJson(req, res, response);
+      } else {
+        json(res, response);
+      }
       return true;
     }
 

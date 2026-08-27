@@ -736,16 +736,15 @@ describe("RequestUsageLog", () => {
   });
 });
 
-// V2-W3: per-message granularity honesty — every row is labeled as a true
-// request/message event or a half-hour aggregate, and a toggle narrows the
-// server query to request events only.
+// The record-kind filter remains available, but the row itself keeps the
+// source column compact instead of repeating record-granularity badges.
 describe("RequestUsageLog record granularity (V2-W3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useRequestUsageRecords.mockReturnValue(HOOK_DEFAULTS);
   });
 
-  it("labels request-event and aggregate rows with granularity badges", () => {
+  it("keeps raw sources while hiding request-event and aggregate noise badges", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
       records: [
@@ -763,8 +762,9 @@ describe("RequestUsageLog record granularity (V2-W3)", () => {
     render(
       <RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex", "claude"]} />,
     );
-    expect(screen.getByText("ticket04.request.kind.request_event")).toBeInTheDocument();
-    expect(screen.getByText("ticket04.request.kind.aggregate")).toBeInTheDocument();
+    expect(screen.getByText("queue_aggregate")).toBeInTheDocument();
+    expect(screen.queryByText("ticket04.request.kind.request_event")).not.toBeInTheDocument();
+    expect(screen.queryByText("ticket04.request.kind.aggregate")).not.toBeInTheDocument();
   });
 
   it("treats records without record_kind as request events (server heuristic)", () => {
@@ -774,7 +774,7 @@ describe("RequestUsageLog record granularity (V2-W3)", () => {
       total: 1,
     });
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-    expect(screen.getByText("ticket04.request.kind.request_event")).toBeInTheDocument();
+    expect(screen.queryByText("ticket04.request.kind.request_event")).not.toBeInTheDocument();
     expect(screen.queryByText("ticket04.request.kind.aggregate")).not.toBeInTheDocument();
   });
 

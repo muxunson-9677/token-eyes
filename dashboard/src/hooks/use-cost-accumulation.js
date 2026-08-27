@@ -3,7 +3,7 @@ import { getTokenPlans, getSpendRecords, getSpendTimeseries, getApiBillingAccoun
 import { OTHER_AI_SPEND_SOURCE } from "../lib/cost-sources.js";
 import { getCostMonthRanges } from "../lib/date-range";
 import {
-  isTokenPlanExpired,
+  tokenPlanValidityState,
   tokenPlanExpiryTimestamp,
   tokenPlanExpiryValue,
 } from "../lib/token-plan-validity.js";
@@ -600,7 +600,7 @@ export function useCostAccumulation({
           currency: plan.subscription_currency || "USD",
           startedAt: plan.subscription_start_date || null,
           renewsAt,
-          status: isTokenPlanExpired(plan) ? "expired" : "active",
+          status: tokenPlanValidityState(plan),
           lifetimeAmount: Number(plan.subscription_amount) || 0,
           origin: "token_plan",
           readOnly: true,
@@ -612,23 +612,27 @@ export function useCostAccumulation({
 
   // Transform token plans for display
   const tokenPackages = useMemo(() => {
-    return tokenPlans
-      .map((plan) => ({
-      ...plan,
-      id: plan.id,
-      name: plan.plan_label || "未知套餐",
-      provider: plan.provider_id || plan.source || "未知",
-      cycle: getPlanCycle(plan),
-      quota: plan.total_quota_display || formatQuota(plan.total_quota, plan.quota_unit),
-      used: formatQuota(plan.used_quota, plan.quota_unit),
-      remaining: formatQuota(plan.remaining_quota, plan.quota_unit),
-      expiresAt: tokenPlanExpiryValue(plan),
-      syncStatus: plan.sync_status || plan.last_refresh_status || "not_configured",
-      syncStatusLabel: getSyncStatusLabel(plan.sync_status || plan.last_refresh_status),
-      expired: isTokenPlanExpired(plan),
-      monthCostUsd: plan.month_cost_usd ?? 0,
-      availableQuotaDisplay: plan.available_quota_display || null,
-      }));
+    return tokenPlans.map((plan) => {
+      const validityState = tokenPlanValidityState(plan);
+      return {
+        ...plan,
+        id: plan.id,
+        name: plan.plan_label || "未知套餐",
+        provider: plan.provider_id || plan.source || "未知",
+        cycle: getPlanCycle(plan),
+        quota: plan.total_quota_display || formatQuota(plan.total_quota, plan.quota_unit),
+        used: formatQuota(plan.used_quota, plan.quota_unit),
+        remaining: formatQuota(plan.remaining_quota, plan.quota_unit),
+        expiresAt: tokenPlanExpiryValue(plan),
+        syncStatus: plan.sync_status || plan.last_refresh_status || "not_configured",
+        syncStatusLabel: getSyncStatusLabel(plan.sync_status || plan.last_refresh_status),
+        validityState,
+        expired: validityState === "expired",
+        scheduled: validityState === "scheduled",
+        monthCostUsd: plan.month_cost_usd ?? 0,
+        availableQuotaDisplay: plan.available_quota_display || null,
+      };
+    });
   }, [tokenPlans]);
 
   const error = [scopedCoreError, scopedSecondaryError].filter(Boolean).join("; ") || null;

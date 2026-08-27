@@ -23,6 +23,7 @@ import { UsageTrendChartCard } from "../ui/dashboard/components/UsageTrendChart.
 import { UsageFilterBar } from "../ui/dashboard/components/UsageFilterBar.jsx";
 import { UsageStatsPanel } from "../ui/dashboard/components/UsageStatsPanel.jsx";
 import { TokenServiceList } from "../ui/dashboard/components/TokenServiceList.jsx";
+import { ProviderApiServiceList } from "../ui/dashboard/components/ProviderApiServiceList.jsx";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import {
   normalizeVisibleProviderIds,
@@ -192,6 +193,7 @@ function SpendUsagePageInner({
     setModels: dispatchModels,
   } = useUsageFilterActions();
   const [activeUsageTab, setActiveUsageTab] = useState("requests");
+  const [tokenServiceMode, setTokenServiceMode] = useState("subscription");
   const [requestLogForced, setRequestLogForced] = useState(false);
   const handleUsageTabChange = useCallback((tab) => {
     if (tab === "requests") setRequestLogForced(true);
@@ -550,7 +552,27 @@ function SpendUsagePageInner({
                     data-testid="usage-chart-token-services-layout"
                     className="mb-6 grid min-w-0 gap-4 lg:grid-cols-4 lg:items-stretch"
                   >
-                    <UsageTrendChartCard
+                    {tokenServiceMode === "subscription" ? (
+                      <UsageTrendChartCard
+                        from={from}
+                        to={to}
+                        accessToken={accessToken}
+                        baseUrl={baseUrl}
+                        guestAllowed={guestAllowed}
+                        cacheKey={cacheKey}
+                        timeZone={timeZone}
+                        tzOffsetMinutes={tzOffsetMinutes}
+                        allowedSources={visibleProviderIds}
+                        onSettled={handleInitialTrendSettled}
+                        className="min-w-0 lg:col-span-3"
+                      />
+                    ) : null}
+                    <TokenServiceModePanel
+                      mode={tokenServiceMode}
+                      onModeChange={setTokenServiceMode}
+                      plans={tokenServices.plans}
+                      loading={!secondaryUsageEnabled || tokenServices.loading}
+                      error={tokenServices.error}
                       from={from}
                       to={to}
                       accessToken={accessToken}
@@ -559,15 +581,11 @@ function SpendUsagePageInner({
                       cacheKey={cacheKey}
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
-                      allowedSources={visibleProviderIds}
-                      onSettled={handleInitialTrendSettled}
-                      className="min-w-0 lg:col-span-3"
-                    />
-                    <TokenServiceList
-                      plans={tokenServices.plans}
-                      loading={!secondaryUsageEnabled || tokenServices.loading}
-                      error={tokenServices.error}
-                      className="min-w-0 lg:col-span-1"
+                      visibleProviderIds={visibleProviderIds}
+                      className={cn(
+                        "min-w-0",
+                        tokenServiceMode === "subscription" ? "lg:col-span-1" : "lg:col-span-4",
+                      )}
                     />
                   </div>
 
@@ -594,6 +612,76 @@ function SpendUsagePageInner({
         </div>
       </main>
     </div>
+  );
+}
+
+function TokenServiceModePanel({
+  mode,
+  onModeChange,
+  plans,
+  loading,
+  error,
+  className,
+  ...providerProps
+}) {
+  const subscriptionMode = mode === "subscription";
+  return (
+    <aside
+      data-testid="token-service-mode-panel"
+      className={cn(
+        "tt-surface tt-pressable-group flex h-full min-w-0 flex-col rounded-[var(--tt-card-radius)] p-4",
+        className,
+      )}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-oai-gray-100 pb-3 dark:border-oai-gray-800">
+        <h3 className="text-sm font-semibold text-oai-gray-900 dark:text-oai-gray-100">
+          {copy("spend.usage.token_services.title")}
+        </h3>
+        <div
+          className="inline-flex rounded-lg border border-oai-gray-200 bg-oai-gray-50 p-0.5 dark:border-oai-gray-700 dark:bg-oai-gray-900"
+          role="group"
+          aria-label={copy("spend.usage.token_services.mode.label")}
+        >
+          <button
+            type="button"
+            aria-pressed={subscriptionMode}
+            onClick={() => onModeChange("subscription")}
+            className={cn(
+              "min-h-8 rounded-md px-3 text-xs font-medium transition-colors",
+              subscriptionMode
+                ? "bg-white text-oai-gray-900 shadow-sm dark:bg-oai-gray-800 dark:text-white"
+                : "text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-100",
+            )}
+          >
+            {copy("spend.usage.token_services.mode.subscription")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={!subscriptionMode}
+            onClick={() => onModeChange("api")}
+            className={cn(
+              "min-h-8 rounded-md px-3 text-xs font-medium transition-colors",
+              !subscriptionMode
+                ? "bg-emerald-50 text-emerald-700 shadow-sm dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-100",
+            )}
+          >
+            {copy("spend.usage.token_services.mode.api")}
+          </button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1">
+        {subscriptionMode ? (
+          <TokenServiceList
+            plans={plans}
+            loading={loading}
+            error={error}
+            embedded
+            hideHeader
+          />
+        ) : <ProviderApiServiceList {...providerProps} />}
+      </div>
+    </aside>
   );
 }
 
@@ -828,6 +916,8 @@ function UsageDetailTabs({
   guestAllowed,
   cacheKey,
 }) {
+  const visitedTabsRef = useRef(new Set([activeTab]));
+  visitedTabsRef.current.add(activeTab);
   return (
     <section className="mb-6">
       <div className="tt-surface tt-usage-detail-tabbar inline-flex rounded-xl p-1" role="tablist" aria-label={copy("spend.usage.title")}>
@@ -877,6 +967,7 @@ function UsageDetailTabs({
         data-testid="usage-tabpanel-provider"
         hidden={activeTab !== "provider"}
       >
+        {visitedTabsRef.current.has("provider") ? (
           <ProviderUsageTable
             from={from}
             to={to}
@@ -888,12 +979,14 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             visibleProviderIds={visibleProviderIds}
           />
+        ) : null}
       </div>
       <div
         role="tabpanel"
         data-testid="usage-tabpanel-model"
         hidden={activeTab !== "model"}
       >
+        {visitedTabsRef.current.has("model") ? (
           <ModelUsageTable
             from={from}
             to={to}
@@ -905,6 +998,7 @@ function UsageDetailTabs({
             cacheKey={cacheKey}
             visibleProviderIds={visibleProviderIds}
           />
+        ) : null}
       </div>
     </section>
   );

@@ -6406,10 +6406,10 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
 }
 
 .tt-reference-route-dashboard .tt-overview-trend > div:first-child button {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
 }
 
 .tt-reference-route-dashboard .tt-trend-granularity {
@@ -6423,11 +6423,6 @@ html.native-windows-app .tt-reference-route-dashboard .tt-shell--bare > main {
   padding: 0 12px;
   color: #344054;
   font-size: 12px;
-}
-
-.tt-reference-route-dashboard .tt-trend-granularity::after {
-  content: "⌄";
-  color: #667085;
 }
 
 .tt-reference-route-dashboard .tt-overview-trend > div:first-child > div:last-child {
@@ -8910,12 +8905,6 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   align-content: start;
 }
 
-.tt-reference-route-spend-cost [data-testid="subscription-roi-empty-note"] {
-  display: block !important;
-  margin: 8px 4px 0;
-  color: #7c8796;
-}
-
 .tt-reference-route-spend-cost .tt-cost-summary-heading {
   grid-row: 1;
 }
@@ -9068,6 +9057,54 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
   border-radius: var(--tt-card-radius);
   background: var(--tt-service-surface);
   box-shadow: 0 22px 48px rgba(31, 43, 56, 0.22), 0 4px 12px rgba(31, 43, 56, 0.12);
+}
+
+/* OV-01 desktop bottom-alignment contract */
+@media (min-width: 1081px) {
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel {
+    min-height: 247px;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel .tt-provider-card {
+    height: 144px;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage.tt-overview-aligned-stack {
+    grid-template-rows: minmax(0, 620px) minmax(247px, auto);
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel .grid.grid-cols-2 {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: clamp(122px, 15.75%, 129px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel .grid.grid-cols-2::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* OV-06 trend-control centering contract */
+.tt-reference-route-dashboard .tt-overview-trend .tt-trend-control {
+  display: inline-flex;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  line-height: 1;
+}
+
+.tt-reference-route-dashboard .tt-overview-trend .tt-trend-granularity svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

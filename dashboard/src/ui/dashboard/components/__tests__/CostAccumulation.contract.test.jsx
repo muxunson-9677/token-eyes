@@ -173,6 +173,19 @@ it("calculates Token package summary metrics from active plans only", () => {
           availableQuotaDisplay: "90 active credits",
         },
         {
+          id: "scheduled",
+          source: "scheduled",
+          provider_id: "custom",
+          plan_label: "Scheduled plan",
+          total_quota: 100,
+          used_quota: 5,
+          remaining_quota: 95,
+          subscription_start_date: "2099-01-01",
+          subscription_end_date: "2099-12-31",
+          monthCostUsd: 60,
+          availableQuotaDisplay: "95 scheduled credits",
+        },
+        {
           id: "expired",
           source: "expired",
           provider_id: "custom",
@@ -194,6 +207,8 @@ it("calculates Token package summary metrics from active plans only", () => {
   expect(metrics).toHaveTextContent("20.0%");
   expect(metrics).toHaveTextContent("90 active credits");
   expect(metrics).not.toHaveTextContent("100.00");
+  expect(metrics).not.toHaveTextContent("80.00");
+  expect(metrics).not.toHaveTextContent("95 scheduled credits");
   expect(metrics).not.toHaveTextContent("10 expired credits");
 });
 
@@ -326,10 +341,7 @@ it("keeps actual cash spend separate from the API list-price equivalent without 
   expect(comparison).toHaveTextContent("USD 20.00");
   expect(comparison).toHaveClass("text-orange-600");
   expect(screen.getByText("spend.cost.summary.scope_note")).toBeInTheDocument();
-  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveAttribute(
-    "data-confidence-state",
-    "estimated",
-  );
+  expect(screen.queryByTestId("cost-confidence-api-equivalent")).not.toBeInTheDocument();
   expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveAttribute(
     "data-confidence-state",
     "partial",
@@ -670,7 +682,7 @@ it("visually separates the summary and each existing management section without 
     expect(card).toHaveClass("flex", "h-full", "items-start", "text-left");
     expect(card).not.toHaveClass("tt-surface");
   }
-  expect(screen.getByTestId("cost-confidence-api-equivalent")).toHaveClass("justify-start", "text-left");
+  expect(screen.queryByTestId("cost-confidence-api-equivalent")).not.toBeInTheDocument();
   expect(screen.getByTestId("cost-confidence-actual-cash")).toHaveClass("justify-start", "text-left");
   expect(screen.queryByTestId("cost-summary-icon-total")).not.toBeInTheDocument();
   expect(screen.getAllByTestId("cost-summary-icon")).toHaveLength(2);
@@ -933,7 +945,7 @@ it("Task-10: API billing card shows 'USD 0.00' for a synced account with real 0 
   expect(lifetimeCostLine.textContent).toContain("USD 0.00");
 });
 
-it("labels official API invoice amounts as official billing", () => {
+it("keeps official API invoice authority internal while preserving billing evidence", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -954,8 +966,9 @@ it("labels official API invoice amounts as official billing", () => {
       }]}
     />,
   );
-  expect(screen.getByText("spend.cost.api_billing.authority.official_invoice")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.official_invoice")).not.toBeInTheDocument();
   expect(screen.queryByText("spend.cost.api_billing.authority.local_list_price_estimate")).not.toBeInTheDocument();
+  expect(screen.getByText(/spend\.cost\.api_billing\.month_cost:/)).toHaveTextContent("USD 8.00");
   const provenance = screen.getByTestId("cost-pricing-provenance-row-official-invoice");
   expect(provenance).toHaveTextContent("pricing.provenance.official_api");
   expect(provenance).not.toHaveTextContent("pricing.provenance.user_override");
@@ -964,7 +977,7 @@ it("labels official API invoice amounts as official billing", () => {
   expect(provenance).not.toHaveTextContent("pricing.provenance.stale");
 });
 
-it("labels local list-price costs as estimates", () => {
+it("keeps local list-price authority internal while preserving the cost amount", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -980,11 +993,12 @@ it("labels local list-price costs as estimates", () => {
       }]}
     />,
   );
-  expect(screen.getByText("spend.cost.api_billing.authority.local_list_price_estimate")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.local_list_price_estimate")).not.toBeInTheDocument();
   expect(screen.queryByText("spend.cost.api_billing.authority.official_invoice")).not.toBeInTheDocument();
+  expect(screen.getByText(/spend\.cost\.api_billing\.month_cost:/)).toHaveTextContent("USD 8.00");
 });
 
-it("labels unavailable API billing without displaying a cash amount", () => {
+it("keeps unavailable authority internal without displaying a cash amount", () => {
   render(
     <CostAccumulation
       costSummary={{ ...BASE_SUMMARY }}
@@ -1000,7 +1014,7 @@ it("labels unavailable API billing without displaying a cash amount", () => {
       }]}
     />,
   );
-  expect(screen.getByText("spend.cost.api_billing.authority.unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.api_billing.authority.unavailable")).not.toBeInTheDocument();
   expect(screen.queryByText(/spend\.cost\.api_billing\.month_cost:/)).not.toBeInTheDocument();
 });
 
@@ -1076,12 +1090,14 @@ it("keeps official API cash separate from local list-price estimates in the API 
   const section = screen.getByText("spend.cost.api_billing.section").closest("section");
   expect(section).not.toBeNull();
   const officialLabel = within(section).getByText("spend.cost.summary.official_api_cash");
-  const estimateLabel = within(section).getByText("spend.cost.row.month_estimate");
+  const equivalentLabel = within(section).getByText("spend.cost.summary.api_equivalent");
   const unavailableLabel = within(section).getByText("spend.cost.api_billing.summary.unavailable_accounts");
   expect(officialLabel.parentElement?.textContent).toContain("8.00");
-  expect(estimateLabel.parentElement?.textContent).toContain("30.00");
+  expect(equivalentLabel.parentElement?.textContent).toContain("30.00");
   expect(unavailableLabel.parentElement?.textContent).toContain("1");
   expect(section.textContent).not.toContain("38.00");
+  expect(section).not.toHaveTextContent("spend.cost.row.month_estimate");
+  expect(section).not.toHaveTextContent("spend.cost.row.estimate_share");
 });
 
 it("Task-10: API billing card hides costs when not connected", () => {

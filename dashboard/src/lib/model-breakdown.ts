@@ -79,7 +79,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
   const normalizedSources = sources
     .map((entry: any) => {
       const totalTokens = resolveDisplayTokens(entry?.totals);
-      const totalCost = toFiniteNumber(entry?.totals?.total_cost_usd) ?? 0;
+      const totalCost = toFiniteNumber(entry?.totals?.total_cost_usd);
       // Q02: surface billing_mode metadata so UsageOverview can render
       // badges and filter rows without re-deriving on the client.
       const sourceBillingMode: SourceBillingMode =
@@ -97,7 +97,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
       return {
         source: entry?.source,
         totalTokens: Number.isFinite(totalTokens) ? totalTokens : 0,
-        totalCost: Number.isFinite(totalCost) ? totalCost : 0,
+        totalCost,
         models: Array.isArray(entry?.models) ? entry.models : [],
         billingMode: sourceBillingMode,
         billingModes: sourceBillingModes,
@@ -187,7 +187,7 @@ export function appendConnectedTokenOnlySources(fleetData: any[], usageLimits: a
       source,
       label: source === "codebuddy" ? "CODEBUDDY" : source.toUpperCase(),
       totalPercent: "0.0",
-      usd: 0,
+      usd: null,
       usage: 0,
       models: [],
       billingMode: "unknown",

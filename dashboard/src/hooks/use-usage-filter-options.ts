@@ -3,8 +3,8 @@ import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { isMockEnabled } from "../lib/mock-data";
 import { isLocalDashboardRuntime } from "../lib/local-api-url";
 import { getTimeZoneCacheKey } from "../lib/timezone";
-import { getModelStats, getProviderStats } from "../lib/api";
-import type { ModelStatsResponse, ProviderStatsResponse } from "../lib/types/usage";
+import { getModelStats } from "../lib/api";
+import type { ModelStatsResponse } from "../lib/types/usage";
 import { DASHBOARD_AGENTS, type DashboardAgent } from "../lib/agent-adapters-dashboard";
 import { useUsageFilters } from "./use-usage-filters";
 import { filterVisibleSourceOptions } from "../lib/spend-provider-visibility.js";
@@ -73,7 +73,6 @@ function computeLookback(days: number): { from: string; to: string } {
 }
 
 interface CachedPayload {
-  providers: ProviderStatsResponse | null;
   models: ModelStatsResponse | null;
   fetchedAt: string;
 }
@@ -127,7 +126,6 @@ export function useUsageFilterOptions({
 
   const { from, to } = useMemo(() => computeLookback(days), [days]);
 
-  const [providers, setProviders] = useState<ProviderStatsResponse | null>(null);
   const [models, setModels] = useState<ModelStatsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +136,7 @@ export function useUsageFilterOptions({
     if (!cacheKey) return null;
     const host = safeHost(baseUrl) || "default";
     const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
-    return `tokentracker.filterOptions.${cacheKey}.${host}.${from}.${to}.${tzKey}.${allowedSourcesKey}`;
+    return `tokentracker.filterOptions.v2.${cacheKey}.${host}.${from}.${to}.${tzKey}.${allowedSourcesKey}`;
   }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, allowedSourcesKey]);
 
   const readCache = useCallback((): CachedPayload | null => {
@@ -189,7 +187,6 @@ export function useUsageFilterOptions({
 
     // Disabled by visibility: clear state and return empty without fetching
     if (disabledByVisibility) {
-      setProviders(null);
       setModels(null);
       setError(null);
       setFetchedAt(null);
@@ -207,18 +204,21 @@ export function useUsageFilterOptions({
       const sources = Array.isArray(normalizedAllowedSources) && normalizedAllowedSources.length > 0
         ? normalizedAllowedSources
         : undefined;
-      const [providerRes, modelRes] = await Promise.all([
-        getProviderStats({ baseUrl, accessToken: token, from, to, timeZone, tzOffsetMinutes, sources }),
-        getModelStats({ baseUrl, accessToken: token, from, to, timeZone, tzOffsetMinutes, sources }),
-      ]);
+      const modelRes = await getModelStats({
+        baseUrl,
+        accessToken: token,
+        from,
+        to,
+        timeZone,
+        tzOffsetMinutes,
+        sources,
+      });
       if (!mountedRef.current) return;
-      setProviders(providerRes as ProviderStatsResponse);
       setModels(modelRes as ModelStatsResponse);
       const now = new Date().toISOString();
       setFetchedAt(now);
       if (cacheAllowed) {
         writeCache({
-          providers: providerRes as ProviderStatsResponse,
           models: modelRes as ModelStatsResponse,
           fetchedAt: now,
         });
@@ -231,18 +231,15 @@ export function useUsageFilterOptions({
       if (cacheAllowed) {
         const cached = readCache();
         if (cached) {
-          setProviders(cached.providers);
           setModels(cached.models);
           setFetchedAt(cached.fetchedAt);
           setError(null);
         } else {
           setError(message);
-          setProviders(null);
           setModels(null);
         }
       } else {
         setError(message);
-        setProviders(null);
         setModels(null);
       }
     } finally {
@@ -280,7 +277,6 @@ export function useUsageFilterOptions({
       return;
     }
     if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
-      setProviders(null);
       setModels(null);
       setError(null);
       setLoading(false);
@@ -288,12 +284,10 @@ export function useUsageFilterOptions({
     }
     if (!cacheAllowed) {
       clearCache();
-      setProviders(null);
       setModels(null);
     } else {
       const cached = readCache();
       if (cached) {
-        setProviders(cached.providers);
         setModels(cached.models);
         setFetchedAt(cached.fetchedAt);
       }
@@ -313,7 +307,7 @@ export function useUsageFilterOptions({
   // dropdown order does not flicker between renders.
   // Apply visibility allowlist filtering before returning to the caller.
   const sources = useMemo<FilterOptionSource[]>(() => {
-    const list = Array.isArray(providers?.providers) ? providers!.providers : [];
+    const list = Array.isArray(models?.models) ? models.models : [];
     const seen = new Map<string, FilterOptionSource>();
     for (const row of list) {
       if (!row || typeof row.source !== "string" || !row.source) continue;
@@ -328,7 +322,7 @@ export function useUsageFilterOptions({
     return filtered.sort((a, b) =>
       (a.source_display_name || a.source).localeCompare(b.source_display_name || b.source),
     );
-  }, [providers, normalizedAllowedSources]);
+  }, [models, normalizedAllowedSources]);
 
   const modelsBySource = useMemo<Record<string, string[]>>(() => {
     const list = Array.isArray(models?.models) ? models!.models : [];

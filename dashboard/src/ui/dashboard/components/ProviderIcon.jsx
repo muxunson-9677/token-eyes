@@ -242,7 +242,10 @@ const PROVIDER_ICON_MAP = {
 // `fill="currentColor"`) must render through the inline component path so they
 // inherit the surrounding text color, since <img> doesn't resolve currentColor.
 const PROVIDER_LOGO_MAP = {
-  ALIYUN_BAILIAN: "https://img.alicdn.com/tfs/TB1_ZXuNcfpK1RjSZFOXXa6nFXa-32-32.ico",
+  OPENAI: "/plan-market-icons/openai.png",
+  ANTHROPIC: "/plan-market-icons/claude.png",
+  ALIYUN_BAILIAN: "/plan-market-icons/aliyun-bailian.png",
+  ALIYUN_BSS: "/plan-market-icons/aliyun-bailian.png",
   ANTIGRAVITY: "/brand-logos/antigravity.svg",
   CLAUDE: "/brand-logos/claude-code.svg",
   CODEX: "/brand-logos/codex.svg",
@@ -253,17 +256,20 @@ const PROVIDER_LOGO_MAP = {
   DEEPSEEK: "/brand-logos/deepseek.png",
   "DEEPSEEK-HARNESS": "/brand-logos/deepseek-harness.svg",
   GEMINI: "/brand-logos/gemini.svg",
-  GLM: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
+  GLM: "/plan-market-icons/glm.png",
   "KILO-CLI": "/brand-logos/kilo.svg",
   "KILO-CODE": "/brand-logos/kilo.svg",
   KIMI: "/brand-logos/kimi.svg",
-  MINIMAX: "https://platform.minimaxi.com/docs/_mintlify/favicons/minimax-zh/DMz0Zpj7JInghPSs/_generated/favicon/favicon-32x32.png",
+  MOONSHOT: "/plan-market-icons/kimi.png",
+  MINIMAX: "/brand-logos/minimax.svg",
   OPENCLAW: "/brand-logos/openclaw.svg",
   OPENCODE: "/brand-logos/opencode.svg",
   TRAE: "/brand-logos/trae.svg",
-  XIAOMI_MIMO: "https://cdn.cnbj1.fds.api.mi-img.com/aife/mimo-blog-fe/doc_build/mimo.ico",
+  VOLCENGINE_BILLING: "/brand-logos/doubao.svg",
+  XIAOMI_MIMO: "/plan-market-icons/xiaomi-mimo.png",
+  ZHIPU: "/plan-market-icons/glm.png",
   // ZCode is Zhipu's coding CLI — reuse the BigModel brand favicon.
-  ZCODE: "https://static.bigmodel.cn/wd-paas-front/static/images/favicon.png",
+  ZCODE: "/plan-market-icons/glm.png",
 };
 
 function PlaceholderIcon({ size = 16, className = "" }) {
@@ -291,8 +297,9 @@ function PlaceholderIcon({ size = 16, className = "" }) {
 export function ProviderIcon({ provider, size = 16, color, className = "" }) {
   const normalized = provider?.toUpperCase?.() || "";
   const logoSrc = PROVIDER_LOGO_MAP[normalized];
+  const [failedLogoSrc, setFailedLogoSrc] = React.useState(null);
 
-  if (logoSrc) {
+  if (logoSrc && failedLogoSrc !== logoSrc) {
     return (
       <img
         src={logoSrc}
@@ -302,6 +309,7 @@ export function ProviderIcon({ provider, size = 16, color, className = "" }) {
         className={className}
         style={{ width: size, height: size, objectFit: "contain" }}
         aria-hidden
+        onError={() => setFailedLogoSrc(logoSrc)}
       />
     );
   }

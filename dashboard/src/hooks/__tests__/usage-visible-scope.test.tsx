@@ -16,6 +16,7 @@ vi.mock("../../lib/api", () => ({
   getUsageSummary: vi.fn(),
   getSpendTimeseries: vi.fn(),
   getProviderStats: vi.fn(),
+  getRecentApiProviderStats: vi.fn(),
   getModelStats: vi.fn(),
   getRequestUsageRecords: vi.fn(),
 }));
@@ -376,7 +377,7 @@ describe("usage visible scope enforcement", () => {
       });
 
       // Check that API was called with correct date range (30 days lookback)
-      expect(getProviderStats).toHaveBeenCalled();
+      expect(getProviderStats).not.toHaveBeenCalled();
       expect(getModelStats).toHaveBeenCalled();
     });
   });

@@ -222,7 +222,7 @@ test("three-caliber consistency: usage-summary === spend-timeseries totals === p
   }
 });
 
-test("Codex rollout logs without Provider evidence stay out of API Provider stats", async () => {
+test("Codex rollout logs without Provider evidence stay out of selected-range Provider stats", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-rollout-"));
   const originalCreateReadStream = fs.createReadStream;
   try {
@@ -288,9 +288,9 @@ test("Codex rollout logs without Provider evidence stay out of API Provider stat
     assert.equal(providerStats.totals.total_tokens, 0);
     assert.equal(modelStats.totals.total_tokens, 260);
     assert.deepEqual(providerStats.providers, []);
-    assert.equal(providerStats.totals_scope, "api_key_attributed_cost_positive");
+    assert.equal(providerStats.totals_scope, "all_provider_attributed");
     assert.equal(modelStats.models[0].model, "gpt-4o");
-    assert.equal(rolloutReads, 2, "the seven-day Provider query has a distinct rollout scan range");
+    assert.equal(rolloutReads, 1, "selected-range Provider stats should reuse the concurrent rollout scan");
   } finally {
     fs.createReadStream = originalCreateReadStream;
     await fs.promises.rm(tmp, { recursive: true, force: true });

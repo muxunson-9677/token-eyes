@@ -6,13 +6,6 @@ type LocalStateResponse = {
   };
 };
 
-type ProviderStatsResponse = {
-  providers?: Array<{
-    source?: string | null;
-    tokens?: string | number | null;
-  }>;
-};
-
 type BuildOptions = {
   period: string;
   source: string;
@@ -116,56 +109,6 @@ export function buildLocalLeaderboardRow(response: LocalStateResponse, options: 
     const tokenEnd = source === "codex" || source === "every-code" ? 6 : 7;
     const total = row.slice(2, tokenEnd).reduce<bigint>((sum, value) => sum + tokenValue(value), 0n);
     bySource.set(source, (bySource.get(source) || 0n) + total);
-  }
-
-  const legacyTotals: Record<string, bigint> = Object.fromEntries(
-    ALL_LEGACY_FIELDS.map((field) => [field, 0n]),
-  );
-  let totalTokens = 0n;
-  for (const [source, total] of bySource) {
-    const field = LEGACY_TOKEN_FIELDS[source] || "other_tokens";
-    legacyTotals[field] += total;
-    totalTokens += total;
-  }
-
-  return {
-    user_id: options.userId,
-    display_name: options.displayName || null,
-    avatar_url: options.avatarUrl || null,
-    rank: null,
-    is_me: true,
-    is_local_pending: true,
-    is_public: false,
-    ...Object.fromEntries(
-      Object.entries(legacyTotals).map(([field, total]) => [field, total.toString()]),
-    ),
-    total_tokens: totalTokens.toString(),
-    estimated_cost_usd: finiteCost(options.estimatedCostUsd),
-    actual_cost_usd: finiteCost(options.actualCostUsd),
-    source_breakdown: Array.from(bySource, ([source, total]) => ({
-      source,
-      total_tokens: total.toString(),
-    })),
-  };
-}
-
-export function buildLocalLeaderboardRowFromProviderStats(
-  response: ProviderStatsResponse,
-  options: BuildOptions,
-) {
-  const rows = Array.isArray(response?.providers) ? response.providers : [];
-  const selectedSource = String(options.source || "all").trim().toLowerCase();
-  const bySource = new Map<string, bigint>();
-
-  for (const row of rows) {
-    const source = String(row?.source || "").trim().toLowerCase();
-    const selected = selectedSource === "all"
-      || source === selectedSource
-      || (selectedSource === "other" && !PUBLIC_SOURCE_FILTERS.has(source));
-    if (!source || !selected) continue;
-    const tokens = tokenValue(row?.tokens);
-    if (tokens <= 0n) continue;
-    bySource.set(source, (bySource.get(source) || 0n) + tokens);
   }
 
   const legacyTotals: Record<string, bigint> = Object.fromEntries(

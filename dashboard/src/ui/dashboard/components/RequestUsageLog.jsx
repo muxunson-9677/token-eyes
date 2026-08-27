@@ -393,27 +393,9 @@ export function RequestUsageLog({
                       </div>
                     </td>
                     <td className="px-3 py-1.5 text-xs text-oai-gray-400 dark:text-oai-gray-500 whitespace-nowrap">
-                      {/* V2-W3 granularity badge: honest about whether this row is
-                          a real per-message event or a half-hour aggregate. The raw
-                          request_source stays inspectable via the title tooltip. */}
-                      {record.record_kind === "aggregate_bucket" ? (
-                        <span
-                          className="inline-flex items-center rounded-full bg-oai-gray-100 dark:bg-oai-gray-800 px-2 py-0.5 text-[10px] text-oai-gray-500 dark:text-oai-gray-400"
-                          title={`${copy("ticket04.request.kind.aggregate_title")}${record.request_source ? ` (${record.request_source})` : ""}`}
-                        >
-                          {copy("ticket04.request.kind.aggregate")}
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
-                          title={`${copy("ticket04.request.kind.request_event_title")}${record.request_source ? ` (${record.request_source})` : ""}`}
-                        >
-                          {copy("ticket04.request.kind.request_event")}
-                        </span>
-                      )}
                       {(record.request_source || record.origin) ? (
                         <span
-                          className="tt-request-source-chip ml-1.5"
+                          className="tt-request-source-chip"
                           data-testid="request-source-chip"
                           title={record.request_source || record.origin}
                         >

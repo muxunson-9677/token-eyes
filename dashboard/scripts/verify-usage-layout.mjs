@@ -34,6 +34,143 @@ const USAGE_TOTALS = {
   pricing_coverage: "complete",
 };
 
+function shiftDayKey(dayKey, delta) {
+  const date = new Date(`${dayKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+function currentLocalDayKey(requestUrl) {
+  const timeZone = requestUrl.searchParams.get("tz") || "";
+  if (timeZone) {
+    try {
+      const parts = Object.fromEntries(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(new Date()).map(({ type, value }) => [type, value]),
+      );
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    } catch {
+      // Fall through to the explicit offset supplied by the dashboard.
+    }
+  }
+  const offset = Number(requestUrl.searchParams.get("tz_offset_minutes"));
+  return new Date(Date.now() + (Number.isFinite(offset) ? offset : 0) * 60_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function buildProviderStatsFixture(requestUrl, view) {
+  const recent = view === "recent_api_7d";
+  const costBasis = recent
+    ? { authority: "official_invoice", accuracy: "exact" }
+    : { authority: "local_list_price_estimate", accuracy: "estimated" };
+  const requestedFrom = requestUrl.searchParams.get("from");
+  const requestedTo = requestUrl.searchParams.get("to");
+  const to = recent ? currentLocalDayKey(requestUrl) : requestedTo || currentLocalDayKey(requestUrl);
+  const from = recent ? shiftDayKey(to, -6) : requestedFrom || shiftDayKey(to, -6);
+  const timeZone = requestUrl.searchParams.get("tz") || "UTC";
+  const days = Math.max(1, Math.floor(
+    (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
+  ) + 1);
+  const period = { from, to, days, time_zone: timeZone };
+  const dailyCosts = [0.12, 0.18, 0.16, 0.24, 0.21, 0.3, 0.27];
+  const dailyTokens = [120_000, 180_000, 160_000, 240_000, 210_000, 300_000, 270_000];
+  const dailyRequests = [2, 3, 2, 4, 3, 5, 4];
+  const tokens = recent ? dailyTokens.reduce((sum, value) => sum + value, 0) : 6_240_000;
+  const requestCount = recent ? dailyRequests.reduce((sum, value) => sum + value, 0) : 84;
+  const costUsd = recent ? dailyCosts.reduce((sum, value) => sum + value, 0) : 8.42;
+  const breakdown = (id, displayName, breakdownTokens, breakdownRequests, breakdownCost) => ({
+    id,
+    display_name: displayName,
+    tokens: breakdownTokens,
+    request_count: breakdownRequests,
+    cost_usd: breakdownCost,
+  });
+  const daily = recent ? dailyCosts.map((dayCost, index) => {
+    const date = shiftDayKey(from, index);
+    const dayTokens = dailyTokens[index];
+    const dayRequests = dailyRequests[index];
+    return {
+      date,
+      agents: [breakdown("codex", "Codex", dayTokens, dayRequests, dayCost)],
+      models: [breakdown("deepseek-chat", "deepseek-chat", dayTokens, dayRequests, dayCost)],
+      tokens: dayTokens,
+      request_count: dayRequests,
+      request_count_basis: "request_event",
+      cost_usd: dayCost,
+      cost_basis: costBasis,
+      period,
+    };
+  }) : [];
+  const provider = {
+    provider_id: "deepseek",
+    display_name: "DeepSeek",
+    account_label: null,
+    account_ref: null,
+    agents: [breakdown("codex", "Codex", tokens, requestCount, costUsd)],
+    models: [breakdown("deepseek-chat", "deepseek-chat", tokens, requestCount, costUsd)],
+    period,
+    daily,
+    balance: null,
+    request_count: requestCount,
+    request_count_basis: "request_event",
+    conversation_count: requestCount,
+    tokens,
+    input_tokens: tokens,
+    output_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    reasoning_output_tokens: 0,
+    cost_usd: costUsd,
+    cost_basis: costBasis,
+    priced_tokens: tokens,
+    unpriced_tokens: 0,
+    pricing_coverage: "complete",
+    success_count: requestCount - 1,
+    interrupted_count: 0,
+    failure_count: 1,
+    success_rate: Number((((requestCount - 1) / requestCount) * 100).toFixed(2)),
+    avg_latency_ms: 240,
+    status_sample_count: requestCount,
+    success_rate_sample_count: requestCount,
+    latency_sample_count: requestCount,
+    availability: { status: "measured", latency: "measured" },
+    metric_availability: "measured",
+  };
+  return {
+    ok: true,
+    view,
+    from,
+    to,
+    requested_from: requestedFrom,
+    requested_to: requestedTo,
+    period,
+    totals_scope: recent
+      ? "api_key_attributed_official_billed_cost_positive"
+      : "all_provider_attributed",
+    providers: [provider],
+    totals: {
+      provider_count: 1,
+      total_tokens: tokens,
+      input_tokens: tokens,
+      output_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      cost_usd: costUsd,
+      conversation_count: requestCount,
+      request_count: requestCount,
+      priced_tokens: tokens,
+      unpriced_tokens: 0,
+      pricing_coverage: "complete",
+    },
+  };
+}
+
 function readArg(flag, fallback) {
   const index = process.argv.indexOf(flag);
   if (index === -1) return fallback;
@@ -266,9 +403,8 @@ async function installApiScenario(page, scenario) {
 
     const responses = {
       "tokentracker-usage-bounds": { from: "2025-01-01", to: "2026-07-30" },
-      "tokentracker-provider-stats": {
-        providers: [{ source: "codex", source_display_name: "Codex" }],
-      },
+      "tokentracker-provider-stats": buildProviderStatsFixture(requestUrl, "range"),
+      "tokentracker-provider-api-stats": buildProviderStatsFixture(requestUrl, "recent_api_7d"),
       "tokentracker-model-stats": {
         models: [{ source: "codex", model: "gpt-5", total_tokens: 1 }],
       },
@@ -431,6 +567,83 @@ async function assertScenarioRendered(page, scenario, requests) {
   if (!await state.isVisible()) {
     throw new Error(`Expected a visible ${scenario} state`);
   }
+}
+
+async function assertProviderJourneys(page, requests, label) {
+  const initialScroll = await page.evaluate(() => ({
+    windowY: window.scrollY,
+    mainY: document.querySelector(".tt-main-scroll-region")?.scrollTop || 0,
+  }));
+  const modePanel = page.getByTestId("token-service-mode-panel");
+  const modeButtons = modePanel.locator('button[aria-pressed]');
+  if (await modeButtons.count() !== 2) {
+    throw new Error(`${label}: Token service switch is incomplete`);
+  }
+
+  const subscriptionButton = modeButtons.nth(0);
+  const apiButton = modeButtons.nth(1);
+  if (await subscriptionButton.getAttribute("aria-pressed") !== "true") {
+    throw new Error(`${label}: Subscription was not the initial Token service mode`);
+  }
+
+  await apiButton.click();
+  await page.getByTestId("provider-api-card").first().waitFor({ state: "visible", timeout: 8_000 });
+  if ((requests.get("tokentracker-provider-api-stats") || 0) < 1) {
+    throw new Error(`${label}: API mode did not request the recent Provider endpoint`);
+  }
+  const apiProviders = await page.getByTestId("provider-api-card").evaluateAll((cards) => (
+    cards.map((card) => card.querySelector("strong")?.textContent?.trim())
+  ));
+  if (!apiProviders.includes("DeepSeek") || apiProviders.includes("Codex")) {
+    throw new Error(`${label}: API cards are not grouped by true Provider ${JSON.stringify(apiProviders)}`);
+  }
+  if (await page.getByTestId("provider-api-day-point").count() !== 7) {
+    throw new Error(`${label}: API Provider chart does not contain the current seven days`);
+  }
+
+  await subscriptionButton.click();
+  if (await subscriptionButton.getAttribute("aria-pressed") !== "true") {
+    throw new Error(`${label}: Subscription mode was not restored`);
+  }
+  if (await page.getByTestId("provider-api-card").count() !== 0) {
+    throw new Error(`${label}: API cards remained mounted after restoring Subscription mode`);
+  }
+
+  const detailTabs = page.locator('[role="tablist"]').last().locator('[role="tab"]');
+  if (await detailTabs.count() !== 3) {
+    throw new Error(`${label}: Usage detail tabs are incomplete`);
+  }
+  await detailTabs.nth(1).click();
+  const providerTable = page.getByTestId("usage-tabpanel-provider").locator("table");
+  await providerTable.waitFor({ state: "visible", timeout: 8_000 });
+  if ((requests.get("tokentracker-provider-stats") || 0) < 1) {
+    throw new Error(`${label}: Provider tab did not request the selected-range endpoint`);
+  }
+  const providerLabels = await providerTable.locator("tbody tr td:first-child").allTextContents();
+  if (!providerLabels.includes("DeepSeek") || providerLabels.some((value) => /Codex|Claude Code/u.test(value))) {
+    throw new Error(`${label}: Provider table contains an Agent masquerading as a Provider ${JSON.stringify(providerLabels)}`);
+  }
+  await detailTabs.nth(0).click();
+  await page.evaluate(({ windowY, mainY }) => {
+    const resetTarget = document.querySelector('.tt-usage-filter-toolbar button:not([disabled])')
+      || document.querySelector('a[href], button:not([disabled]), input:not([disabled])');
+    resetTarget?.focus({ preventScroll: true });
+    const previousScrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = "auto";
+    window.scrollTo({ top: windowY, behavior: "instant" });
+    document.documentElement.style.scrollBehavior = previousScrollBehavior;
+    const mainScroller = document.querySelector(".tt-main-scroll-region");
+    if (mainScroller) {
+      const previousMainScrollBehavior = mainScroller.style.scrollBehavior;
+      mainScroller.style.scrollBehavior = "auto";
+      mainScroller.scrollTo({ top: mainY, behavior: "instant" });
+      mainScroller.style.scrollBehavior = previousMainScrollBehavior;
+    }
+  }, initialScroll);
+  await page.waitForFunction(({ windowY, mainY }) => (
+    Math.abs(window.scrollY - windowY) <= 1
+      && Math.abs((document.querySelector(".tt-main-scroll-region")?.scrollTop || 0) - mainY) <= 1
+  ), initialScroll);
 }
 
 async function inspectGeometry(page) {
@@ -629,6 +842,9 @@ async function runJob(browser, baseUrl, scenario, viewport, theme) {
     }
     await waitForScenario(page, scenario, api, runtimeErrors);
     await assertScenarioRendered(page, scenario, api.requests);
+    if (scenario === "long") {
+      await assertProviderJourneys(page, api.requests, `${scenario}/${viewport.name}/${theme}`);
+    }
     const geometry = await inspectGeometry(page);
     const interactions = scenario === "long" && viewport.name === "mobile"
       ? await inspectFilterInteractions(page)

@@ -110,6 +110,37 @@ describe("UsageOverview", () => {
     }
   });
 
+  it("announces an unreadable Agent cost as unavailable without an attribution badge", () => {
+    render(
+      <UsageOverview
+        period="total"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="123"
+        fleetData={[
+          mixedFleet[0],
+          {
+            source: "trae",
+            label: "TRAE",
+            totalPercent: "0.0",
+            usage: 0,
+            usd: null,
+            billingMode: "unknown",
+            billingModes: [],
+            models: [],
+            collectionStatus: "connected_no_precise_tokens",
+          },
+        ]}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: /TRAE/i });
+    expect(card).toHaveAccessibleName(expect.stringContaining(copy("usage.overview.cost_unavailable")));
+    expect(card).not.toHaveAccessibleName(expect.stringContaining("$0"));
+    expect(within(card).queryByText(copy("usage.billing_mode.unknown"))).not.toBeInTheDocument();
+    expect(within(card).getByText(copy("usage.provider.trae_encrypted_db"))).toBeInTheDocument();
+  });
+
   it("opens an unsupported Agent breakdown by mouse without hiding its real models", async () => {
     const user = userEvent.setup();
     const cursor = DASHBOARD_AGENTS.find((agent) => agent.id === "cursor");

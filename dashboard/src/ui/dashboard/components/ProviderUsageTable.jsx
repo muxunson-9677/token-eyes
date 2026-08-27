@@ -6,7 +6,7 @@ import { copy } from "../../../lib/copy";
 import { getCurrencySymbol } from "../../../lib/currency";
 import { formatChineseTokenCount, formatUsdCurrency } from "../../../lib/format";
 import { useProviderStats } from "../../../hooks/use-provider-stats";
-import { getProviderColor } from "./UsageOverview.jsx";
+import { ProviderIcon } from "./ProviderIcon.jsx";
 
 /**
  * TICKET-04 B: Provider 统计表格（6 列）。
@@ -34,13 +34,18 @@ function formatFullNum(value) {
 }
 
 function resolveRequestCount(row) {
-  return row?.request_count ?? row?.conversation_count ?? null;
+  if (row?.request_count_basis !== "request_event") return null;
+  return row?.request_count ?? null;
 }
 
-function formatCost(value, currency, rate) {
+function formatCost(value, currency, rate, pricingCoverage) {
+  if (pricingCoverage === "unpriced") return copy("ticket06.metric.unavailable");
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return `${getCurrencySymbol(currency)}0`;
-  return formatUsdCurrency(n, { decimals: n < 1 ? 4 : 2, currency, rate });
+  if (!Number.isFinite(n) || n < 0) return copy("ticket06.metric.unavailable");
+  const formatted = n === 0
+    ? `${getCurrencySymbol(currency)}0`
+    : formatUsdCurrency(n, { decimals: n < 1 ? 4 : 2, currency, rate });
+  return pricingCoverage === "partial" ? `${formatted}+` : formatted;
 }
 
 function formatLatency(ms) {
@@ -62,7 +67,7 @@ function formatSuccessRate(rate) {
 
 // All 6 columns are sortable. `field` is the ProviderStat key used for compare.
 const COLUMNS = [
-  { id: "provider", labelKey: "ticket04.provider.column.provider", field: "source_display_name", align: "left" },
+  { id: "provider", labelKey: "ticket04.provider.column.provider", field: "display_name", align: "left" },
   { id: "requests", labelKey: "ticket04.provider.column.requests", field: "request_count", align: "right" },
   { id: "tokens", labelKey: "ticket04.provider.column.tokens", field: "tokens", align: "right" },
   { id: "cost", labelKey: "ticket04.provider.column.cost", field: "cost_usd", align: "right" },
@@ -86,7 +91,7 @@ export function ProviderUsageTable({
   const [sortKey, setSortKey] = useState("tokens");
   const [sortDir, setSortDir] = useState("desc");
 
-  const { providers, loading, error, refresh } = useProviderStats({
+  const { providers, source, loading, error, refresh } = useProviderStats({
     baseUrl,
     accessToken,
     guestAllowed,
@@ -107,7 +112,9 @@ export function ProviderUsageTable({
     return [...list].sort((a, b) => {
       let av = field === "request_count" ? resolveRequestCount(a) : a[field];
       let bv = field === "request_count" ? resolveRequestCount(b) : b[field];
-      if (field === "source_display_name") {
+      if (field === "display_name") {
+        av = a.display_name || a.provider_id;
+        bv = b.display_name || b.provider_id;
         av = String(av || "").toLowerCase();
         bv = String(bv || "").toLowerCase();
         if (av < bv) return -1 * dir;
@@ -169,7 +176,18 @@ export function ProviderUsageTable({
     );
   } else {
     body = (
-      <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <>
+        {error || source === "cache" ? (
+          <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300" role="alert">
+            <span>{error ? copy("ticket04.provider.error") : copy("observability.evidence.cached")}</span>
+            {error ? (
+              <button type="button" onClick={refresh} className="shrink-0 rounded-md border border-amber-300 px-2 py-1 font-medium dark:border-amber-800">
+                {copy("ticket04.provider.retry")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="border-b border-oai-gray-200 dark:border-oai-gray-700">
@@ -196,65 +214,78 @@ export function ProviderUsageTable({
           </thead>
           <tbody>
             {rows.map((row, idx) => {
-              const providerLabel = row.source_display_name || row.source;
-              const dotColor = getProviderColor(row.source, idx);
+              const providerId = row.provider_id;
+              const providerLabel = row.display_name || providerId;
+              const requestCount = resolveRequestCount(row);
               return (
                 <tr
-                  key={`${row.source}-${idx}`}
+                  key={`${providerId}-${idx}`}
                   className="border-b border-oai-gray-100 dark:border-oai-gray-800 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50 transition-colors"
                 >
                   <td className="px-3 py-2 text-sm font-medium text-oai-black dark:text-oai-white whitespace-nowrap">
                     <span className="inline-flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="inline-block h-2 w-2 rounded-full shrink-0"
-                        style={{ backgroundColor: dotColor }}
-                      />
-                      <span className="truncate max-w-[180px]" title={providerLabel}>{providerLabel}</span>
-                      {row.collection_status === "connected_no_precise_tokens" && (
-                        <span className="text-[10px] font-normal text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          {copy("usage.provider.connected_no_precise_tokens")}
-                        </span>
-                      )}
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900">
+                        <ProviderIcon provider={providerId} size={17} />
+                      </span>
+                      <span className="break-words" title={providerLabel}>{providerLabel}</span>
                     </span>
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
-                    {resolveRequestCount(row) === null
-                      ? copy("spend.usage.metric.not_collected")
-                      : formatFullNum(resolveRequestCount(row))}
+                    {requestCount === null
+                      ? copy("spend.usage.metric.request_total_unavailable")
+                      : formatFullNum(requestCount)}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
                     {formatTokensCompact(row.tokens)}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-brand whitespace-nowrap text-right tabular-nums">
-                    {formatCost(row.cost_usd, currency, rate)}
+                    <span title={row.pricing_coverage === "partial" ? copy("ticket06.pricing.partial_hint") : undefined}>
+                      {formatCost(row.cost_usd, currency, rate, row.pricing_coverage)}
+                    </span>
                   </td>
                   <td className="px-3 py-2 text-sm whitespace-nowrap text-right tabular-nums">
                     {row.success_rate === null || row.success_rate === undefined ? (
-                      <span className="text-oai-gray-400 dark:text-oai-gray-500">{copy("spend.usage.metric.not_collected")}</span>
+                      <span className="text-oai-gray-400 dark:text-oai-gray-500">
+                        {copy(
+                          safeNum(row.status_sample_count) > 0 && safeNum(row.success_rate_sample_count) === 0
+                            ? "spend.usage.metric.no_completed_status_samples"
+                            : "spend.usage.metric.no_status_samples",
+                        )}
+                      </span>
                     ) : (
-                      <span
-                        className={
-                          safeNum(row.success_rate) >= 100
-                            ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                            : "text-orange-600 dark:text-orange-400 font-medium"
-                        }
-                      >
-                        {formatSuccessRate(row.success_rate)}
+                      <span className="inline-flex flex-col items-end">
+                        <span
+                          className={
+                            safeNum(row.success_rate) >= 100
+                              ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                              : "text-orange-600 dark:text-orange-400 font-medium"
+                          }
+                        >
+                          {formatSuccessRate(row.success_rate)}
+                        </span>
+                        <span className="text-[10px] font-normal text-oai-gray-400 dark:text-oai-gray-500">
+                          {copy("spend.usage.metric.sample_count", { count: safeNum(row.success_rate_sample_count) })}
+                        </span>
                       </span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-sm text-oai-gray-600 dark:text-oai-gray-300 whitespace-nowrap text-right tabular-nums">
                     {row.avg_latency_ms === null || row.avg_latency_ms === undefined
-                      ? copy("spend.usage.metric.not_collected")
-                      : formatLatency(row.avg_latency_ms)}
+                      ? copy("spend.usage.metric.no_latency_samples")
+                      : <span className="inline-flex flex-col items-end">
+                        <span>{formatLatency(row.avg_latency_ms)}</span>
+                        <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500">
+                          {copy("spend.usage.metric.sample_count", { count: safeNum(row.latency_sample_count) })}
+                        </span>
+                      </span>}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
+        </div>
+      </>
     );
   }
 

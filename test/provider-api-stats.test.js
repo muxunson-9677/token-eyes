@@ -23,6 +23,8 @@ function apiRow(overrides = {}) {
     billing_mode: "api_key",
     billing_mode_confidence: "provider_receipt",
     provider_id: "deepseek",
+    actual_cost_usd: 1,
+    spend_authority: "official_invoice",
     ...overrides,
   };
 }
@@ -53,9 +55,9 @@ async function withProviderFixture(rows, run, config = {}) {
       queuePath,
       trackerDataDir: tmp,
       tokenOnlyDirectoryStatesProvider: () => ({}),
-      now: () => new Date("2026-05-09T12:00:00.000Z"),
+      now: () => new Date(config.nowIso || "2026-05-09T12:00:00.000Z"),
     });
-    await run((endpoint) => callEndpoint(handler, endpoint));
+    await run((endpoint) => callEndpoint(handler, endpoint), handler);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -86,13 +88,21 @@ async function callWithOptions(handler, endpoint, { method = "GET", headers = {}
   const chunks = [];
   const res = {
     statusCode: 200,
+    headers: {},
     setHeader() {},
-    writeHead(code) { this.statusCode = code; },
+    writeHead(code, responseHeaders = {}) {
+      this.statusCode = code;
+      this.headers = { ...responseHeaders };
+    },
     write(chunk) { chunks.push(chunk); },
     end(chunk) { if (chunk) chunks.push(chunk); },
   };
   assert.equal(await handler(req, res, url), true);
-  return { statusCode: res.statusCode, body: JSON.parse(chunks.join("") || "{}") };
+  return {
+    statusCode: res.statusCode,
+    headers: res.headers,
+    body: JSON.parse(chunks.join("") || "{}"),
+  };
 }
 
 function startBalanceServer() {
@@ -122,16 +132,17 @@ test("provider-stats merges agents by true Provider and splits one agent across 
       account_ref: "account/deepseek/main",
       input_tokens: 2_000_000,
       total_tokens: 2_000_000,
+      actual_cost_usd: 4,
     }),
     // Same Agent/model/hour/mode, different Provider: neither row may overwrite the other.
     apiRow({ provider_id: "moonshot" }),
     apiRow({ billing_mode: "token_plan", provider_id: "minimax" }),
     apiRow({ billing_mode: "unknown", provider_id: "xiaomi_mimo" }),
     // Trusted API attribution alone is insufficient: a zero-cost Provider is hidden.
-    apiRow({ source: "cursor", model: "unpriced-model", provider_id: "openai" }),
+    apiRow({ source: "cursor", model: "unpriced-model", provider_id: "openai", actual_cost_usd: 0 }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
+      "/functions/tokentracker-provider-api-stats?from=2020-01-01&to=2030-12-31&tz=UTC",
     );
 
     assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["deepseek", "moonshot"]);
@@ -147,8 +158,8 @@ test("provider-stats merges agents by true Provider and splits one agent across 
     assert.equal(deepseek.request_count_basis, "unavailable");
     assert.equal(deepseek.cost_usd, 5);
     assert.deepEqual(deepseek.cost_basis, {
-      authority: "local_list_price_estimate",
-      accuracy: "estimated",
+      authority: "official_invoice",
+      accuracy: "exact",
     });
     assert.equal(deepseek.balance, null);
     assert.equal(deepseek.daily.length, 7);
@@ -167,7 +178,7 @@ test("provider-stats merges agents by true Provider and splits one agent across 
     assert.equal(body.totals.cost_usd, 6);
     assert.equal(body.totals.provider_count, 2);
     assert.equal(body.totals.request_count, null);
-    assert.equal(body.totals_scope, "api_key_attributed_cost_positive");
+    assert.equal(body.totals_scope, "api_key_attributed_official_billed_cost_positive");
     assert.equal(JSON.stringify(body).includes(secret), false);
     assert.equal(JSON.stringify(body).includes("api.deepseek.com"), false);
     assert.equal(Object.hasOwn(deepseek, "source"), false);
@@ -175,30 +186,136 @@ test("provider-stats merges agents by true Provider and splits one agent across 
   });
 });
 
-test("provider-stats preserves a positive real cost and uses the official Provider name", async () => {
+test("provider-stats excludes local price estimates and admits only explicit official billed cost facts", async () => {
+  await withProviderFixture([
+    apiRow({
+      provider_id: "deepseek",
+      actual_cost_usd: undefined,
+      spend_authority: undefined,
+    }),
+    apiRow({
+      provider_id: "openai",
+      actual_cost_usd: 4.25,
+      spend_authority: "official_invoice",
+    }),
+  ], async (call) => {
+    const body = await call(
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
+    );
+
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai"]);
+    assert.equal(body.providers[0].cost_usd, 4.25);
+    assert.deepEqual(body.providers[0].cost_basis, {
+      authority: "official_invoice",
+      accuracy: "exact",
+    });
+    assert.equal(body.totals.cost_usd, 4.25);
+    assert.equal(body.totals_scope, "api_key_attributed_official_billed_cost_positive");
+  });
+});
+
+test("recent Provider API facts reject hostile web origins before aggregate-cache handling", async () => {
+  await withProviderFixture([
+    apiRow({
+      actual_cost_usd: 4.25,
+      spend_authority: "official_invoice",
+      account_ref: "account/deepseek/private",
+    }),
+  ], async (_call, handler) => {
+    const endpoint = "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC";
+    const allowed = await callWithOptions(handler, endpoint, {
+      headers: { origin: "http://127.0.0.1:4173" },
+    });
+    assert.equal(allowed.statusCode, 200);
+    assert.equal(allowed.headers["Access-Control-Allow-Origin"], "http://127.0.0.1:4173");
+    assert.equal(allowed.body.providers[0].account_ref, "account/deepseek/private");
+
+    const cachedAllowed = await callWithOptions(handler, endpoint, {
+      headers: { origin: "http://localhost:4173" },
+    });
+    assert.equal(cachedAllowed.statusCode, 200);
+    assert.equal(cachedAllowed.headers["Access-Control-Allow-Origin"], "http://localhost:4173");
+    assert.equal(cachedAllowed.headers["X-TokenTracker-Usage-Cache"], "hit");
+
+    const hostile = await callWithOptions(handler, endpoint, {
+      headers: { origin: "https://hostile.example" },
+    });
+    assert.equal(hostile.statusCode, 403);
+    assert.equal(Object.hasOwn(hostile.headers, "Access-Control-Allow-Origin"), false);
+    assert.deepEqual(hostile.body, { ok: false, error: "Forbidden" });
+    assert.equal(JSON.stringify(hostile.body).includes("account/deepseek/private"), false);
+  });
+});
+
+test("public selected-range Provider stats never serialize private account references", async () => {
+  const privateRef = "account/openai/private";
+  await withProviderFixture([
+    apiRow({ provider_id: "openai", account_ref: privateRef }),
+  ], async (_call, handler) => {
+    const response = await callWithOptions(
+      handler,
+      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
+      { headers: { origin: "https://hostile.example" } },
+    );
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["Access-Control-Allow-Origin"], "*");
+    assert.equal(response.body.providers[0].account_ref, null);
+    assert.equal(JSON.stringify(response.body).includes(privateRef), false);
+  });
+});
+
+test("provider-stats does not turn a positive local list-price estimate into billed spend", async () => {
   await withProviderFixture([
     apiRow({
       provider_id: "openai",
       model: "tiny-model",
       input_tokens: 1,
       total_tokens: 1,
+      actual_cost_usd: undefined,
+      spend_authority: undefined,
     }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
     );
 
-    assert.equal(body.providers.length, 1);
-    assert.equal(body.providers[0].provider_id, "openai");
-    assert.equal(body.providers[0].display_name, "OpenAI");
-    assert.equal(body.providers[0].cost_usd, 0.000001);
-    assert.ok(body.providers[0].cost_usd > 0);
-    assert.equal(body.totals.cost_usd, body.providers[0].cost_usd);
+    assert.deepEqual(body.providers, []);
+    assert.equal(body.totals.cost_usd, 0);
   }, {
     pricingRules: [{
       source: "codex",
       model: "tiny-model",
       inputPricePer1M: 1,
+      outputPricePer1M: 0,
+      currency: "USD",
+    }],
+  });
+});
+
+test("provider-stats does not advertise a positive-cost card when the response precision rounds cost to zero", async () => {
+  await withProviderFixture([
+    apiRow({
+      provider_id: "openai",
+      model: "sub-micro-cost-model",
+      input_tokens: 1,
+      total_tokens: 1,
+      actual_cost_usd: undefined,
+      spend_authority: undefined,
+    }),
+  ], async (call) => {
+    const body = await call(
+      "/functions/tokentracker-provider-api-stats?tz=UTC",
+    );
+
+    assert.deepEqual(body.providers, []);
+    assert.equal(body.totals.provider_count, 0);
+    assert.equal(body.totals.cost_usd, 0);
+  }, {
+    pricingRules: [{
+      source: "codex",
+      model: "sub-micro-cost-model",
+      inputPricePer1M: 0.4,
       outputPricePer1M: 0,
       currency: "USD",
     }],
@@ -232,7 +349,7 @@ test("provider-stats computes status and latency only from Provider-attributed r
     }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
     );
     const deepseek = body.providers.find((provider) => provider.provider_id === "deepseek");
     assert.equal(deepseek.status_sample_count, 4);
@@ -266,7 +383,7 @@ test("provider-stats keeps request counts null when no request-count fact exists
     apiRow({ conversation_count: undefined }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
     );
     const provider = body.providers[0];
     assert.equal(provider.request_count, null);
@@ -281,7 +398,7 @@ test("provider-stats keeps request counts null when no request-count fact exists
 test("provider-stats falls back safely when a date-shaped to value is invalid", async () => {
   await withProviderFixture([], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-99-99&tz=UTC",
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-99-99&tz=UTC",
     );
 
     assert.equal(body.to, "2026-05-09");
@@ -299,8 +416,13 @@ test("provider-stats exposes only a freshly synced reliable balance and invalida
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
     await fs.promises.writeFile(queuePath, [
-      JSON.stringify(apiRow({ provider_id: "openai" })),
-      JSON.stringify(apiRow({ provider_id: "anthropic", input_tokens: 1, total_tokens: 1 })),
+      JSON.stringify(apiRow({ provider_id: "openai", hour_start: new Date(localNowMs).toISOString() })),
+      JSON.stringify(apiRow({
+        provider_id: "anthropic",
+        hour_start: new Date(localNowMs).toISOString(),
+        input_tokens: 1,
+        total_tokens: 1,
+      })),
     ].join("\n") + "\n", "utf8");
     await fs.promises.writeFile(path.join(tmp, "config.json"), JSON.stringify({
       pricingRules: [{
@@ -373,7 +495,7 @@ test("provider-stats exposes only a freshly synced reliable balance and invalida
     });
     assert.equal(unsafeCreated.statusCode, 200, JSON.stringify(unsafeCreated.body));
 
-    const endpoint = "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC";
+    const endpoint = "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC";
     const before = await callWithOptions(handler, endpoint);
     assert.equal(before.body.providers[0].account_label, "OpenAI account");
     assert.equal(before.body.providers[0].balance, null);
@@ -441,7 +563,7 @@ test("provider-stats uses seven Shanghai natural days at the UTC boundaries", as
     apiRow({ hour_start: "2026-05-09T16:00:00.000Z", input_tokens: 4_000_000, total_tokens: 4_000_000 }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=Asia%2FShanghai",
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=Asia%2FShanghai",
     );
     assert.deepEqual(body.period, { from: "2026-05-03", to: "2026-05-09", days: 7, time_zone: "Asia/Shanghai" });
     assert.equal(body.providers[0].tokens, 5_000_000);
@@ -455,7 +577,7 @@ test("provider-stats reports an explicit UTC offset without exposing raw minutes
     apiRow({ hour_start: "2026-05-02T16:00:00.000Z" }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz_offset_minutes=480",
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz_offset_minutes=480",
     );
     assert.equal(body.period.time_zone, "UTC+08:00");
     assert.equal(body.providers[0].period.time_zone, "UTC+08:00");
@@ -472,7 +594,7 @@ test("provider-stats keeps the seven-day New York range correct across DST", asy
     apiRow({ hour_start: "2026-03-10T04:00:00.000Z", input_tokens: 5_000_000, total_tokens: 5_000_000 }),
   ], async (call) => {
     const body = await call(
-      "/functions/tokentracker-provider-stats?from=2026-03-03&to=2026-03-09&tz=America%2FNew_York",
+      "/functions/tokentracker-provider-api-stats?from=2026-03-03&to=2026-03-09&tz=America%2FNew_York",
     );
     assert.equal(body.providers[0].tokens, 9_000_000);
     assert.deepEqual(body.providers[0].daily.map((day) => day.date), [
@@ -482,5 +604,5 @@ test("provider-stats keeps the seven-day New York range correct across DST", asy
     assert.equal(body.providers[0].daily[0].tokens, 2_000_000);
     assert.equal(body.providers[0].daily[5].tokens, 3_000_000);
     assert.equal(body.providers[0].daily[6].tokens, 4_000_000);
-  });
+  }, { nowIso: "2026-03-09T12:00:00.000Z" });
 });

@@ -245,6 +245,7 @@ const PATHS = {
   realtimeSessions: "tokentracker-realtime-sessions",
   requestUsageRecords: "tokentracker-request-usage-records",
   providerStats: "tokentracker-provider-stats",
+  providerApiStats: "tokentracker-provider-api-stats",
   usageAttribution: "tokentracker-usage-attribution",
   observabilityExport: "tokentracker-observability-export",
   modelStats: "tokentracker-model-stats",
@@ -1673,7 +1674,7 @@ export async function getUsageModelBreakdown({
   return fetchLocalJson(PATHS.usageModelBreakdown, { from, to, ...filterParams, ...tzParams }, { accessToken, signal });
 }
 
-/** TICKET-01 A4: provider stats (per-source aggregate leaderboard). */
+/** Selected-range statistics grouped strictly by explicit Provider identity. */
 export async function getProviderStats({
   from,
   to,
@@ -1685,11 +1686,46 @@ export async function getProviderStats({
   accessToken,
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
-    return getMockProviderStats({ from, to, seed: accessToken });
+    return getMockProviderStats({
+      from,
+      to,
+      seed: accessToken,
+      timeZone,
+      tzOffsetMinutes,
+      sources,
+      models,
+      agentIds,
+      view: "range",
+    });
   }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildMultiFilterParams({ sources, models, agentIds });
   return fetchLocalJson(PATHS.providerStats, { from, to, ...filterParams, ...tzParams }, { accessToken });
+}
+
+/** Current seven-local-day API-key Provider cards backed by positive official billed cost facts. */
+export async function getRecentApiProviderStats({
+  sources,
+  models,
+  agentIds,
+  timeZone,
+  tzOffsetMinutes,
+  accessToken,
+}: AnyRecord = {}) {
+  if (isMockEnabled()) {
+    return getMockProviderStats({
+      seed: accessToken,
+      timeZone,
+      tzOffsetMinutes,
+      sources,
+      models,
+      agentIds,
+      view: "recent_api_7d",
+    });
+  }
+  const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
+  const filterParams = buildMultiFilterParams({ sources, models, agentIds });
+  return fetchLocalJson(PATHS.providerApiStats, { ...filterParams, ...tzParams }, { accessToken });
 }
 
 /** O3: local-only, dimension-aware usage attribution. */

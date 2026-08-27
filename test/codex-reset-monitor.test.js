@@ -398,3 +398,64 @@ test("event compaction keeps all 30-day resets without deleting other reminder t
   assert.equal(compacted.some((event) => event.id === "actual-0"), true);
   assert.equal(compacted.some((event) => event.id === "actual-129"), true);
 });
+
+test("event compaction deduplicates the same official source post across changed event ids", () => {
+  const sourcePost = {
+    type: "official_reset_announcement",
+    createdAt: new Date(BASE - MINUTE).toISOString(),
+    occurredAt: new Date(BASE - MINUTE).toISOString(),
+    sourceAuthor: "thsottiaux",
+    sourcePostId: "123",
+    sourceUrl: "https://x.com/thsottiaux/status/123",
+  };
+  const compacted = compactCodexResetEvents([
+    {
+      ...sourcePost,
+      id: "official:first",
+      summary: "Reset completed.",
+      deliveredChannels: ["windows_notification"],
+      acknowledgedChannels: ["banner"],
+    },
+    {
+      ...sourcePost,
+      id: "official:replacement",
+      body: "The full reset announcement body.",
+      deliveredChannels: ["tray"],
+      acknowledgedChannels: ["widget"],
+    },
+  ], { nowMs: BASE });
+
+  assert.equal(compacted.length, 1);
+  assert.equal(compacted[0].id, "official:first");
+  assert.equal(compacted[0].body, "The full reset announcement body.");
+  assert.deepEqual(
+    compacted[0].deliveredChannels.sort(),
+    ["tray", "windows_notification"],
+  );
+  assert.deepEqual(compacted[0].acknowledgedChannels.sort(), ["banner", "widget"]);
+  assert.equal(listCodexResetHistory({ events: compacted }, { nowMs: BASE }).length, 1);
+});
+
+test("event compaction migrates a discarded official event acknowledgement to the stable id", () => {
+  const sourcePost = {
+    type: "official_reset_announcement",
+    createdAt: new Date(BASE - MINUTE).toISOString(),
+    occurredAt: new Date(BASE - MINUTE).toISOString(),
+    sourceAuthor: "thsottiaux",
+    sourcePostId: "123",
+    sourceUrl: "https://x.com/thsottiaux/status/123",
+    deliveredChannels: [],
+    acknowledgedChannels: [],
+  };
+  const state = acknowledgeCodexResetEvent({
+    events: [
+      { ...sourcePost, id: "official:first" },
+      { ...sourcePost, id: "official:replacement" },
+    ],
+    acknowledgedEventIds: ["official:replacement"],
+  }, "not-present", { nowMs: BASE });
+
+  assert.deepEqual(state.events.map((event) => event.id), ["official:first"]);
+  assert.deepEqual(state.acknowledgedEventIds, ["official:first"]);
+  assert.deepEqual(listUnreadCodexResetEvents(state, { channel: "banner" }), []);
+});

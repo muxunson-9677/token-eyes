@@ -1,7 +1,11 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DashboardView } from "../DashboardView.jsx";
+
+const overviewStyles = readFileSync(resolve("src/ui/foundation/apple-glass.css"), "utf8");
 
 vi.mock("motion/react", () => ({
   motion: {
@@ -49,6 +53,18 @@ vi.mock("../../../marketing/LogoCarousel.jsx", () => ({ LogoCarousel: () => null
 vi.mock("../../../marketing/agent-logos.js", () => ({ AGENT_LOGOS: [] }));
 
 describe("DashboardView overview hierarchy", () => {
+  it("keeps the desktop Agent panel bottom aligned with the usage-trend card", () => {
+    expect(overviewStyles).toMatch(
+      /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?@media \(min-width: 1081px\)[\s\S]*?\.tt-overview-provider-panel \{[\s\S]*?min-height: 247px;[\s\S]*?\}[\s\S]*?\.tt-overview-provider-panel \.tt-provider-card \{[\s\S]*?height: 144px;/,
+    );
+    expect(overviewStyles).toMatch(
+      /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?\.tt-overview-usage\.tt-overview-aligned-stack \{[\s\S]*?grid-template-rows: minmax\(0, 620px\) minmax\(247px, auto\);/,
+    );
+    expect(overviewStyles).toMatch(
+      /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?\.tt-overview-provider-panel \.grid\.grid-cols-2 \{[\s\S]*?grid-template-columns: none;[\s\S]*?grid-auto-flow: column;[\s\S]*?grid-auto-columns: clamp\(122px, 15\.75%, 129px\);[\s\S]*?overflow-x: auto;[\s\S]*?overflow-y: hidden;/,
+    );
+  });
+
   it("does not render the login or desktop-widget promotions in the locked overview", () => {
     render(
       <DashboardView

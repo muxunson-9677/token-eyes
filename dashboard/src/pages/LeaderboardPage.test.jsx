@@ -15,8 +15,9 @@ import {
   getLeaderboardProfile,
   getLocalLeaderboardActualCost,
   getMyLeaderboardRank,
-  getProviderStats,
+  getUsageSummary,
 } from "../lib/api";
+import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
 import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { copy } from "../lib/copy";
 import { setLeaderboardParticipationState } from "../lib/leaderboard-sync-state";
@@ -42,8 +43,12 @@ vi.mock("../lib/api", () => ({
   getLeaderboardProfile: vi.fn(),
   getLocalLeaderboardActualCost: vi.fn(),
   getMyLeaderboardRank: vi.fn(),
-  getProviderStats: vi.fn(),
+  getUsageSummary: vi.fn(),
   refreshLeaderboard: vi.fn(),
+}));
+
+vi.mock("../lib/leaderboard-state-client", () => ({
+  getLocalLeaderboardState: vi.fn(),
 }));
 
 vi.mock("../lib/cloud-sync", () => ({
@@ -101,6 +106,29 @@ const preloadedData = {
   generated_at: null,
 };
 
+function localLeaderboardState(codexTokens = "100", cursorTokens = "50") {
+  const rows = [
+    ["codex", "gpt-5", codexTokens, "0", "0", "0", "0"],
+    ["cursor", "cursor-model", cursorTokens, "0", "0", "0", "0"],
+  ];
+  return {
+    ok: true,
+    summary_hash: "a".repeat(64),
+    state: {
+      version: 1,
+      device_id: "device-user-1",
+      captured_at: "2026-08-27T00:00:00.000Z",
+      periods: {
+        today: rows,
+        week: rows,
+        "30d": rows,
+        month: rows,
+        total: rows,
+      },
+    },
+  };
+}
+
 function LocationProbe() {
   const location = useLocation();
   return (
@@ -137,14 +165,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
     getMyLeaderboardRank.mockResolvedValue({ me: null });
     getLeaderboardProfile.mockReset();
     getLeaderboardProfile.mockResolvedValue(null);
-    getProviderStats.mockReset();
-    getProviderStats.mockResolvedValue({
-      providers: [
-        { source: "codex", tokens: 100, cost_usd: 3 },
-        { source: "cursor", tokens: 50, cost_usd: 1.25 },
-      ],
-      totals: { total_tokens: 150 },
-    });
+    getLocalLeaderboardState.mockReset();
+    getLocalLeaderboardState.mockResolvedValue(localLeaderboardState());
+    getUsageSummary.mockReset();
+    getUsageSummary.mockResolvedValue({ totals: { cost_usd: 4.25 } });
     getLocalLeaderboardActualCost.mockReset();
     getLocalLeaderboardActualCost.mockResolvedValue({ today: 1, week: 2, "30d": 4, month: 3, total: 4 });
     runCloudUsageSyncNow.mockReset();
@@ -232,11 +256,12 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     expect((await screen.findAllByText("Preloaded User")).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getAllByText("150").length).toBeGreaterThan(0));
-    expect(getProviderStats).toHaveBeenCalledWith(expect.objectContaining({
+    expect(getLocalLeaderboardState).toHaveBeenCalledTimes(1);
+    expect(getUsageSummary).toHaveBeenCalledWith(expect.objectContaining({
       sources: undefined,
       timeZone: "Asia/Shanghai",
     }));
-    expect(getProviderStats.mock.calls[0][0].from).toBe("1970-01-01");
+    expect(getUsageSummary.mock.calls[0][0].from).toBe("1970-01-01");
     expect(screen.getAllByText("$4.25").length).toBeGreaterThan(0);
   });
 
@@ -344,7 +369,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
   it("never substitutes a stale cloud total when local usage statistics are unavailable", async () => {
     getLeaderboard.mockResolvedValue(preloadedData);
-    getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
+    getLocalLeaderboardState.mockRejectedValue(new Error("local leaderboard state unavailable"));
     getMyLeaderboardRank.mockResolvedValue({
       me: {
         rank: 7,
@@ -357,7 +382,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     const { container } = renderLeaderboard("/leaderboard", { auth: () => Promise.resolve("test-token") });
 
-    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    await waitFor(() => expect(getLocalLeaderboardState).toHaveBeenCalled());
     await waitFor(() => expect(getMyLeaderboardRank).toHaveBeenCalled());
     await act(async () => {
       await Promise.resolve();
@@ -378,10 +403,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
       aggregate_total_tokens: 6950299812,
       aggregate_total_cost_usd: 2061,
     });
-    getProviderStats.mockResolvedValue({
-      providers: [{ source: "codex", tokens: 7075588836, cost_usd: 11156 }],
-      totals: { total_tokens: 7075588836 },
-    });
+    getLocalLeaderboardState.mockResolvedValue(localLeaderboardState("7075588836", "0"));
+    getUsageSummary.mockResolvedValue({ totals: { cost_usd: 11156 } });
     getMyLeaderboardRank.mockResolvedValue({
       me: [{
         rank: 1,
@@ -932,7 +955,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     renderLeaderboard("/leaderboard?metric=actual_cost");
 
-    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    await waitFor(() => expect(getLocalLeaderboardState).toHaveBeenCalled());
     expect(getLocalLeaderboardActualCost).not.toHaveBeenCalled();
     const scores = await screen.findAllByTestId("leaderboard-score");
     expect(scores.some((score) => score.textContent === "$4.00")).toBe(false);
@@ -1099,7 +1122,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
   });
 
   it("keeps the right-side status chip when the visible current-user row already has a rank", async () => {
-    getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
+    getLocalLeaderboardState.mockRejectedValue(new Error("local leaderboard state unavailable"));
     getLeaderboard.mockResolvedValue({
       ...preloadedData,
       participant_count: 1,
@@ -1116,7 +1139,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
   });
 
   it("keeps the fixed right-side #1 status block when the personal-rank request is unavailable", async () => {
-    getProviderStats.mockRejectedValue(new Error("local provider stats unavailable"));
+    getLocalLeaderboardState.mockRejectedValue(new Error("local leaderboard state unavailable"));
     getLeaderboard.mockResolvedValue(preloadedData);
 
     renderLeaderboard();

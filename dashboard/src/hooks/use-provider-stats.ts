@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { isMockEnabled } from "../lib/mock-data";
 import { isLocalDashboardRuntime } from "../lib/local-api-url";
-import { getTimeZoneCacheKey } from "../lib/timezone";
-import { getProviderStats } from "../lib/api";
+import { getLocalDayKey, getTimeZoneCacheKey } from "../lib/timezone";
+import { getProviderStats, getRecentApiProviderStats } from "../lib/api";
 import type { ProviderStatsResponse } from "../lib/types/usage";
 import { useUsageFilterParams, useUsageFilterCacheKey, useUsageFilters } from "./use-usage-filters";
 import { resolveEffectiveUsageSources } from "../lib/spend-provider-visibility.js";
@@ -18,6 +18,13 @@ interface UseProviderStatsParams {
   timeZone?: string;
   tzOffsetMinutes?: number;
   allowedSources?: string[];
+}
+
+type ProviderStatsView = "range" | "recent_api_7d";
+
+interface ProviderStatsCacheEntry {
+  providers: ProviderStatsResponse;
+  fetchedAt: string;
 }
 
 interface UseProviderStatsReturn {
@@ -38,7 +45,120 @@ function safeHost(baseUrl: unknown): string | null {
   }
 }
 
-export function useProviderStats({
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function isProviderStatsCachePayload(
+  value: unknown,
+  expectedView: ProviderStatsView,
+): value is ProviderStatsResponse {
+  if (!isRecord(value) || value.ok !== true || value.view !== expectedView) return false;
+  const expectedScope = expectedView === "recent_api_7d"
+    ? "api_key_attributed_official_billed_cost_positive"
+    : "all_provider_attributed";
+  if (value.totals_scope !== expectedScope || !isRecord(value.period)) return false;
+  if (
+    typeof value.period.from !== "string"
+    || typeof value.period.to !== "string"
+    || typeof value.period.time_zone !== "string"
+    || !Number.isFinite(Number(value.period.days))
+    || !Array.isArray(value.providers)
+  ) return false;
+  return value.providers.every((provider) => {
+    if (!isRecord(provider)) return false;
+    if (typeof provider.provider_id !== "string" || !provider.provider_id) return false;
+    if (typeof provider.display_name !== "string" || !provider.display_name) return false;
+    if (Object.hasOwn(provider, "source") || Object.hasOwn(provider, "source_display_name")) return false;
+    if (!isRecord(provider.cost_basis)) return false;
+    const expectedCostAuthority = expectedView === "recent_api_7d"
+      ? "official_invoice"
+      : "local_list_price_estimate";
+    const expectedCostAccuracy = expectedView === "recent_api_7d" ? "exact" : "estimated";
+    if (
+      provider.cost_basis.authority !== expectedCostAuthority
+      || provider.cost_basis.accuracy !== expectedCostAccuracy
+      || !Array.isArray(provider.daily)
+      || !["request_event", "unavailable"].includes(String(provider.request_count_basis))
+      || !Number.isFinite(Number(provider.success_rate_sample_count))
+    ) return false;
+    return true;
+  });
+}
+
+export function createProviderStatsCacheEntry(
+  payload: ProviderStatsResponse,
+  view: ProviderStatsView,
+  fetchedAt = new Date().toISOString(),
+): ProviderStatsCacheEntry {
+  if (!isProviderStatsCachePayload(payload, view) || !Number.isFinite(Date.parse(fetchedAt))) {
+    throw new Error("Invalid Provider stats cache entry");
+  }
+  return {
+    providers: {
+      ...payload,
+      providers: payload.providers.map((provider) => ({
+        ...provider,
+        account_label: null,
+        account_ref: null,
+        balance: null,
+      })),
+    },
+    fetchedAt,
+  };
+}
+
+export function parseProviderStatsCacheEntry(
+  raw: string,
+  view: ProviderStatsView,
+  currentDayKey: string,
+): ProviderStatsCacheEntry | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      !isRecord(parsed)
+      || !Number.isFinite(Date.parse(String(parsed.fetchedAt || "")))
+      || !isProviderStatsCachePayload(parsed.providers, view)
+    ) return null;
+    if (view === "recent_api_7d" && parsed.providers.period.to !== currentDayKey) return null;
+    return parsed as unknown as ProviderStatsCacheEntry;
+  } catch {
+    return null;
+  }
+}
+
+export function buildProviderStatsStorageKey({
+  view,
+  cacheKey,
+  baseUrl,
+  from,
+  to,
+  timeZone,
+  tzOffsetMinutes,
+  currentDayKey,
+  filterCacheKey,
+  sources,
+}: {
+  view: ProviderStatsView;
+  cacheKey: string;
+  baseUrl?: string;
+  from?: string;
+  to?: string;
+  timeZone?: string;
+  tzOffsetMinutes?: number;
+  currentDayKey?: string;
+  filterCacheKey: string;
+  sources: string[];
+}): string {
+  const host = safeHost(baseUrl) || "default";
+  const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
+  const rangeKey = view === "range"
+    ? `${from || ""}.${to || ""}`
+    : `current-7d.${currentDayKey || getLocalDayKey({ timeZone, offsetMinutes: tzOffsetMinutes })}`;
+  return `tokentracker.providerStats.v2.${view}.${cacheKey}.${host}.${rangeKey}.${tzKey}.${filterCacheKey}.${sources.join(",")}`;
+}
+
+function useProviderStatsView({
   baseUrl,
   accessToken,
   guestAllowed = false,
@@ -48,7 +168,7 @@ export function useProviderStats({
   timeZone,
   tzOffsetMinutes,
   allowedSources,
-}: UseProviderStatsParams = {}): UseProviderStatsReturn {
+}: UseProviderStatsParams = {}, view: ProviderStatsView): UseProviderStatsReturn {
   const mockEnabled = isMockEnabled();
   const tokenReady = isAccessTokenReady(accessToken);
   const isLocalMode = isLocalDashboardRuntime();
@@ -57,6 +177,20 @@ export function useProviderStats({
   const filterCacheKey = useUsageFilterCacheKey();
   const { refreshRevision } = useUsageFilters();
   const handledRefreshRevision = useRef(refreshRevision);
+  const requestSequenceRef = useRef(0);
+  const [currentLocalDayKey, setCurrentLocalDayKey] = useState(() => (
+    getLocalDayKey({ timeZone, offsetMinutes: tzOffsetMinutes })
+  ));
+
+  useEffect(() => {
+    const updateLocalDay = () => {
+      const next = getLocalDayKey({ timeZone, offsetMinutes: tzOffsetMinutes });
+      setCurrentLocalDayKey((previous) => previous === next ? previous : next);
+    };
+    updateLocalDay();
+    const intervalId = window.setInterval(updateLocalDay, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [timeZone, tzOffsetMinutes]);
 
   // Use serialized keys for deps so the memo keeps a stable reference when
   // the caller passes a new array literal with the same contents each render.
@@ -86,24 +220,39 @@ export function useProviderStats({
 
   const storageKey = useMemo(() => {
     if (!cacheKey) return null;
-    const host = safeHost(baseUrl) || "default";
-    const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
-    const sourcesKey = effectiveSources.join(",");
-    return `tokentracker.providerStats.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${sourcesKey}`;
-  }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, effectiveSources]);
+    return buildProviderStatsStorageKey({
+      view,
+      cacheKey,
+      baseUrl,
+      from,
+      to,
+      timeZone,
+      tzOffsetMinutes,
+      currentDayKey: currentLocalDayKey,
+      filterCacheKey,
+      sources: effectiveSources,
+    });
+  }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, currentLocalDayKey, filterCacheKey, effectiveSources, view]);
 
-  const readCache = useCallback((): ProviderStatsResponse | null => {
+  const readCache = useCallback((): ProviderStatsCacheEntry | null => {
     if (!storageKey || typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(storageKey);
       if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.providers) return null;
-      return parsed.providers as ProviderStatsResponse;
+      const parsed = parseProviderStatsCacheEntry(
+        raw,
+        view,
+        currentLocalDayKey,
+      );
+      if (!parsed) {
+        window.localStorage.removeItem(storageKey);
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
-  }, [storageKey]);
+  }, [storageKey, view, currentLocalDayKey]);
 
   const writeCache = useCallback(
     (payload: ProviderStatsResponse) => {
@@ -111,13 +260,13 @@ export function useProviderStats({
       try {
         window.localStorage.setItem(
           storageKey,
-          JSON.stringify({ providers: payload, fetchedAt: new Date().toISOString() }),
+          JSON.stringify(createProviderStatsCacheEntry(payload, view)),
         );
       } catch {
         // non-fatal
       }
     },
-    [storageKey],
+    [storageKey, view],
   );
 
   const clearCache = useCallback(() => {
@@ -129,17 +278,31 @@ export function useProviderStats({
     }
   }, [storageKey]);
 
-  const scopeKey = `${filterCacheKey}|${effectiveSources.join(",")}`;
+  const scopeKey = [
+    view,
+    cacheKey || "",
+    baseUrl || "",
+    view === "range" ? `${from || ""}.${to || ""}` : "current-7d",
+    currentLocalDayKey,
+    getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes }),
+    filterCacheKey,
+    effectiveSources.join(","),
+  ].join("|");
   useEffect(() => {
     if (lastScopeRef.current === scopeKey) return;
     lastScopeRef.current = scopeKey;
+    requestSequenceRef.current += 1;
+    setProviders(null);
     setSource("edge");
     setError(null);
+    setFetchedAt(null);
     setLoading(true);
   }, [scopeKey]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++requestSequenceRef.current;
     const token = await resolveAuthAccessToken(accessToken);
+    if (requestId !== requestSequenceRef.current) return;
     if (!token && !mockEnabled && !guestAllowed && !isLocalMode) {
       setLoading(false);
       return;
@@ -159,38 +322,50 @@ export function useProviderStats({
     setLoading(true);
     setError(null);
     try {
-      const res = await getProviderStats({
+      const fetchProviderStats = view === "recent_api_7d"
+        ? getRecentApiProviderStats
+        : getProviderStats;
+      const res = await fetchProviderStats({
         baseUrl,
         accessToken: token,
-        from,
-        to,
+        ...(view === "range" ? { from, to } : {}),
         timeZone,
         tzOffsetMinutes,
         sources: effectiveSources,
         models: filterParams.models,
         agentIds: filterParams.agentIds,
       });
+      if (
+        view === "recent_api_7d"
+        && res?.period?.to !== currentLocalDayKey
+      ) {
+        throw new Error("API Provider stats are not for the current local day");
+      }
+      if (requestId !== requestSequenceRef.current) return;
       setProviders(res as ProviderStatsResponse);
       setSource(mockEnabled ? "mock" : "edge");
       setFetchedAt(new Date().toISOString());
-      if (cacheAllowed) writeCache(res as ProviderStatsResponse);
+      if (cacheAllowed && isProviderStatsCachePayload(res, view)) writeCache(res);
       else clearCache();
     } catch (err) {
+      if (requestId !== requestSequenceRef.current) return;
       const message = err instanceof Error ? err.message : String(err);
       if (cacheAllowed) {
         const cached = readCache();
         if (cached) {
-          setProviders(cached);
+          setProviders(cached.providers);
           setSource("cache");
-          setError(null);
+          setFetchedAt(cached.fetchedAt);
+          setError(message);
         } else {
+          setProviders(null);
           setError(message);
         }
       } else {
         setError(message);
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequenceRef.current) setLoading(false);
     }
   }, [
     accessToken,
@@ -211,6 +386,8 @@ export function useProviderStats({
     filterParams.models,
     filterParams.agentIds,
     disabledByVisibility,
+    view,
+    currentLocalDayKey,
   ]);
 
   useEffect(() => {
@@ -225,8 +402,9 @@ export function useProviderStats({
     } else {
       const cached = readCache();
       if (cached) {
-        setProviders(cached);
+        setProviders(cached.providers);
         setSource("cache");
+        setFetchedAt(cached.fetchedAt);
       }
     }
     void refresh();
@@ -247,4 +425,12 @@ export function useProviderStats({
     refresh,
     fetchedAt,
   };
+}
+
+export function useProviderStats(params: UseProviderStatsParams = {}): UseProviderStatsReturn {
+  return useProviderStatsView(params, "range");
+}
+
+export function useRecentApiProviderStats(params: UseProviderStatsParams = {}): UseProviderStatsReturn {
+  return useProviderStatsView(params, "recent_api_7d");
 }

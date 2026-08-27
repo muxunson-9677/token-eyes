@@ -164,6 +164,66 @@ test("provider-stats returns true Providers while preserving Agent breakdowns", 
   }
 });
 
+test("provider-stats honors the selected range and retains explicitly attributed zero-cost and token-plan usage", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-provider-range-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await writeQueue(queuePath, [
+      {
+        source: "claude",
+        model: "claude-sonnet-4-6",
+        hour_start: "2026-05-01T10:00:00.000Z",
+        input_tokens: 80,
+        output_tokens: 20,
+        total_tokens: 100,
+        conversation_count: 1,
+        billing_mode: "token_plan",
+        billing_mode_confidence: "configured_plan_provider_match",
+        provider_id: "anthropic",
+      },
+      {
+        source: "codex",
+        model: "unpriced-model",
+        hour_start: "2026-05-31T10:00:00.000Z",
+        input_tokens: 40,
+        output_tokens: 10,
+        total_tokens: 50,
+        conversation_count: 1,
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
+        provider_id: "openai",
+      },
+      {
+        source: "codex",
+        model: "gpt-5-codex",
+        hour_start: "2026-06-01T00:00:00.000Z",
+        input_tokens: 999,
+        output_tokens: 1,
+        total_tokens: 1000,
+        conversation_count: 1,
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
+        provider_id: "openai",
+      },
+    ]);
+
+    const result = await callEndpoint(
+      queuePath,
+      "/functions/tokentracker-provider-stats?from=2026-05-01&to=2026-05-31&tz=UTC",
+    );
+
+    assert.deepEqual(result.period, { from: "2026-05-01", to: "2026-05-31", days: 31, time_zone: "UTC" });
+    assert.equal(result.totals_scope, "all_provider_attributed");
+    assert.deepEqual(result.providers.map((provider) => provider.provider_id).sort(), ["anthropic", "openai"]);
+    assert.equal(result.providers.find((provider) => provider.provider_id === "anthropic").tokens, 100);
+    assert.equal(result.providers.find((provider) => provider.provider_id === "openai").tokens, 50);
+    assert.equal(result.providers.find((provider) => provider.provider_id === "openai").cost_usd, 0);
+    assert.equal(result.totals.total_tokens, 150);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("provider-stats uses Provider names and keeps edge-case sources as Agents", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-provider-display-"));
   try {

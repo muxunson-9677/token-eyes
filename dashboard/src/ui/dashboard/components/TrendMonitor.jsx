@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
-import { Info, Maximize2 } from "lucide-react";
+import { ChevronDown, Info, Maximize2 } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { useCurrency } from "../../../hooks/useCurrency.js";
@@ -522,7 +522,7 @@ export function TrendMonitor({
       )}
     >
       {!embedded && (
-        <div className="mb-3 flex items-start justify-between gap-2">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h3
               className="flex items-center gap-1.5 text-base font-semibold text-oai-black dark:text-white"
@@ -535,30 +535,35 @@ export function TrendMonitor({
               <p className="text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">{timeZoneLabel}</p>
             )}
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div
+            className="ml-auto flex items-center gap-2"
+            data-testid="trend-header-controls"
+          >
             <button
               type="button"
               data-testid="trend-granularity"
-              className="tt-trend-granularity tt-analytics-focusable tt-pressable"
+              className="tt-trend-control tt-trend-granularity tt-analytics-focusable tt-pressable"
               onClick={() => zoomConfig && setIsZoomOpen(true)}
               disabled={!zoomConfig}
               aria-haspopup="dialog"
               aria-expanded={isZoomOpen}
               title={copy("trend.zoom.open_aria")}
             >
-              {copy("shared.unit.day")}
+              <span>{copy("shared.unit.day")}</span>
+              <ChevronDown size={12} aria-hidden="true" />
             </button>
-          {zoomConfig && (
-            <button
-              type="button"
-              onClick={() => setIsZoomOpen(true)}
-              aria-label={copy("trend.zoom.open_aria")}
-              title={copy("trend.zoom.open_aria")}
-              className="tt-analytics-focusable tt-pressable flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-[var(--tt-control-radius)] text-oai-gray-400 transition-colors hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
-            >
-              <Maximize2 size={14} />
-            </button>
-          )}
+            {zoomConfig && (
+              <button
+                type="button"
+                data-testid="trend-maximize"
+                onClick={() => setIsZoomOpen(true)}
+                aria-label={copy("trend.zoom.open_aria")}
+                title={copy("trend.zoom.open_aria")}
+                className="tt-trend-control tt-analytics-focusable tt-pressable shrink-0 rounded-[var(--tt-control-radius)] text-oai-gray-400 transition-colors hover:bg-oai-gray-100 hover:text-oai-gray-700 dark:hover:bg-oai-gray-800 dark:hover:text-oai-gray-200"
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
           </div>
         </div>
       )}

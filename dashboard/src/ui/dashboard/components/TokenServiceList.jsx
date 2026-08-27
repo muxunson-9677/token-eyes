@@ -4,7 +4,8 @@ import { cn } from "../../../lib/cn";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { formatTokenCount } from "../../../lib/format";
 import {
-  isTokenPlanExpired,
+  tokenPlanStartValue,
+  tokenPlanValidityState,
   tokenPlanExpiryTimestamp as expiryTimestamp,
   tokenPlanExpiryValue,
 } from "../../../lib/token-plan-validity.js";
@@ -157,12 +158,14 @@ export function normalizeTokenServices(plans, now = new Date()) {
         || metrics[0]
         || { total: 0, used: 0, percentage: 0 };
       const labels = serviceLabels(plan);
+      const validityState = tokenPlanValidityState(plan, now);
       const effectiveExpiry = tokenPlanExpiryValue(plan);
       const verifiedExpiry = expiryTimestamp(effectiveExpiry);
       return {
         id: String(plan?.id || `${labels.provider}-${index}`),
         ...labels,
         unit: String(plan?.quota_unit || "tokens"),
+        startsAt: tokenPlanStartValue(plan),
         expiresAt: effectiveExpiry,
         notes: String(plan?.notes || "").trim(),
         accountLabel: authorizedAccountLabel(plan),
@@ -172,12 +175,14 @@ export function normalizeTokenServices(plans, now = new Date()) {
         metrics,
         ...primaryMetric,
         configured: isConfiguredService(plan, primaryMetric.total),
-        expired: isTokenPlanExpired(plan, now),
+        validityState,
+        expired: validityState === "expired",
+        scheduled: validityState === "scheduled",
         hasVerifiedFutureExpiry: verifiedExpiry !== null && verifiedExpiry > now.getTime(),
       };
     })
     .filter((service) => {
-      if (service.expired) return true;
+      if (service.expired || service.scheduled) return true;
       // A saved plan is part of the user's Token service list. A temporary
       // refresh/auth failure must not make the whole service disappear.
       if (service.metrics.length === 0) return true;
@@ -277,6 +282,64 @@ function syncStatusLabel(status) {
   return copy(`settings.token_plan.sync_status.${normalized || "not_configured"}`);
 }
 
+function InactiveTokenServiceGroup({ kind, services, open, onToggle }) {
+  if (services.length === 0) return null;
+  const scheduled = kind === "scheduled";
+  const groupId = `${kind}-token-service-cards`;
+  const dateKey = scheduled ? "settings.token_plan.starts_at" : "settings.token_plan.expired_at";
+  return (
+    <section
+      data-testid={`${kind}-token-services`}
+      className="mt-2 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800"
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={groupId}
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-oai-gray-600 hover:bg-oai-gray-50 dark:text-oai-gray-300 dark:hover:bg-oai-gray-900/60"
+      >
+        <span>{copy(`settings.token_plan.${kind}_group`, { count: services.length })}</span>
+        {open
+          ? <ChevronUp className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />
+          : <ChevronDown className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />}
+      </button>
+      {open ? (
+        <ol
+          id={groupId}
+          data-testid={groupId}
+          className="space-y-1.5 border-t border-oai-gray-100 p-2 dark:border-oai-gray-800"
+        >
+          {services.map((service) => {
+            const boundary = scheduled ? service.startsAt : service.expiresAt;
+            return (
+              <li
+                key={service.id}
+                data-testid={`${kind}-token-service-row`}
+                className="flex min-w-0 items-center gap-2 rounded-md bg-oai-gray-50 px-2 py-1.5 dark:bg-oai-gray-900/60"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-oai-gray-500 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-900 dark:text-oai-gray-400 dark:ring-oai-gray-700">
+                  <ProviderIcon provider={service.providerId} size={14} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
+                    {[service.provider, service.planLabel].filter(Boolean).join(" · ")}
+                  </span>
+                  {boundary ? (
+                    <span className="mt-0.5 block text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
+                      {copy(dateKey)} {formatDateTime(boundary, true)}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+    </section>
+  );
+}
+
 export function TokenServiceList({
   plans = [],
   loading = false,
@@ -290,8 +353,10 @@ export function TokenServiceList({
 }) {
   const [page, setPage] = useState(1);
   const [expiredOpen, setExpiredOpen] = useState(false);
+  const [scheduledOpen, setScheduledOpen] = useState(false);
   const services = useMemo(() => normalizeTokenServices(plans, now), [plans, now]);
-  const activeServices = useMemo(() => services.filter((service) => !service.expired), [services]);
+  const activeServices = useMemo(() => services.filter((service) => service.validityState === "active"), [services]);
+  const scheduledServices = useMemo(() => services.filter((service) => service.scheduled), [services]);
   const expiredServices = useMemo(() => services.filter((service) => service.expired), [services]);
   const effectivePageSize = Math.max(1, Number(pageSize) || TOKEN_SERVICE_PAGE_SIZE);
   const pageCount = Math.max(1, Math.ceil(activeServices.length / effectivePageSize));
@@ -456,54 +521,19 @@ export function TokenServiceList({
         </ol>
       )}
 
-      {!loading && !error && expiredServices.length > 0 ? (
-        <section
-          data-testid="expired-token-services"
-          className="mt-2 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800"
-        >
-          <button
-            type="button"
-            aria-expanded={expiredOpen}
-            aria-controls="expired-token-service-cards"
-            onClick={() => setExpiredOpen((open) => !open)}
-            className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-oai-gray-600 hover:bg-oai-gray-50 dark:text-oai-gray-300 dark:hover:bg-oai-gray-900/60"
-          >
-            <span>{copy("settings.token_plan.expired_group", { count: expiredServices.length })}</span>
-            {expiredOpen
-              ? <ChevronUp className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />
-              : <ChevronDown className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden="true" />}
-          </button>
-          {expiredOpen ? (
-            <ol
-              id="expired-token-service-cards"
-              data-testid="expired-token-service-cards"
-              className="space-y-1.5 border-t border-oai-gray-100 p-2 dark:border-oai-gray-800"
-            >
-              {expiredServices.map((service) => (
-                <li
-                  key={service.id}
-                  data-testid="expired-token-service-row"
-                  className="flex min-w-0 items-center gap-2 rounded-md bg-oai-gray-50 px-2 py-1.5 dark:bg-oai-gray-900/60"
-                >
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-oai-gray-500 ring-1 ring-inset ring-oai-gray-200 dark:bg-oai-gray-900 dark:text-oai-gray-400 dark:ring-oai-gray-700">
-                    <ProviderIcon provider={service.providerId} size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
-                      {[service.provider, service.planLabel].filter(Boolean).join(" · ")}
-                    </span>
-                    {service.expiresAt ? (
-                      <span className="mt-0.5 block text-[10px] tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
-                        {copy("settings.token_plan.expired_at")} {formatDateTime(service.expiresAt, true)}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-        </section>
-      ) : null}
+      {!loading && !error ? <InactiveTokenServiceGroup
+        kind="scheduled"
+        services={scheduledServices}
+        open={scheduledOpen}
+        onToggle={() => setScheduledOpen((open) => !open)}
+      /> : null}
+
+      {!loading && !error ? <InactiveTokenServiceGroup
+        kind="expired"
+        services={expiredServices}
+        open={expiredOpen}
+        onToggle={() => setExpiredOpen((open) => !open)}
+      /> : null}
 
       {showPagination && (
         <div className="mt-auto flex items-center justify-end gap-1 border-t border-oai-gray-100 pt-2 dark:border-oai-gray-800">

@@ -16,6 +16,7 @@ import {
   getUsageBounds,
   getUsageSummary,
   getProviderStats,
+  getRecentApiProviderStats,
   getUsageAttribution,
   getLimitAccounts,
   getObservabilityExport,
@@ -60,6 +61,7 @@ vi.mock("../lib/api", () => ({
   setLocalSettings: vi.fn(),
   getUsageSummary: vi.fn(),
   getProviderStats: vi.fn(),
+  getRecentApiProviderStats: vi.fn(),
   getUsageAttribution: vi.fn(),
   getLimitAccounts: vi.fn(),
   getObservabilityExport: vi.fn(),
@@ -212,6 +214,7 @@ beforeEach(() => {
     },
   });
   getProviderStats.mockResolvedValue({ providers: [] });
+  getRecentApiProviderStats.mockResolvedValue({ providers: [] });
   getUsageAttribution.mockResolvedValue({ snapshots: [] });
   getLimitAccounts.mockResolvedValue({ accounts: [], forecasts: [] });
   getObservabilityExport.mockResolvedValue({ format: "json", content: "[]" });
@@ -343,7 +346,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     render(<SpendUsagePage />);
 
     await screen.findByText("真实消耗 Tokens");
-    expect(screen.getByTestId("usage-total-cost-summary")).toHaveTextContent("估算用量成本");
+    expect(screen.getByTestId("usage-total-cost-summary")).toHaveTextContent("API 标价等价价值");
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
   });
@@ -463,7 +466,8 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       await trendRequest.promise;
     });
 
-    await waitFor(() => expect(getProviderStats).toHaveBeenCalled());
+    await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
+    expect(getProviderStats).not.toHaveBeenCalled();
     await waitFor(() => expect(getModelStats).toHaveBeenCalled());
     await waitFor(() => expect(getTokenPlans).toHaveBeenCalled());
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
@@ -541,24 +545,32 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
   });
 
-  it("preloads provider/model detail tabs once and keeps their panels mounted for instant switching", async () => {
+  it("loads Provider/model details only when their tab becomes active", async () => {
     render(<SpendUsagePage />);
 
     await waitFor(() => expect(getRequestUsageRecords).toHaveBeenCalled());
-    await waitFor(() => expect(getProviderStats.mock.calls.length).toBeGreaterThanOrEqual(2));
-    await waitFor(() => expect(getModelStats.mock.calls.length).toBeGreaterThanOrEqual(2));
 
     expect(screen.getByTestId("usage-tabpanel-requests")).not.toHaveAttribute("hidden");
     expect(screen.getByTestId("usage-tabpanel-provider")).toHaveAttribute("hidden");
     expect(screen.getByTestId("usage-tabpanel-model")).toHaveAttribute("hidden");
 
-    const providerCalls = getProviderStats.mock.calls.length;
-    const modelCalls = getModelStats.mock.calls.length;
+    const initialProviderCalls = getProviderStats.mock.calls.length;
+    const initialModelCalls = getModelStats.mock.calls.length;
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Provider 统计" }));
-    await user.click(screen.getByRole("tab", { name: "模型统计" }));
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "Provider 统计" }));
+    });
+    await waitFor(() => expect(getProviderStats.mock.calls.length).toBeGreaterThan(initialProviderCalls));
+    const providerCalls = getProviderStats.mock.calls.length;
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "模型统计" }));
+    });
+    await waitFor(() => expect(getModelStats.mock.calls.length).toBeGreaterThan(initialModelCalls));
     expect(getProviderStats).toHaveBeenCalledTimes(providerCalls);
-    expect(getModelStats).toHaveBeenCalledTimes(modelCalls);
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "Provider 统计" }));
+    });
+    expect(getProviderStats).toHaveBeenCalledTimes(providerCalls);
   });
 
   it("renders UsageTrendChartCard", async () => {
@@ -635,10 +647,89 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(layout).toHaveClass("lg:items-stretch");
     expect(layout).toHaveClass("lg:grid-cols-4");
     expect((await within(layout).findByTestId("usage-trend-plot")).parentElement).toHaveClass("lg:col-span-3");
-    expect(within(layout).getByTestId("token-service-list")).toHaveClass("lg:col-span-1");
-    expect(within(layout).getByTestId("token-service-list")).toHaveClass("h-full");
+    expect(within(layout).getByTestId("token-service-mode-panel")).toHaveClass("lg:col-span-1");
+    expect(within(layout).getByTestId("token-service-mode-panel")).toHaveClass("h-full");
+    expect(within(layout).getByRole("button", { name: "订阅" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(layout).getByRole("button", { name: "API" })).toHaveAttribute("aria-pressed", "false");
     expect(await within(layout).findByTestId("usage-trend-plot")).toHaveClass("flex-1");
     expect(getTokenPlans).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches the same Token service panel between subscription and API content without stacking", async () => {
+    getSpendTimeseries.mockResolvedValue({
+      sources: ["codex"],
+      series: [{
+        bucket_start: "2026-08-27",
+        label: "08-27",
+        source: "codex",
+        input_tokens: 100,
+        output_tokens: 50,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cost_usd: 0.01,
+      }],
+      totals: { api_cost_usd: 0.01, api_cost_cny: 0.07, subscription_cost_usd: 0, subscription_cost_cny: 0, combined_usd: 0.01, combined_cny: 0.07 },
+      by_source: [],
+      bucket: "day",
+      from: "2026-08-27",
+      to: "2026-08-27",
+      timezone: { tz: "UTC", tz_offset_minutes: 0 },
+      currency: { base: "USD", usd_to_cny: 7.2 },
+    });
+    getRecentApiProviderStats.mockResolvedValue({
+      ok: true,
+      view: "recent_api_7d",
+      from: "2026-08-21",
+      to: "2026-08-27",
+      period: { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "UTC" },
+      totals_scope: "api_key_attributed_official_billed_cost_positive",
+      providers: [{
+        provider_id: "deepseek",
+        display_name: "DeepSeek",
+        account_label: "finance@company.com",
+        agents: [{ id: "hermes", display_name: "Hermes", tokens: 100, request_count: 1, cost_usd: 1 }],
+        models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 100, request_count: 1, cost_usd: 1 }],
+        period: { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "UTC" },
+        daily: Array.from({ length: 7 }, (_, index) => ({
+          date: `2026-08-${21 + index}`,
+          agents: [{ id: "hermes", display_name: "Hermes", tokens: 100, request_count: 1, cost_usd: 1 }],
+          models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 100, request_count: 1, cost_usd: 1 }],
+          tokens: 100,
+          request_count: 1,
+          request_count_basis: "request_event",
+          cost_usd: 1,
+        })),
+        balance: null,
+        request_count: 7,
+        request_count_basis: "request_event",
+        tokens: 700,
+        cost_usd: 7,
+        cost_basis: { authority: "official_invoice", accuracy: "exact" },
+        success_rate: 100,
+        avg_latency_ms: 100,
+        status_sample_count: 7,
+        success_rate_sample_count: 7,
+        latency_sample_count: 7,
+      }],
+      totals: {},
+    });
+
+    const user = userEvent.setup();
+    render(<SpendUsagePage />);
+    const panel = await screen.findByTestId("token-service-mode-panel");
+    expect(within(panel).getByTestId("token-service-list")).toBeInTheDocument();
+    expect(await screen.findByTestId("usage-trend-plot")).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "API" }));
+    expect(await within(panel).findByTestId("provider-api-card")).toBeInTheDocument();
+    expect(screen.getByTestId("token-service-mode-panel")).toBe(panel);
+    expect(within(panel).queryByTestId("token-service-row")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("usage-trend-plot")).not.toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "订阅" }));
+    expect(await within(panel).findByTestId("token-service-list")).toBeInTheDocument();
+    expect(await screen.findByTestId("usage-trend-plot")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("provider-api-card")).not.toBeInTheDocument();
   });
 
   it("provider tab renders ProviderUsageTable with hook data", async () => {
@@ -646,13 +737,16 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     getProviderStats.mockResolvedValue({
       providers: [
         {
-          source: "claude",
-          source_display_name: "Claude (Session)",
+          provider_id: "anthropic",
+          display_name: "Anthropic",
+          request_count_basis: "request_event",
           request_count: 10,
           tokens: 1000,
           cost_usd: 0.5,
           success_rate: 100,
           avg_latency_ms: 200,
+          success_rate_sample_count: 10,
+          latency_sample_count: 10,
         },
       ],
     });
@@ -662,7 +756,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await act(async () => {
       await user.click(providerTab);
     });
-    await waitFor(() => expect(screen.getByText("Claude (Session)")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument());
   });
 
   it("model tab renders ModelUsageTable with hook data", async () => {
@@ -718,6 +812,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(getSpendRecords).not.toHaveBeenCalled();
     expect(getUsageSummary).not.toHaveBeenCalled();
     expect(getProviderStats).not.toHaveBeenCalled();
+    expect(getRecentApiProviderStats).not.toHaveBeenCalled();
     expect(getModelStats).not.toHaveBeenCalled();
   });
 });

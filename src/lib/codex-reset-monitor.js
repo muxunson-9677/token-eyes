@@ -214,10 +214,59 @@ function listCodexResetHistory(state, { limit = null, nowMs = Date.now() } = {})
   return safeLimit === null ? history : history.slice(0, safeLimit);
 }
 
+function codexResetEventIdentity(event) {
+  if (event.type === "official_reset_announcement") {
+    const author = event.sourceAuthor ?? event.source_author;
+    const postId = event.sourcePostId ?? event.source_post_id;
+    if (
+      (author === "OpenAI" || author === "thsottiaux")
+      && typeof postId === "string"
+      && /^[0-9]+$/u.test(postId)
+    ) {
+      return `official-source:${author}:${postId}`;
+    }
+  }
+  return `event-id:${event.id}`;
+}
+
+function mergeDuplicateCodexResetEvent(first, duplicate) {
+  const merged = { ...first };
+  for (const [key, value] of Object.entries(duplicate)) {
+    if (merged[key] === undefined || merged[key] === null || merged[key] === "") {
+      merged[key] = value;
+    }
+  }
+  for (const key of ["title", "summary", "body"]) {
+    if (
+      typeof duplicate[key] === "string"
+      && duplicate[key].trim().length > String(merged[key] || "").trim().length
+    ) {
+      merged[key] = duplicate[key];
+    }
+  }
+  for (const key of ["deliveredChannels", "acknowledgedChannels"]) {
+    merged[key] = [...new Set([
+      ...(Array.isArray(first[key]) ? first[key] : []),
+      ...(Array.isArray(duplicate[key]) ? duplicate[key] : []),
+    ].filter((value) => typeof value === "string"))];
+  }
+  return merged;
+}
+
 function compactCodexResetEvents(events, { nowMs = Date.now() } = {}) {
-  const source = Array.isArray(events)
+  const input = Array.isArray(events)
     ? events.filter((event) => event && typeof event.id === "string")
     : [];
+  const deduplicatedByIdentity = new Map();
+  for (const event of input) {
+    const identity = codexResetEventIdentity(event);
+    const previous = deduplicatedByIdentity.get(identity);
+    deduplicatedByIdentity.set(
+      identity,
+      previous ? mergeDuplicateCodexResetEvent(previous, event) : event,
+    );
+  }
+  const source = [...deduplicatedByIdentity.values()];
   const actualIds = new Set(
     listCodexResetHistory({ events: source }, { nowMs }).map((event) => event.id),
   );
@@ -237,10 +286,38 @@ function compactCodexResetEvents(events, { nowMs = Date.now() } = {}) {
     ));
 }
 
+function remapCodexResetAcknowledgements(sourceEvents, compactedEvents, acknowledgedEventIds) {
+  const sourcesById = new Map(
+    (Array.isArray(sourceEvents) ? sourceEvents : [])
+      .filter((event) => event && typeof event.id === "string")
+      .map((event) => [event.id, event]),
+  );
+  const compacted = (Array.isArray(compactedEvents) ? compactedEvents : [])
+    .filter((event) => event && typeof event.id === "string");
+  const compactedIds = new Set(compacted.map((event) => event.id));
+  const compactedIdByIdentity = new Map(
+    compacted.map((event) => [codexResetEventIdentity(event), event.id]),
+  );
+  return (Array.isArray(acknowledgedEventIds) ? acknowledgedEventIds : [])
+    .filter((id) => typeof id === "string")
+    .map((id) => {
+      if (compactedIds.has(id)) return id;
+      const source = sourcesById.get(id);
+      return source
+        ? compactedIdByIdentity.get(codexResetEventIdentity(source)) || id
+        : id;
+    });
+}
+
 function capState(state, { nowMs = Date.now() } = {}) {
-  state.events = compactCodexResetEvents(state.events, { nowMs });
+  const sourceEvents = state.events;
+  state.events = compactCodexResetEvents(sourceEvents, { nowMs });
   state.acknowledgedEventIds =
-    [...new Set(state.acknowledgedEventIds)].slice(-ACKNOWLEDGEMENT_LIMIT);
+    [...new Set(remapCodexResetAcknowledgements(
+      sourceEvents,
+      state.events,
+      state.acknowledgedEventIds,
+    ))].slice(-ACKNOWLEDGEMENT_LIMIT);
   return state;
 }
 
@@ -467,4 +544,5 @@ module.exports = {
   listUnreadCodexResetEvents,
   mergeCodexResetSnapshots,
   normalizeCodexResetSnapshot,
+  remapCodexResetAcknowledgements,
 };

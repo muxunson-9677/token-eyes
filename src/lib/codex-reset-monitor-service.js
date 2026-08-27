@@ -7,6 +7,7 @@ const {
   listCodexResetHistory,
   listUnreadCodexResetEvents,
   mergeCodexResetSnapshots,
+  remapCodexResetAcknowledgements,
 } = require("./codex-reset-monitor");
 const {
   isConfirmedResetAnnouncement,
@@ -75,6 +76,8 @@ function initializeState(value, { nowMs = Date.now() } = {}) {
   const base = emptyState();
   if (!value || typeof value !== "object" || Array.isArray(value)) return base;
   const feed = value.feed && typeof value.feed === "object" ? value.feed : null;
+  const sourceEvents = Array.isArray(value.events) ? value.events : [];
+  const events = materializeOfficialFeedEvents(sourceEvents, feed?.announcements, { nowMs });
   return {
     ...base,
     ...value,
@@ -88,10 +91,12 @@ function initializeState(value, { nowMs = Date.now() } = {}) {
       value.restoreCandidates && typeof value.restoreCandidates === "object"
         ? value.restoreCandidates
         : {},
-    events: materializeOfficialFeedEvents(value.events, feed?.announcements, { nowMs }),
-    acknowledgedEventIds: Array.isArray(value.acknowledgedEventIds)
-      ? value.acknowledgedEventIds
-      : [],
+    events,
+    acknowledgedEventIds: remapCodexResetAcknowledgements(
+      sourceEvents,
+      events,
+      value.acknowledgedEventIds,
+    ),
     rolloutCursor: value.rolloutCursor?.files
       ? value.rolloutCursor
       : { files: {} },

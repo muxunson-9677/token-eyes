@@ -17,6 +17,7 @@ describe("appendConnectedTokenOnlySources", () => {
 
     expect(fleet.map((entry) => entry.source)).toEqual(["trae", "codebuddy"]);
     expect(fleet.every((entry) => entry.usage === 0)).toBe(true);
+    expect(fleet.every((entry) => entry.usd === null)).toBe(true);
     expect(fleet.every((entry) => entry.collectionStatus === "connected_no_precise_tokens")).toBe(true);
   });
 
@@ -25,6 +26,21 @@ describe("appendConnectedTokenOnlySources", () => {
     expect(appendConnectedTokenOnlySources(measured, {
       trae: { configured: true, total_tokens: 0, collection_status: "connected_no_precise_tokens" },
     })).toEqual(measured);
+  });
+});
+
+describe("buildFleetData cost availability", () => {
+  it("preserves missing source and model costs instead of converting them to zero", () => {
+    const [source] = buildFleetData({
+      sources: [{
+        source: "trae",
+        totals: { total_tokens: 42, total_cost_usd: null },
+        models: [{ model: "trae-model", totals: { total_tokens: 42, total_cost_usd: null } }],
+      }],
+    });
+
+    expect(source.usd).toBeNull();
+    expect(source.models[0].cost).toBeNull();
   });
 });
 

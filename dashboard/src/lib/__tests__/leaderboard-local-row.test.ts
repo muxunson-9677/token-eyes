@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLocalLeaderboardRow,
-  buildLocalLeaderboardRowFromProviderStats,
   getLeaderboardPeriodDateRange,
 } from "../leaderboard-local-row";
 
@@ -119,54 +118,5 @@ describe("buildLocalLeaderboardRow", () => {
       from: "1970-01-01",
       to: "2026-07-22",
     });
-  });
-});
-
-describe("buildLocalLeaderboardRowFromProviderStats", () => {
-  const response = {
-    ok: true,
-    providers: [
-      { source: "codex", tokens: 4_095_739_286 },
-      { source: "hermes", tokens: 1_448_997_827 },
-      { source: "cursor", tokens: 1_077_272_972 },
-      { source: "claude", tokens: 413_374_695 },
-    ],
-    totals: { total_tokens: 7_035_384_780 },
-  };
-
-  it("uses the same provider totals returned by local usage statistics", () => {
-    const row = buildLocalLeaderboardRowFromProviderStats(response, {
-      period: "total",
-      source: "all",
-      userId: "user-1",
-      estimatedCostUsd: 123.45,
-      actualCostUsd: 67.89,
-    });
-
-    expect(row).toMatchObject({
-      gpt_tokens: "4095739286",
-      hermes_tokens: "1448997827",
-      cursor_tokens: "1077272972",
-      claude_tokens: "413374695",
-      total_tokens: "7035384780",
-      estimated_cost_usd: 123.45,
-      actual_cost_usd: 67.89,
-    });
-  });
-
-  it("never invents a provider that is absent from local provider stats", () => {
-    const row = buildLocalLeaderboardRowFromProviderStats(response, {
-      period: "total",
-      source: "all",
-      userId: "user-1",
-    });
-
-    expect(row.openclaw_tokens).toBe("0");
-    expect(row.source_breakdown.map((entry) => entry.source)).toEqual([
-      "codex",
-      "hermes",
-      "cursor",
-      "claude",
-    ]);
   });
 });

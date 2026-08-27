@@ -29,9 +29,10 @@ import {
 import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
 import { getCumulativeYesterdayComparison } from "../lib/leaderboard-summary-details.js";
 import {
-  buildLocalLeaderboardRowFromProviderStats,
+  buildLocalLeaderboardRow,
   getLeaderboardPeriodDateRange,
 } from "../lib/leaderboard-local-row";
+import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
 import { getLeaderboardSyncState } from "../lib/leaderboard-sync-state";
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
@@ -42,7 +43,7 @@ import {
   getLeaderboardProfile,
   getLocalLeaderboardActualCost,
   getMyLeaderboardRank,
-  getProviderStats,
+  getUsageSummary,
 } from "../lib/api";
 import {
   clearLeaderboardPreloadState,
@@ -840,16 +841,21 @@ export function LeaderboardPage({
       const requestedSources = effectiveSource === "all" || effectiveSource === "other"
         ? undefined
         : [effectiveSource];
-      const providerStats = await getProviderStats({
-        ...range,
-        sources: requestedSources,
-        timeZone: "Asia/Shanghai",
-      });
-      const estimatedCostUsd = (Array.isArray(providerStats?.providers) ? providerStats.providers : [])
-        .reduce((total, row) => {
-          const cost = Number(row?.cost_usd);
-          return total + (Number.isFinite(cost) && cost > 0 ? cost : 0);
-        }, 0);
+      const localState = await getLocalLeaderboardState();
+      let estimatedCostUsd = null;
+      if (effectiveSource !== "other") {
+        try {
+          const usageSummary = await getUsageSummary({
+            ...range,
+            sources: requestedSources,
+            timeZone: "Asia/Shanghai",
+          });
+          const cost = Number(usageSummary?.totals?.cost_usd);
+          estimatedCostUsd = Number.isFinite(cost) && cost >= 0 ? cost : null;
+        } catch {
+          // Token totals come from compact local state; cost is optional.
+        }
+      }
 
       let actualCostUsd = null;
       const shareActualCost = getLeaderboardSyncState(pageAccountId).shareActualCost === true;
@@ -865,7 +871,7 @@ export function LeaderboardPage({
       const metadata = cloudUser?.user_metadata && typeof cloudUser.user_metadata === "object"
         ? cloudUser.user_metadata
         : {};
-      const localRow = buildLocalLeaderboardRowFromProviderStats(providerStats, {
+      const localRow = buildLocalLeaderboardRow(localState, {
         period,
         source: effectiveSource,
         userId: pageAccountId,

@@ -1,6 +1,10 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+const overviewStyles = readFileSync(resolve("src/ui/foundation/apple-glass.css"), "utf8");
 
 // The zoom modal pulls in use-trend-data (a .ts hook imported with a .js
 // specifier) which vitest's resolver can't follow the way the Vite build does.
@@ -44,6 +48,26 @@ describe("TrendMonitor", () => {
     render(<TrendMonitor rows={[]} />);
 
     expect(screen.getByTestId("trend-granularity")).toHaveTextContent("天");
+  });
+
+  it("centers the day label, arrow, and maximize button in one control block", () => {
+    render(<TrendMonitor rows={[]} zoomConfig={{ baseUrl: "http://localhost" }} />);
+
+    const controls = screen.getByTestId("trend-header-controls");
+    const granularity = screen.getByTestId("trend-granularity");
+    const maximize = screen.getByTestId("trend-maximize");
+
+    expect(controls).toHaveClass("items-center");
+    expect(granularity).toHaveClass("tt-trend-control");
+    expect(maximize).toHaveClass("tt-trend-control");
+    expect(granularity.querySelector(".lucide-chevron-down")).not.toBeNull();
+    expect(overviewStyles).toMatch(
+      /\/\* OV-06 trend-control centering contract \*\/[\s\S]*?\.tt-overview-trend \.tt-trend-control \{[\s\S]*?width: 40px;[\s\S]*?height: 40px;[\s\S]*?align-items: center;[\s\S]*?justify-content: center;/,
+    );
+    expect(overviewStyles).toMatch(
+      /\.tt-overview-trend > div:first-child button \{\s*width: 40px;\s*min-width: 40px;\s*height: 40px;\s*min-height: 40px;/,
+    );
+    expect(overviewStyles).not.toMatch(/\.tt-trend-granularity::after/);
   });
 
   it("opens the real granularity picker when the granularity control is clicked", () => {

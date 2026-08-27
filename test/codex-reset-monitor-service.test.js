@@ -384,6 +384,42 @@ test("startup removes an orphaned scheduled X event even without cached feed met
   );
 });
 
+test("startup keeps a previously acknowledged duplicate official post read after id compaction", () => {
+  const sourcePost = {
+    type: "official_reset_announcement",
+    createdAt: new Date(BASE - 60_000).toISOString(),
+    occurredAt: new Date(BASE - 60_000).toISOString(),
+    expiresAt: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+    officialUrl: "https://chatgpt.com/codex",
+    sourceUrl: "https://x.com/thsottiaux/status/2091688655828246890",
+    sourceAuthor: "thsottiaux",
+    sourcePostId: "2091688655828246890",
+    summary: "Reset has been propagated to accounts.",
+    body: "Reset has been propagated to accounts.",
+    source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    acknowledgedChannels: [],
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [
+        { ...sourcePost, id: "official:first" },
+        { ...sourcePost, id: "official:replacement" },
+      ],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: ["official:replacement"],
+      feed: null,
+    }),
+  });
+
+  assert.deepEqual(h.service.listHistory().map((event) => event.id), ["official:first"]);
+  assert.deepEqual(h.service.listUnread(), []);
+  assert.deepEqual(h.service.listNotificationPending(), []);
+});
+
 test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {
   const keys = crypto.generateKeyPairSync("ed25519");
   let quotaReads = 0;

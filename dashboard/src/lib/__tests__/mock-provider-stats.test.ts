@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { getMockProviderStats } from "../mock-data";
 
 describe("mock Provider stats contract", () => {
-  it("matches the seven-day true-Provider API schema", () => {
+  it("matches the selected-range true-Provider schema", () => {
     const response = getMockProviderStats({
       from: "2026-08-21",
       to: "2026-08-27",
       seed: "provider-contract",
+      view: "range",
     });
 
     expect(response.period).toEqual({
@@ -16,7 +17,8 @@ describe("mock Provider stats contract", () => {
       days: 7,
       time_zone: "UTC",
     });
-    expect(response.totals_scope).toBe("api_key_attributed_cost_positive");
+    expect(response.view).toBe("range");
+    expect(response.totals_scope).toBe("all_provider_attributed");
     expect(response.providers.length).toBeGreaterThan(0);
     for (const provider of response.providers) {
       expect(provider.provider_id).toBeTruthy();
@@ -46,5 +48,24 @@ describe("mock Provider stats contract", () => {
       expect(provider).not.toHaveProperty("source");
       expect(provider).not.toHaveProperty("source_display_name");
     }
+  });
+
+  it("uses an isolated current seven-day scope for API Provider cards", () => {
+    const response = getMockProviderStats({
+      from: "2020-01-01",
+      to: "2030-12-31",
+      seed: "recent-provider-contract",
+      view: "recent_api_7d",
+    });
+
+    expect(response.view).toBe("recent_api_7d");
+    expect(response.period.days).toBe(7);
+    expect(response.period.from).not.toBe("2020-01-01");
+    expect(response.period.to).not.toBe("2030-12-31");
+    expect(response.totals_scope).toBe("api_key_attributed_official_billed_cost_positive");
+    expect(response.providers.every((provider) => (
+      provider.cost_basis.authority === "official_invoice"
+      && provider.cost_basis.accuracy === "exact"
+    ))).toBe(true);
   });
 });

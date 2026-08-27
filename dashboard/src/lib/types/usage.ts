@@ -222,10 +222,15 @@ export interface UsageSummaryResponse {
 
 export type ProviderRequestCountBasis = "request_event" | "unavailable";
 
-export interface ProviderCostBasis {
-  authority: "local_list_price_estimate";
-  accuracy: Extract<EvidenceAccuracy, "estimated">;
-}
+export type ProviderCostBasis =
+  | {
+    authority: "local_list_price_estimate";
+    accuracy: Extract<EvidenceAccuracy, "estimated">;
+  }
+  | {
+    authority: "official_invoice";
+    accuracy: Extract<EvidenceAccuracy, "exact">;
+  };
 
 export interface ProviderBreakdown {
   id: string;
@@ -304,12 +309,13 @@ export interface ProviderStatsTotals extends TokenTotals, PricingCoverageFields 
 
 export interface ProviderStatsResponse {
   ok: boolean;
+  view: "range" | "recent_api_7d";
   from: string;
   to: string;
   requested_from?: string | null;
   requested_to?: string | null;
   period: ProviderPeriod;
-  totals_scope: "api_key_attributed_cost_positive";
+  totals_scope: "all_provider_attributed" | "api_key_attributed_official_billed_cost_positive";
   providers: ProviderStat[];
   totals: ProviderStatsTotals;
   scope?: string;

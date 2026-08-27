@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  isTokenPlanActive,
   isTokenPlanExpired,
+  isTokenPlanScheduled,
+  tokenPlanStartTimestamp,
+  tokenPlanValidityState,
   tokenPlanExpiryTimestamp,
   tokenPlanExpiryValue,
 } from "./token-plan-validity.js";
@@ -132,5 +136,35 @@ describe("isTokenPlanExpired", () => {
     { expires_at: "invalid" },
   ])("returns false when the record has no valid expiry: %s", (record) => {
     expect(isTokenPlanExpired(record, Date.now())).toBe(false);
+  });
+});
+
+describe("token plan three-state validity", () => {
+  it("treats a date-only start as local start-of-day", () => {
+    expect(tokenPlanStartTimestamp("2026-08-27"))
+      .toBe(new Date(2026, 7, 27, 0, 0, 0, 0).getTime());
+  });
+
+  it("keeps a future subscription out of both active and expired states", () => {
+    const record = {
+      subscription_start_date: "2026-09-01",
+      subscription_end_date: "2026-09-30",
+    };
+    const now = new Date(2026, 7, 27, 12, 0, 0, 0);
+
+    expect(tokenPlanValidityState(record, now)).toBe("scheduled");
+    expect(isTokenPlanScheduled(record, now)).toBe(true);
+    expect(isTokenPlanActive(record, now)).toBe(false);
+    expect(isTokenPlanExpired(record, now)).toBe(false);
+  });
+
+  it("activates at the exact start boundary and expires only after the end boundary", () => {
+    const record = {
+      subscription_start_date: "2026-09-01T00:00:00.000Z",
+      subscription_end_date: "2026-09-30T00:00:00.000Z",
+    };
+    expect(tokenPlanValidityState(record, Date.parse(record.subscription_start_date))).toBe("active");
+    expect(tokenPlanValidityState(record, Date.parse(record.subscription_end_date))).toBe("active");
+    expect(tokenPlanValidityState(record, Date.parse(record.subscription_end_date) + 1)).toBe("expired");
   });
 });

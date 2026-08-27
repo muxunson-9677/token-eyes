@@ -23,7 +23,7 @@ function pricingLabel(value) {
 export function ValueRealtimeEvidence({ evidence, className = "", title = copy("value_realtime.evidence.title") }) {
   const pricing = evidence?.pricing || null;
   return <details className={`vr-evidence-details ${className}`.trim()}>
-    <summary><span className="vr-detail-icon vr-detail-icon--violet"><CircleHelp data-detail-icon="evidence" size={15} /></span>{title}</summary>
+    <summary className="tt-pressable tt-product-focusable"><span className="vr-detail-icon vr-detail-icon--violet"><CircleHelp data-detail-icon="evidence" size={15} /></span>{title}</summary>
     <div className="vr-evidence-details__body">
       <dl>
         <div><dt>{copy("value_realtime.evidence.source")}</dt><dd>{sourceLabel(evidence?.source_kind)}</dd></div>

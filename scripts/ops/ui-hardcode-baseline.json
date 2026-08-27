@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-18T16:24:31.520Z",
+  "generatedAt": "2026-08-27T11:06:35.841Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -9,7 +9,7 @@
   "totals": {
     "colors": 338,
     "radii": 5,
-    "rawText": 257
+    "rawText": 262
   },
   "files": {
     "dashboard/src/App.routes.test.jsx": {
@@ -233,13 +233,20 @@
         "; return"
       ]
     },
+    "dashboard/src/pages/RealtimeSessionsPage.jsx": {
+      "colors": 0,
+      "radii": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "node?.session_id === focus.session_id) : []; return"
+      ]
+    },
     "dashboard/src/pages/ResetHistoryPage.tsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 3,
+      "rawText": 1,
       "rawTextTokens": [
-        "0 ? (",
-        "Date.parse(right.occurred_at) - Date.parse(left.occurred_at)); const indexByUrl = new Map"
+        "0 ? ("
       ]
     },
     "dashboard/src/pages/SettingsPage.jsx": {
@@ -480,7 +487,7 @@
     "dashboard/src/ui/dashboard/components/CostAccumulation.jsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 9,
+      "rawText": 8,
       "rawTextTokens": [
         ") : accounts.length === 0 ? (",
         ") : packages.length === 0 ? (",
@@ -534,6 +541,25 @@
       "rawText": 0,
       "rawTextTokens": []
     },
+    "dashboard/src/ui/dashboard/components/ProjectUsagePanel.jsx": {
+      "colors": 0,
+      "radii": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : embedded ? (",
+        "); return (",
+        "; return embedded ?"
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/ProviderApiServiceList.jsx": {
+      "colors": 0,
+      "radii": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "0 ? (",
+        "chartGeometry(daily), [daily]); const [activeIndex, setActiveIndex] = useState(null); const activeDay = activeIndex == null ? null : daily[activeIndex]; return ("
+      ]
+    },
     "dashboard/src/ui/dashboard/components/ProviderIcon.jsx": {
       "colors": 2,
       "radii": 0,
@@ -572,12 +598,13 @@
     "dashboard/src/ui/dashboard/components/TokenServiceList.jsx": {
       "colors": 0,
       "radii": 0,
-      "rawText": 4,
+      "rawText": 5,
       "rawTextTokens": [
         ") : error ? (",
         ") : pageRows.length === 0 ? (",
         "0 && (",
-        "0 && (service.used"
+        "0 && (service.used",
+        "0 ? ("
       ]
     },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
@@ -655,7 +682,7 @@
       "radii": 0,
       "rawText": 1,
       "rawTextTokens": [
-        "0.5 // Click again to toggle to asc fireEvent.click(screen.getByText(\"Cost\")); rows = container.querySelectorAll(\"tbody tr\"); expect(rows[0].textContent).toContain(\"Claude\"); // cost 0.5"
+        "0.5 // Click again to toggle to asc fireEvent.click(screen.getByText(\"Cost\")); rows = container.querySelectorAll(\"tbody tr\"); expect(rows[0].textContent).toContain(\"Anthropic\"); // cost 0.5"
       ]
     },
     "dashboard/src/ui/dashboard/components/__tests__/TrendMonitor.test.jsx": {
@@ -680,6 +707,14 @@
       "rawText": 1,
       "rawTextTokens": [
         "render("
+      ]
+    },
+    "dashboard/src/ui/dashboard/components/__tests__/UsageOverview.test.jsx": {
+      "colors": 0,
+      "radii": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "[\"gemini\", \"hermes\"].includes(agent.id)); render("
       ]
     },
     "dashboard/src/ui/dashboard/components/__tests__/UsageStatsPanel.test.jsx": {
