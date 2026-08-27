@@ -8378,6 +8378,7 @@ function createLocalApiHandler({
       const pricingOptions = getPricingOptions(trackerConfig);
       const resolveBillingMode = createConfiguredTokenPlanResolver(
         configuredPlanAttribution(trackerConfig).plans,
+        timeZoneContext,
       );
       const requestedSources = new Set(
         url.searchParams.getAll("source")

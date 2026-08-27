@@ -196,7 +196,73 @@ function firstTimestampValue(...values) {
   return values.find(hasTimestampValue);
 }
 
-function parseAttributionTimestamp(value, { endOfDate = false } = {}) {
+function dateOnlyTimestamp(text, { endOfDate = false, timeZone = null, offsetMinutes = null } = {}) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return Number.NaN;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = endOfDate ? 23 : 0;
+  const minute = endOfDate ? 59 : 0;
+  const second = endOfDate ? 59 : 0;
+  const millisecond = endOfDate ? 999 : 0;
+  const targetSecond = Date.UTC(year, month - 1, day, hour, minute, second, 0);
+  const calendar = new Date(Date.UTC(year, month - 1, day));
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) {
+    return Number.NaN;
+  }
+
+  if (timeZone && typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+    try {
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        calendar: "iso8601",
+        numberingSystem: "latn",
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      let candidate = targetSecond;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const parts = Object.fromEntries(
+          formatter.formatToParts(new Date(candidate))
+            .filter((part) => part.type !== "literal")
+            .map((part) => [part.type, part.value]),
+        );
+        const displayed = Date.UTC(
+          Number(parts.year),
+          Number(parts.month) - 1,
+          Number(parts.day),
+          Number(parts.hour),
+          Number(parts.minute),
+          Number(parts.second),
+          0,
+        );
+        if (!Number.isFinite(displayed)) break;
+        const correction = targetSecond - displayed;
+        candidate += correction;
+        if (correction === 0) return candidate + millisecond;
+      }
+    } catch (_error) {
+      // Invalid or unsupported IANA zones fall back to the explicit offset.
+    }
+  }
+
+  if (Number.isFinite(Number(offsetMinutes))) {
+    return targetSecond - Number(offsetMinutes) * 60_000 + millisecond;
+  }
+  return targetSecond + millisecond;
+}
+
+function parseAttributionTimestamp(value, {
+  endOfDate = false,
+  timeZone = null,
+  offsetMinutes = null,
+} = {}) {
   if (!hasTimestampValue(value)) return null;
   if (value instanceof Date) {
     const timestamp = value.getTime();
@@ -213,14 +279,25 @@ function parseAttributionTimestamp(value, { endOfDate = false } = {}) {
     if (!Number.isFinite(timestamp)) return Number.NaN;
     return Math.abs(timestamp) < 1e12 ? timestamp * 1000 : timestamp;
   }
-  const dateTime = /^\d{4}-\d{2}-\d{2}$/.test(text)
-    ? `${text}${endOfDate ? "T23:59:59.999Z" : "T00:00:00.000Z"}`
-    : text;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return dateOnlyTimestamp(text, { endOfDate, timeZone, offsetMinutes });
+  }
+  const dateTime = text;
   const timestamp = Date.parse(dateTime);
   return Number.isFinite(timestamp) ? timestamp : Number.NaN;
 }
 
-function createConfiguredTokenPlanResolver(configuredPlans) {
+function createConfiguredTokenPlanResolver(configuredPlans, timeZoneContext = {}) {
+  const configuredOffsetMinutes = timeZoneContext?.offsetMinutes;
+  const timestampContext = {
+    timeZone: typeof timeZoneContext?.timeZone === "string" ? timeZoneContext.timeZone : null,
+    offsetMinutes: configuredOffsetMinutes !== null
+      && configuredOffsetMinutes !== undefined
+      && configuredOffsetMinutes !== ""
+      && Number.isFinite(Number(configuredOffsetMinutes))
+      ? Number(configuredOffsetMinutes)
+      : null,
+  };
   const plansByIdentity = new Map();
   for (const plan of Array.isArray(configuredPlans) ? configuredPlans : []) {
     const source = normalizeAttributionIdentity(plan?.source);
@@ -230,10 +307,11 @@ function createConfiguredTokenPlanResolver(configuredPlans) {
     const matches = plansByIdentity.get(key) || [];
     const startedAt = parseAttributionTimestamp(
       firstTimestampValue(plan?.started_at, plan?.subscription_start_date),
+      timestampContext,
     );
     const expiresAt = parseAttributionTimestamp(
       firstTimestampValue(plan?.subscription_end_date, plan?.expires_at),
-      { endOfDate: true },
+      { ...timestampContext, endOfDate: true },
     );
     matches.push({
       plan_ref: isAllowedEvidenceReference("plan_ref", plan?.plan_ref)
@@ -264,7 +342,7 @@ function createConfiguredTokenPlanResolver(configuredPlans) {
       evidence.occurred_at,
       evidence.timestamp,
       evidence.hour_start,
-    ));
+    ), timestampContext);
     const identityMatches = source && providerId
       ? plansByIdentity.get(`${source}\u0000${providerId}`) || []
       : [];

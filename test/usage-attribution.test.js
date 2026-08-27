@@ -144,6 +144,46 @@ test("configured Token Plan resolver matches only usage inside the plan window",
   assert.equal(resolve({ ...receipt, occurred_at: "2026-09-01T00:00:00.000Z" }).billing_mode, "api_key");
 });
 
+test("configured Token Plan date-only windows use the requested local calendar day", () => {
+  const resolve = createConfiguredTokenPlanResolver([{
+    source: "hermes",
+    provider_id: "xiaomi_mimo",
+    subscription_start_date: "2026-08-01",
+    subscription_end_date: "2026-08-31",
+  }], { timeZone: "Asia/Shanghai", offsetMinutes: 480 });
+  const receipt = {
+    source: "hermes",
+    provider_id: "xiaomi_mimo",
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+  };
+
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-07-31T15:59:59.999Z" }).billing_mode, "api_key");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-07-31T16:00:00.000Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-08-31T15:59:59.999Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-08-31T16:00:00.000Z" }).billing_mode, "api_key");
+});
+
+test("configured Token Plan local dates honor an IANA daylight-saving transition", () => {
+  const resolve = createConfiguredTokenPlanResolver([{
+    source: "hermes",
+    provider_id: "deepseek",
+    subscription_start_date: "2026-03-08",
+    subscription_end_date: "2026-03-08",
+  }], { timeZone: "America/New_York", offsetMinutes: -300 });
+  const receipt = {
+    source: "hermes",
+    provider_id: "deepseek",
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+  };
+
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-03-08T04:59:59.999Z" }).billing_mode, "api_key");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-03-08T05:00:00.000Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-03-09T03:59:59.999Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-03-09T04:00:00.000Z" }).billing_mode, "api_key");
+});
+
 test("configured Token Plan resolver does not invent a time match without usage occurrence", () => {
   const resolve = createConfiguredTokenPlanResolver([
     {
