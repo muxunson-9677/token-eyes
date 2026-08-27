@@ -230,6 +230,18 @@ describe("SettingsCostPage (v2.0 IA split)", () => {
     expect(screen.getByText("copy:settings.cost.page.title")).toBeInTheDocument();
   });
 
+  it("does not expose inert import, export, or validation actions", () => {
+    render(
+      <MemoryRouter>
+        <SettingsCostPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("button", { name: "copy:settings.reference.import" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "copy:settings.reference.export" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "copy:settings.reference.validate" })).not.toBeInTheDocument();
+  });
+
   it("leaves a documented insertion point for ProviderApiConfigSection (work order 03)", () => {
     const { container } = render(
       <MemoryRouter>

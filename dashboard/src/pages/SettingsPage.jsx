@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleCheck, Download, Shield, Upload } from "lucide-react";
+import { Shield } from "lucide-react";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
 import { AgentPricingSection } from "../components/settings/AgentPricingSection.jsx";
 import { CostSettingsOverview } from "../components/settings/CostSettingsOverview.jsx";
@@ -128,11 +128,6 @@ export function SettingsCostPage() {
               <p>
                 {copy("settings.cost.page.subtitle")}
               </p>
-            </div>
-            <div className="tt-settings-cost-actions">
-              <button type="button"><Upload aria-hidden="true" />{copy("settings.reference.import")}</button>
-              <button type="button"><Download aria-hidden="true" />{copy("settings.reference.export")}</button>
-              <button type="button"><CircleCheck aria-hidden="true" />{copy("settings.reference.validate")}</button>
             </div>
           </div>
 
