@@ -1402,6 +1402,7 @@ function createProviderBreakdownEntry(id, displayName) {
     display_name: displayName,
     tokens: 0,
     request_count: null,
+    requestCountUnavailable: false,
     cost_usd: 0,
   };
 }
@@ -1410,7 +1411,8 @@ function addProviderBreakdown(map, id, displayName, row, rowCost, requestCount) 
   if (!map.has(id)) map.set(id, createProviderBreakdownEntry(id, displayName));
   const entry = map.get(id);
   entry.tokens += Math.max(0, Number(row.total_tokens || 0));
-  if (requestCount !== null) entry.request_count = Number(entry.request_count || 0) + requestCount;
+  if (requestCount === null) entry.requestCountUnavailable = true;
+  else entry.request_count = Number(entry.request_count || 0) + requestCount;
   entry.cost_usd += rowCost;
 }
 
@@ -1427,7 +1429,14 @@ function providerCostBasis() {
 
 function finalizeProviderBreakdown(map) {
   return Array.from(map.values())
-    .map((entry) => ({ ...entry, cost_usd: roundProviderMoney(entry.cost_usd) }))
+    .map((entry) => {
+      const { requestCountUnavailable, ...result } = entry;
+      return {
+        ...result,
+        request_count: requestCountUnavailable ? null : entry.request_count,
+        cost_usd: roundProviderMoney(entry.cost_usd),
+      };
+    })
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -1438,8 +1447,8 @@ function providerRequestFact(row) {
   return { count: null, basis: null };
 }
 
-function providerRequestBasis(bases) {
-  return bases.has("request_event") ? "request_event" : "unavailable";
+function providerRequestBasis(bases, requestCountUnavailable = false) {
+  return !requestCountUnavailable && bases.has("request_event") ? "request_event" : "unavailable";
 }
 
 function providerPricingCoverage(pricedTokens, unpricedTokens) {
@@ -1480,8 +1489,8 @@ function finalizeProviderDay(day, period) {
     agents: finalizeProviderBreakdown(day.agentMap),
     models: finalizeProviderBreakdown(day.modelMap),
     tokens: day.tokens,
-    request_count: day.request_count,
-    request_count_basis: providerRequestBasis(day.requestBases),
+    request_count: day.requestCountUnavailable ? null : day.request_count,
+    request_count_basis: providerRequestBasis(day.requestBases, day.requestCountUnavailable),
     cost_usd: roundProviderMoney(day.cost_usd),
     cost_basis: providerCostBasis(),
     period,
@@ -1532,11 +1541,13 @@ function aggregateByProvider(rows, options = {}) {
           modelMap: new Map(),
           tokens: 0,
           request_count: null,
+          requestCountUnavailable: false,
           requestBases: new Set(),
           cost_usd: 0,
         }])),
         requestBases: new Set(),
         request_count: null,
+        requestCountUnavailable: false,
         conversation_count: 0,
         tokens: 0,
         cost_usd: 0,
@@ -1562,7 +1573,7 @@ function aggregateByProvider(rows, options = {}) {
     if (requestFact.count !== null) {
       acc.request_count = Number(acc.request_count || 0) + requestFact.count;
       acc.requestBases.add(requestFact.basis);
-    }
+    } else acc.requestCountUnavailable = true;
     acc.conversation_count += Number(row.conversation_count || 0);
     acc.tokens += Number(row.total_tokens || 0);
     const rowCost = computeRowCostDetailed(row, pricingOptions);
@@ -1586,7 +1597,7 @@ function aggregateByProvider(rows, options = {}) {
     if (requestFact.count !== null) {
       day.request_count = Number(day.request_count || 0) + requestFact.count;
       day.requestBases.add(requestFact.basis);
-    }
+    } else day.requestCountUnavailable = true;
     addProviderBreakdown(day.agentMap, src || "unknown", getSourceDisplayName(src), row, costUsd, requestFact.count);
     addProviderBreakdown(day.modelMap, modelId, String(row.model || "unknown"), row, costUsd, requestFact.count);
 
@@ -1625,8 +1636,8 @@ function aggregateByProvider(rows, options = {}) {
         cached_input_tokens: provider.cached_input_tokens,
         cache_creation_input_tokens: provider.cache_creation_input_tokens,
         reasoning_output_tokens: provider.reasoning_output_tokens,
-        request_count: provider.request_count,
-        request_count_basis: providerRequestBasis(provider.requestBases),
+        request_count: provider.requestCountUnavailable ? null : provider.request_count,
+        request_count_basis: providerRequestBasis(provider.requestBases, provider.requestCountUnavailable),
         conversation_count: provider.conversation_count,
         cost_usd: roundProviderMoney(provider.cost_usd),
         cost_basis: providerCostBasis(),

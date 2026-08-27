@@ -212,6 +212,15 @@ test("provider-stats computes status and latency only from Provider-attributed r
     apiRow({ hour_start: "2026-05-03T00:00:00.000Z", request_id: "req-499", record_kind: "request_event", status: 499, latency_ms: 200 }),
     apiRow({ hour_start: "2026-05-03T00:00:00.000Z", request_id: "req-500", record_kind: "request_event", status: 500, latency_ms: 400 }),
     apiRow({ hour_start: "2026-05-03T00:00:00.000Z", request_id: "req-no-status", record_kind: "request_event", status: null, latency_ms: null }),
+    // A same-Provider/day aggregate row means request coverage is incomplete,
+    // even though real request events exist for its status/latency metrics.
+    apiRow({
+      hour_start: "2026-05-03T01:00:00.000Z",
+      record_kind: "aggregate_bucket",
+      input_tokens: 0,
+      total_tokens: 0,
+      conversation_count: 10,
+    }),
     // Same Agent but no Provider attribution: this request must not be inferred into DeepSeek.
     apiRow({ hour_start: "2026-05-03T05:00:00.000Z", provider_id: undefined, status: 200, latency_ms: 1 }),
     apiRow({
@@ -234,8 +243,12 @@ test("provider-stats computes status and latency only from Provider-attributed r
     assert.equal(deepseek.success_rate, 66.67);
     assert.equal(deepseek.latency_sample_count, 4);
     assert.equal(deepseek.avg_latency_ms, 250);
-    assert.equal(deepseek.request_count, 5);
-    assert.equal(deepseek.request_count_basis, "request_event");
+    assert.equal(deepseek.request_count, null);
+    assert.equal(deepseek.request_count_basis, "unavailable");
+    assert.equal(deepseek.daily[0].request_count, null);
+    assert.equal(deepseek.daily[0].request_count_basis, "unavailable");
+    assert.equal(deepseek.agents.find((agent) => agent.id === "codex").request_count, null);
+    assert.equal(deepseek.models.find((model) => model.id === "shared-model").request_count, null);
     assert.deepEqual(deepseek.availability, { status: "measured", latency: "measured" });
 
     const moonshot = body.providers.find((provider) => provider.provider_id === "moonshot");
