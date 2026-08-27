@@ -668,6 +668,7 @@ function SpendCostPageInner({
     costSummary,
     otherAiGroupCosts,
     loading: costLoading,
+    summaryLoading: costSummaryLoading,
     error: costError,
     costSummaryStale,
     costLastSuccessfulAt,
@@ -784,6 +785,7 @@ function SpendCostPageInner({
             onSelectedMonthChange={setSelectedCostMonth}
             showMonthPicker={false}
             loading={costLoading}
+            summaryLoading={costSummaryLoading}
             error={costError}
             costSummaryStale={costSummaryStale}
             costLastSuccessfulAt={costLastSuccessfulAt}

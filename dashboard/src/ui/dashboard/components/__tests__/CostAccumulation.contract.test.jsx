@@ -1,4 +1,6 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CostAccumulation, getMonthComparison } from "../CostAccumulation.jsx";
@@ -54,6 +56,16 @@ const BASE_SUMMARY = {
   lifetimeTotalCostUsd: 0,
   usdToCny: 7.2,
 };
+
+const DENIED_COST_EVIDENCE_LABELS = [
+  "pricing.provenance.mixed",
+  "pricing.provenance.curated",
+  "pricing.provenance.estimated",
+  "pricing.provenance.inferred",
+  "pricing.provenance.third_party",
+  "pricing.provenance.unpriced",
+  "pricing.provenance.user_override",
+];
 
 afterEach(() => {
   window.localStorage.removeItem("token-eyes:cost-section:provider-api");
@@ -325,7 +337,7 @@ it("keeps actual cash spend separate from the API list-price equivalent without 
   expect(screen.getByText("spend.cost.accuracy.partial")).toBeInTheDocument();
 });
 
-it("shows mixed pricing composition on the cost aggregate without an official-exact promotion", () => {
+it("keeps mixed, curated, and user-override evidence internal on the cost aggregate", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -342,14 +354,14 @@ it("shows mixed pricing composition on the cost aggregate without an official-ex
     />,
   );
 
-  const provenance = screen.getByTestId("cost-pricing-provenance-summary");
-  expect(provenance).toHaveTextContent("pricing.provenance.mixed");
-  expect(provenance).toHaveTextContent("pricing.provenance.curated");
-  expect(provenance).toHaveTextContent("pricing.provenance.user_override");
-  expect(provenance).not.toHaveTextContent("pricing.provenance.official_api");
+  expect(screen.queryByTestId("cost-pricing-provenance-summary")).not.toBeInTheDocument();
+  for (const label of DENIED_COST_EVIDENCE_LABELS) {
+    expect(screen.queryByText(label)).not.toBeInTheDocument();
+  }
+  expect(screen.getAllByText("USD 18.00").length).toBeGreaterThan(0);
 });
 
-it("shows inferred, estimated, and stale evidence inside same-kind mixed cost components", () => {
+it("shows stale while suppressing mixed, third-party, inferred, and estimated evidence", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -379,15 +391,15 @@ it("shows inferred, estimated, and stale evidence inside same-kind mixed cost co
   );
 
   const provenance = screen.getByTestId("cost-pricing-provenance-summary");
-  expect(provenance).toHaveTextContent("pricing.provenance.mixed");
-  expect(provenance).toHaveTextContent("pricing.provenance.third_party");
-  expect(provenance).toHaveTextContent("pricing.provenance.inferred");
-  expect(provenance).toHaveTextContent("pricing.provenance.estimated");
   expect(provenance).toHaveTextContent("pricing.provenance.stale");
   expect(provenance).not.toHaveTextContent("pricing.provenance.official_api");
+  for (const label of DENIED_COST_EVIDENCE_LABELS) {
+    expect(provenance).not.toHaveTextContent(label);
+  }
+  expect(provenance.getAttribute("title")).not.toMatch(/mixed|third_party|inferred|estimated/);
 });
 
-it("shows row-level curated provenance and keeps a null aggregate explicitly unpriced", () => {
+it("keeps curated and unpriced evidence internal without inventing a zero amount", () => {
   render(
     <CostAccumulation
       costSummary={{
@@ -415,14 +427,63 @@ it("shows row-level curated provenance and keeps a null aggregate explicitly unp
     />,
   );
 
-  expect(screen.getByTestId("cost-pricing-provenance-summary"))
-    .toHaveTextContent("pricing.provenance.unpriced");
-  const row = screen.getByTestId("cost-pricing-provenance-row-curated-row");
-  expect(row).toHaveTextContent("pricing.provenance.curated");
-  expect(row).toHaveTextContent("pricing.provenance.estimated");
-  expect(row).toHaveAttribute("title", expect.stringContaining("https://example.test/curated"));
-  expect(row).not.toHaveTextContent("pricing.provenance.official_api");
+  expect(screen.queryByTestId("cost-pricing-provenance-summary")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("cost-pricing-provenance-row-curated-row")).not.toBeInTheDocument();
+  for (const label of DENIED_COST_EVIDENCE_LABELS) {
+    expect(screen.queryByText(label)).not.toBeInTheDocument();
+  }
+  expect(screen.getByText(/USD 3\.00/)).toBeInTheDocument();
   expect(screen.queryByText("USD 0.00")).not.toBeInTheDocument();
+});
+
+it("renders both core summary cards while secondary cost sections are still loading", () => {
+  render(
+    <CostAccumulation
+      loading
+      summaryLoading={false}
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: 12,
+        monthApiEquivalentUsd: 12,
+        monthSubscriptionCostUsd: 8,
+        monthActualCashSpendUsd: 8,
+        monthOtherAiCostUsd: 0,
+        monthTotalCostUsd: 20,
+      }}
+    />,
+  );
+
+  expect(screen.getAllByTestId("cost-summary-card")).toHaveLength(2);
+  expect(screen.getAllByText("USD 12.00").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("USD 8.00").length).toBeGreaterThan(0);
+  expect(document.querySelector('[data-cost-section="token-packages"] .animate-pulse')).toBeInTheDocument();
+});
+
+it("contains no Cost-page ROI calculation, card, or empty guidance", () => {
+  render(
+    <CostAccumulation
+      costSummary={{
+        ...BASE_SUMMARY,
+        monthApiCostUsd: 316,
+        monthApiEquivalentUsd: 316,
+        monthTokenPlanEquivalentUsd: 300,
+        monthSubscriptionCostUsd: 20,
+        monthActualCashSpendUsd: 20,
+        monthTotalCostUsd: 336,
+      }}
+    />,
+  );
+
+  expect(screen.queryByText("15.0×")).not.toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.roi.title")).not.toBeInTheDocument();
+  expect(screen.queryByText("spend.cost.roi.formula")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("subscription-roi-empty-note")).not.toBeInTheDocument();
+
+  const costPageSources = [
+    "src/ui/dashboard/components/CostAccumulation.jsx",
+    "src/pages/SpendPage.jsx",
+  ].map((file) => readFileSync(resolve(process.cwd(), file), "utf8")).join("\n");
+  expect(costPageSources).not.toMatch(/computeSubscriptionRoi|SubscriptionRoi|spend\.cost\.roi/);
 });
 
 it("starts the cost-page groups collapsed when requested and expands their full content without clipping", () => {

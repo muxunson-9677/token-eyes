@@ -8,6 +8,34 @@ import {
   tokenPlanExpiryValue,
 } from "../lib/token-plan-validity.js";
 
+const CORE_SUMMARY_CACHE_LIMIT = 12;
+const coreSummaryCache = new Map();
+
+function getDataScopeKey({ selectedMonth, timeZone, tzOffsetMinutes, sources }) {
+  return JSON.stringify({
+    selectedMonth,
+    timeZone,
+    tzOffsetMinutes,
+    sources: Array.isArray(sources) ? [...new Set(sources.map(String))].sort() : null,
+  });
+}
+
+function readCoreSummaryCache(scopeKey) {
+  return coreSummaryCache.get(scopeKey) || null;
+}
+
+function writeCoreSummaryCache(scopeKey, value) {
+  coreSummaryCache.delete(scopeKey);
+  coreSummaryCache.set(scopeKey, value);
+  while (coreSummaryCache.size > CORE_SUMMARY_CACHE_LIMIT) {
+    coreSummaryCache.delete(coreSummaryCache.keys().next().value);
+  }
+}
+
+export function __resetCostAccumulationCoreCacheForTests() {
+  coreSummaryCache.clear();
+}
+
 function getUtcMonthPeriod(monthKey) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(monthKey || ""));
   if (!match) return null;
@@ -37,45 +65,86 @@ export function useCostAccumulation({
   refreshRevision = 0,
   sources,
 } = {}) {
-  const [tokenPlans, setTokenPlans] = useState([]);
-  const [spendRecords, setSpendRecords] = useState([]);
-  const [spendTimeseries, setSpendTimeseries] = useState(null);
-  const [financialTimeseries, setFinancialTimeseries] = useState(null);
-  const [previousMonthTimeseries, setPreviousMonthTimeseries] = useState(null);
-  const [apiBillingAccounts, setApiBillingAccounts] = useState([]);
-  const [otherAiGroupCosts, setOtherAiGroupCosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [costSummaryStale, setCostSummaryStale] = useState(false);
-  const [costLastSuccessfulAt, setCostLastSuccessfulAt] = useState(null);
-  const [billingStale, setBillingStale] = useState(false);
-  const [billingError, setBillingError] = useState(null);
-  const requestIdRef = useRef(0);
-  const dataScopeKeyRef = useRef(null);
-  const recordsScopeKeyRef = useRef(null);
-  const spendTimeseriesScopeKeyRef = useRef(null);
-  const financialTimeseriesScopeKeyRef = useRef(null);
-  const previousTimeseriesScopeKeyRef = useRef(null);
-  const lastSuccessfulScopeKeyRef = useRef(null);
-  const currentDataScopeKey = JSON.stringify({
+  const currentDataScopeKey = getDataScopeKey({
     selectedMonth,
     timeZone,
     tzOffsetMinutes,
-    sources: Array.isArray(sources) ? [...new Set(sources.map(String))].sort() : null,
+    sources,
   });
+  const initialCoreSummary = readCoreSummaryCache(currentDataScopeKey);
+  const [tokenPlans, setTokenPlans] = useState([]);
+  const [spendRecords, setSpendRecords] = useState([]);
+  const [spendTimeseries, setSpendTimeseries] = useState(
+    () => initialCoreSummary?.spendTimeseries || null,
+  );
+  const [financialTimeseries, setFinancialTimeseries] = useState(
+    () => initialCoreSummary?.financialTimeseries || null,
+  );
+  const [previousMonthTimeseries, setPreviousMonthTimeseries] = useState(null);
+  const [apiBillingAccounts, setApiBillingAccounts] = useState(
+    () => initialCoreSummary?.apiBillingAccounts || [],
+  );
+  const [otherAiGroupCosts, setOtherAiGroupCosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(() => !initialCoreSummary);
+  const [coreError, setCoreError] = useState(null);
+  const [secondaryError, setSecondaryError] = useState(null);
+  const [costSummaryStale, setCostSummaryStale] = useState(
+    () => Boolean(initialCoreSummary?.stale),
+  );
+  const [costLastSuccessfulAt, setCostLastSuccessfulAt] = useState(
+    () => initialCoreSummary?.lastSuccessfulAt || null,
+  );
+  const [billingStale, setBillingStale] = useState(
+    () => Boolean(initialCoreSummary?.billingStale),
+  );
+  const [billingError, setBillingError] = useState(null);
+  const requestIdRef = useRef(0);
+  const dataScopeKeyRef = useRef(currentDataScopeKey);
+  const recordsScopeKeyRef = useRef(null);
+  const spendTimeseriesScopeKeyRef = useRef(initialCoreSummary ? currentDataScopeKey : null);
+  const financialTimeseriesScopeKeyRef = useRef(initialCoreSummary ? currentDataScopeKey : null);
+  const previousTimeseriesScopeKeyRef = useRef(null);
+  const billingScopeKeyRef = useRef(initialCoreSummary ? currentDataScopeKey : null);
+  const lastSuccessfulScopeKeyRef = useRef(initialCoreSummary ? currentDataScopeKey : null);
+  const summarySettledScopeKeyRef = useRef(initialCoreSummary ? currentDataScopeKey : null);
+  const coreStatusScopeKeyRef = useRef(initialCoreSummary ? currentDataScopeKey : null);
+  const secondaryStatusScopeKeyRef = useRef(null);
+  const cachedCoreSummary = readCoreSummaryCache(currentDataScopeKey);
   const scopedSpendRecords = recordsScopeKeyRef.current === currentDataScopeKey ? spendRecords : [];
   const scopedOtherAiGroupCosts = recordsScopeKeyRef.current === currentDataScopeKey ? otherAiGroupCosts : [];
   const scopedSpendTimeseries = spendTimeseriesScopeKeyRef.current === currentDataScopeKey
     ? spendTimeseries
-    : null;
+    : cachedCoreSummary?.spendTimeseries || null;
   const scopedFinancialTimeseries = financialTimeseriesScopeKeyRef.current === currentDataScopeKey
     ? financialTimeseries
-    : null;
+    : cachedCoreSummary?.financialTimeseries || null;
   const scopedPreviousMonthTimeseries = previousTimeseriesScopeKeyRef.current === currentDataScopeKey
     ? previousMonthTimeseries
     : null;
+  const scopedApiBillingAccounts = billingScopeKeyRef.current === currentDataScopeKey
+    ? apiBillingAccounts
+    : cachedCoreSummary?.apiBillingAccounts || [];
   const scopedLastSuccessfulAt = lastSuccessfulScopeKeyRef.current === currentDataScopeKey
     ? costLastSuccessfulAt
+    : cachedCoreSummary?.lastSuccessfulAt || null;
+  const scopedSummaryLoading = cachedCoreSummary
+    ? false
+    : summarySettledScopeKeyRef.current === currentDataScopeKey
+      ? summaryLoading
+      : true;
+  const scopedCostSummaryStale = coreStatusScopeKeyRef.current === currentDataScopeKey
+    ? costSummaryStale
+    : Boolean(cachedCoreSummary?.stale);
+  const scopedBillingStale = coreStatusScopeKeyRef.current === currentDataScopeKey
+    ? billingStale
+    : Boolean(cachedCoreSummary?.billingStale);
+  const scopedBillingError = coreStatusScopeKeyRef.current === currentDataScopeKey
+    ? billingError
+    : null;
+  const scopedCoreError = coreStatusScopeKeyRef.current === currentDataScopeKey ? coreError : null;
+  const scopedSecondaryError = secondaryStatusScopeKeyRef.current === currentDataScopeKey
+    ? secondaryError
     : null;
 
   // Fetch all data
@@ -83,13 +152,30 @@ export function useCostAccumulation({
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     const requestScopeKey = currentDataScopeKey;
+    const cachedCore = readCoreSummaryCache(requestScopeKey);
     if (dataScopeKeyRef.current !== requestScopeKey) {
       dataScopeKeyRef.current = requestScopeKey;
-      setSpendTimeseries(null);
+      setSpendTimeseries(cachedCore?.spendTimeseries || null);
+      setFinancialTimeseries(cachedCore?.financialTimeseries || null);
+      setApiBillingAccounts(cachedCore?.apiBillingAccounts || []);
       setPreviousMonthTimeseries(null);
+      setCostLastSuccessfulAt(cachedCore?.lastSuccessfulAt || null);
+      spendTimeseriesScopeKeyRef.current = cachedCore ? requestScopeKey : null;
+      financialTimeseriesScopeKeyRef.current = cachedCore ? requestScopeKey : null;
+      billingScopeKeyRef.current = cachedCore ? requestScopeKey : null;
+      previousTimeseriesScopeKeyRef.current = null;
+      lastSuccessfulScopeKeyRef.current = cachedCore ? requestScopeKey : null;
+      summarySettledScopeKeyRef.current = cachedCore ? requestScopeKey : null;
+      coreStatusScopeKeyRef.current = cachedCore ? requestScopeKey : null;
+      secondaryStatusScopeKeyRef.current = null;
+      setCostSummaryStale(Boolean(cachedCore?.stale));
+      setBillingStale(Boolean(cachedCore?.billingStale));
+      setBillingError(null);
     }
     setLoading(true);
-    setError(null);
+    setSummaryLoading(!cachedCore);
+    setCoreError(null);
+    setSecondaryError(null);
 
     try {
       const hasSources = Array.isArray(sources) && sources.length > 0;
@@ -139,71 +225,105 @@ export function useCostAccumulation({
         "global financial totals",
       );
 
-      const [plansResult, recordsResult, timeseriesResult, previousTimeseriesResult, financialTimeseriesResult, billingResult] = await Promise.all([
-        plansPromise,
-        recordsPromise,
+      const coreTask = Promise.all([
         timeseriesPromise,
-        previousTimeseriesPromise,
         financialTimeseriesPromise,
         billingPromise,
-      ]);
+      ]).then(([timeseriesResult, financialTimeseriesResult, billingResult]) => {
+        if (requestId !== requestIdRef.current) return;
+        const failures = [timeseriesResult, financialTimeseriesResult, billingResult]
+          .filter((result) => result.error);
+        const fullSuccess = failures.length === 0;
+        const retainCachedSnapshot = Boolean(cachedCore) && !fullSuccess;
+        const nextSpendTimeseries = retainCachedSnapshot
+          ? cachedCore.spendTimeseries || null
+          : timeseriesResult.error ? null : timeseriesResult.value || null;
+        const nextFinancialTimeseries = retainCachedSnapshot
+          ? cachedCore.financialTimeseries || null
+          : financialTimeseriesResult.error ? null : financialTimeseriesResult.value || null;
+        const nextApiBillingAccounts = retainCachedSnapshot
+          ? cachedCore.apiBillingAccounts || []
+          : billingResult.error
+            ? []
+            : Array.isArray(billingResult.value?.accounts) ? billingResult.value.accounts : [];
+        const nextLastSuccessfulAt = fullSuccess && hasSources
+          ? new Date().toISOString()
+          : cachedCore?.lastSuccessfulAt || null;
 
-      if (requestId !== requestIdRef.current) return;
-
-      if (!plansResult.error) {
-        setTokenPlans(Array.isArray(plansResult.value?.records) ? plansResult.value.records : []);
-      }
-      if (!recordsResult.error) {
-        recordsScopeKeyRef.current = requestScopeKey;
-        setSpendRecords(Array.isArray(recordsResult.value?.records) ? recordsResult.value.records : []);
-        setOtherAiGroupCosts(Array.isArray(recordsResult.value?.other_ai_group_totals)
-          ? recordsResult.value.other_ai_group_totals.filter((group) => Number(group?.record_count || 0) > 0)
-          : []);
-      }
-      if (!timeseriesResult.error) {
         spendTimeseriesScopeKeyRef.current = requestScopeKey;
-        setSpendTimeseries(timeseriesResult.value || null);
-        setCostSummaryStale(false);
-        if (hasSources) {
-          lastSuccessfulScopeKeyRef.current = requestScopeKey;
-          setCostLastSuccessfulAt(new Date().toISOString());
-        }
-      } else {
-        setCostSummaryStale(true);
-      }
-      if (!previousTimeseriesResult.error) {
-        previousTimeseriesScopeKeyRef.current = requestScopeKey;
-        setPreviousMonthTimeseries(previousTimeseriesResult.value || null);
-      }
-      if (!financialTimeseriesResult.error) {
         financialTimeseriesScopeKeyRef.current = requestScopeKey;
-        setFinancialTimeseries(financialTimeseriesResult.value || null);
-      } else {
-        setCostSummaryStale(true);
-      }
-      if (!billingResult.error) {
-        setApiBillingAccounts(Array.isArray(billingResult.value?.accounts) ? billingResult.value.accounts : []);
-        setBillingStale(false);
-        setBillingError(null);
-      } else {
-        setBillingStale(true);
-        setBillingError(billingResult.error?.message || String(billingResult.error));
-      }
+        billingScopeKeyRef.current = requestScopeKey;
+        lastSuccessfulScopeKeyRef.current = requestScopeKey;
+        summarySettledScopeKeyRef.current = requestScopeKey;
+        coreStatusScopeKeyRef.current = requestScopeKey;
+        setSpendTimeseries(nextSpendTimeseries);
+        setFinancialTimeseries(nextFinancialTimeseries);
+        setApiBillingAccounts(nextApiBillingAccounts);
+        setCostLastSuccessfulAt(nextLastSuccessfulAt);
+        setCostSummaryStale(!fullSuccess);
+        setBillingStale(retainCachedSnapshot || Boolean(billingResult.error));
+        setBillingError(billingResult.error
+          ? billingResult.error?.message || String(billingResult.error)
+          : null);
+        setCoreError(failures.length > 0
+          ? failures.map((result) => `${result.label}: ${result.error?.message || String(result.error)}`).join("; ")
+          : null);
 
-      const failures = [
-        plansResult,
-        recordsResult,
-        timeseriesResult,
-        previousTimeseriesResult,
-        financialTimeseriesResult,
-        billingResult,
-      ].filter((result) => result.error);
-      setError(failures.length > 0
-        ? failures.map((result) => `${result.label}: ${result.error?.message || String(result.error)}`).join("; ")
-        : null);
+        if (fullSuccess) {
+          writeCoreSummaryCache(requestScopeKey, {
+            spendTimeseries: nextSpendTimeseries,
+            financialTimeseries: nextFinancialTimeseries,
+            apiBillingAccounts: nextApiBillingAccounts,
+            lastSuccessfulAt: nextLastSuccessfulAt,
+            stale: false,
+            billingStale: false,
+          });
+        } else if (cachedCore) {
+          writeCoreSummaryCache(requestScopeKey, {
+            ...cachedCore,
+            stale: true,
+            billingStale: true,
+          });
+        }
+        setSummaryLoading(false);
+      });
+
+      const secondaryTask = Promise.all([
+        plansPromise,
+        recordsPromise,
+        previousTimeseriesPromise,
+      ]).then(([plansResult, recordsResult, previousTimeseriesResult]) => {
+        if (requestId !== requestIdRef.current) return;
+        if (!plansResult.error) {
+          setTokenPlans(Array.isArray(plansResult.value?.records) ? plansResult.value.records : []);
+        }
+        if (!recordsResult.error) {
+          recordsScopeKeyRef.current = requestScopeKey;
+          setSpendRecords(Array.isArray(recordsResult.value?.records) ? recordsResult.value.records : []);
+          setOtherAiGroupCosts(Array.isArray(recordsResult.value?.other_ai_group_totals)
+            ? recordsResult.value.other_ai_group_totals.filter((group) => Number(group?.record_count || 0) > 0)
+            : []);
+        }
+        if (!previousTimeseriesResult.error) {
+          previousTimeseriesScopeKeyRef.current = requestScopeKey;
+          setPreviousMonthTimeseries(previousTimeseriesResult.value || null);
+        }
+        const failures = [plansResult, recordsResult, previousTimeseriesResult]
+          .filter((result) => result.error);
+        secondaryStatusScopeKeyRef.current = requestScopeKey;
+        setSecondaryError(failures.length > 0
+          ? failures.map((result) => `${result.label}: ${result.error?.message || String(result.error)}`).join("; ")
+          : null);
+      });
+
+      await Promise.all([coreTask, secondaryTask]);
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
-      setError(err?.message || "Failed to load cost accumulation data");
+      summarySettledScopeKeyRef.current = requestScopeKey;
+      coreStatusScopeKeyRef.current = requestScopeKey;
+      setSummaryLoading(false);
+      setCostSummaryStale(true);
+      setCoreError(err?.message || "Failed to load cost accumulation data");
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
@@ -212,6 +332,9 @@ export function useCostAccumulation({
   // Initial fetch and refetch on refresh revision change
   useEffect(() => {
     fetchData();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [fetchData, refreshRevision]);
 
   // Normalize API billing accounts for UI consumption
@@ -221,7 +344,7 @@ export function useCostAccumulation({
     // and "0.00" for a real 0, so the user can distinguish "no data yet"
     // from "genuinely zero cost this period".
     const selectedPeriod = getUtcMonthPeriod(selectedMonth);
-    return apiBillingAccounts.map((account, index) => {
+    return scopedApiBillingAccounts.map((account, index) => {
       const hasLegacyBillingSource = account.billingSource === "official_api";
       const declaredAuthority = ["official_invoice", "local_list_price_estimate", "unavailable"]
         .includes(account.spendAuthority)
@@ -249,7 +372,7 @@ export function useCostAccumulation({
         billingPeriodEnd: account.billingPeriodEnd || null,
         errorCode: account.errorCode || null,
         candidateCount: Number.isInteger(account.candidateCount) ? account.candidateCount : null,
-        stale: billingStale && spendAuthority === "official_invoice",
+        stale: scopedBillingStale && spendAuthority === "official_invoice",
         pricing_source: account.pricing_source ?? null,
         pricing_version: account.pricing_version ?? null,
         source_kind: account.source_kind ?? null,
@@ -267,7 +390,7 @@ export function useCostAccumulation({
           : [],
       };
     });
-  }, [apiBillingAccounts, billingStale, selectedMonth]);
+  }, [scopedApiBillingAccounts, scopedBillingStale, selectedMonth]);
 
   // Filter spend records by sources
   const filteredSpendRecords = useMemo(() => {
@@ -347,7 +470,7 @@ export function useCostAccumulation({
             );
         const hasUncoveredApiSpend = (
           requiresOfficialInvoice && (hasAmbiguousInvoice || hasUnmatchedRequiredSource)
-        ) || (billingStale && monthOfficialApiSpendUsd !== null);
+        ) || (scopedBillingStale && monthOfficialApiSpendUsd !== null);
         const subscriptionUsd = cashTotals?.subscription_usd ?? null;
         const otherAiUsd = cashTotals?.other_ai_usd ?? null;
         const recordedCashBase = [subscriptionUsd, otherAiUsd]
@@ -434,7 +557,7 @@ export function useCostAccumulation({
       pricing_coverage: null,
       pricing_components: [],
     };
-  }, [apiBillingAccountsNormalized, billingStale, scopedFinancialTimeseries, scopedSpendTimeseries, scopedPreviousMonthTimeseries]);
+  }, [apiBillingAccountsNormalized, scopedBillingStale, scopedFinancialTimeseries, scopedSpendTimeseries, scopedPreviousMonthTimeseries]);
 
   // Transform spend records into subscription records format
   const subscriptionRecords = useMemo(() => {
@@ -508,6 +631,8 @@ export function useCostAccumulation({
       }));
   }, [tokenPlans]);
 
+  const error = [scopedCoreError, scopedSecondaryError].filter(Boolean).join("; ") || null;
+
   return {
     // Data
     tokenPackages,
@@ -517,11 +642,12 @@ export function useCostAccumulation({
     otherAiGroupCosts: scopedOtherAiGroupCosts,
     // State
     loading,
+    summaryLoading: scopedSummaryLoading,
     error,
-    costSummaryStale,
+    costSummaryStale: scopedCostSummaryStale,
     costLastSuccessfulAt: scopedLastSuccessfulAt,
-    billingStale,
-    billingError,
+    billingStale: scopedBillingStale,
+    billingError: scopedBillingError,
     // Actions
     refresh: fetchData,
   };

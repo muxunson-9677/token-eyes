@@ -6,7 +6,10 @@ import {
   getSpendTimeseries,
   getTokenPlans,
 } from "../lib/api";
-import { useCostAccumulation } from "./use-cost-accumulation.js";
+import {
+  __resetCostAccumulationCoreCacheForTests,
+  useCostAccumulation,
+} from "./use-cost-accumulation.js";
 
 vi.mock("../lib/api", () => ({
   getApiBillingAccounts: vi.fn(),
@@ -37,8 +40,12 @@ function timeseriesTotals(overrides = {}, bySource = null) {
 
 function deferred() {
   let resolve;
-  const promise = new Promise((next) => { resolve = next; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((next, fail) => {
+    resolve = next;
+    reject = fail;
+  });
+  return { promise, reject, resolve };
 }
 
 function officialPeriod(monthKey) {
@@ -60,6 +67,7 @@ describe("useCostAccumulation selected month", () => {
   beforeEach(() => {
     warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.clearAllMocks();
+    __resetCostAccumulationCoreCacheForTests();
     getTokenPlans.mockResolvedValue({ records: [] });
     getApiBillingAccounts.mockResolvedValue({ accounts: [] });
     getSpendRecords.mockResolvedValue({ records: [], other_ai_group_totals: [] });
@@ -1060,5 +1068,261 @@ describe("useCostAccumulation selected month", () => {
       calls[2].resolve(timeseriesTotals({ combined_usd: 65 }));
     });
     expect(result.current.costSummary.monthTotalCostUsd).toBe(70);
+  });
+
+  it("settles the core summary before slower token plans, records, and comparison data", async () => {
+    const plansRequest = deferred();
+    const recordsRequest = deferred();
+    const comparisonRequest = deferred();
+    getTokenPlans.mockReturnValue(plansRequest.promise);
+    getSpendRecords.mockReturnValue(recordsRequest.promise);
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals({
+        api_usd: 42,
+        subscription_usd: 0,
+        other_ai_usd: 0,
+        combined_usd: 42,
+      }))
+      .mockReturnValueOnce(comparisonRequest.promise)
+      .mockResolvedValueOnce(timeseriesTotals({
+        api_usd: 42,
+        subscription_usd: 20,
+        other_ai_usd: 5,
+        combined_usd: 67,
+      }));
+
+    const sources = ["cq03-slow-secondary"];
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2023-08",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+      sources,
+    }));
+
+    await waitFor(() => expect(result.current.summaryLoading).toBe(false));
+    expect(result.current.loading).toBe(true);
+    expect(result.current.costSummary).toEqual(expect.objectContaining({
+      monthApiEquivalentUsd: 42,
+      monthActualCashSpendUsd: 25,
+    }));
+
+    await act(async () => {
+      plansRequest.resolve({ records: [] });
+      recordsRequest.resolve({ records: [], other_ai_group_totals: [] });
+      comparisonRequest.resolve(timeseriesTotals({ api_usd: 21 }));
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  });
+
+  it("hydrates a remount from the same-scope core cache and preserves it as stale when refresh fails", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 31, combined_usd: 31 }))
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 15, combined_usd: 15 }))
+      .mockResolvedValueOnce(timeseriesTotals({
+        api_usd: 31,
+        subscription_usd: 9,
+        other_ai_usd: 0,
+        combined_usd: 40,
+      }));
+
+    const scope = {
+      selectedMonth: "2023-09",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+      sources: ["cq03-cache-remount"],
+    };
+    const first = renderHook(() => useCostAccumulation(scope));
+    await waitFor(() => expect(first.result.current.summaryLoading).toBe(false));
+    expect(first.result.current.costSummary.monthApiEquivalentUsd).toBe(31);
+    expect(first.result.current.costSummary.monthActualCashSpendUsd).toBe(9);
+    first.unmount();
+
+    const selectedRequest = deferred();
+    const comparisonRequest = deferred();
+    const financialRequest = deferred();
+    const billingRequest = deferred();
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockReturnValueOnce(selectedRequest.promise)
+      .mockReturnValueOnce(comparisonRequest.promise)
+      .mockReturnValueOnce(financialRequest.promise);
+    getApiBillingAccounts.mockReturnValueOnce(billingRequest.promise);
+
+    const second = renderHook(() => useCostAccumulation(scope));
+
+    expect(second.result.current.summaryLoading).toBe(false);
+    expect(second.result.current.costSummary.monthApiEquivalentUsd).toBe(31);
+    expect(second.result.current.costSummary.monthActualCashSpendUsd).toBe(9);
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
+    expect(getApiBillingAccounts).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      selectedRequest.resolve(timeseriesTotals({ api_usd: 99, combined_usd: 99 }));
+      comparisonRequest.resolve(timeseriesTotals({ api_usd: 12 }));
+      financialRequest.reject(new Error("financial refresh failed"));
+      billingRequest.resolve({ accounts: [{
+        provider: "local",
+        billingSource: "api",
+        spendAuthority: "local_list_price_estimate",
+        monthCostUsd: 88,
+        status: "synced",
+      }] });
+    });
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.costSummary.monthApiEquivalentUsd).toBe(31);
+    expect(second.result.current.costSummary.monthActualCashSpendUsd).toBe(9);
+    expect(second.result.current.costSummaryStale).toBe(true);
+    expect(second.result.current.billingStale).toBe(true);
+    expect(second.result.current.error).toContain("financial refresh failed");
+    second.unmount();
+
+    const thirdSelectedRequest = deferred();
+    const thirdComparisonRequest = deferred();
+    const thirdFinancialRequest = deferred();
+    const thirdBillingRequest = deferred();
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockReturnValueOnce(thirdSelectedRequest.promise)
+      .mockReturnValueOnce(thirdComparisonRequest.promise)
+      .mockReturnValueOnce(thirdFinancialRequest.promise);
+    getApiBillingAccounts.mockReturnValueOnce(thirdBillingRequest.promise);
+
+    const third = renderHook(() => useCostAccumulation(scope));
+    expect(third.result.current.summaryLoading).toBe(false);
+    expect(third.result.current.costSummary.monthApiEquivalentUsd).toBe(31);
+    expect(third.result.current.costSummary.monthActualCashSpendUsd).toBe(9);
+    expect(third.result.current.costSummaryStale).toBe(true);
+    expect(third.result.current.billingStale).toBe(true);
+
+    await act(async () => {
+      thirdSelectedRequest.resolve(timeseriesTotals({ api_usd: 33, combined_usd: 33 }));
+      thirdComparisonRequest.resolve(timeseriesTotals({ api_usd: 16, combined_usd: 16 }));
+      thirdFinancialRequest.resolve(timeseriesTotals({
+        api_usd: 33,
+        subscription_usd: 10,
+        other_ai_usd: 0,
+        combined_usd: 43,
+      }));
+      thirdBillingRequest.resolve({ accounts: [] });
+    });
+    await waitFor(() => expect(third.result.current.loading).toBe(false));
+    expect(third.result.current.costSummaryStale).toBe(false);
+    expect(third.result.current.billingStale).toBe(false);
+    third.unmount();
+  });
+
+  it("never hydrates a different source scope from another scope's core cache", async () => {
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 73, combined_usd: 73 }))
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 30, combined_usd: 30 }))
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 73, combined_usd: 73 }));
+
+    const firstSources = ["cq03-cache-scope-a"];
+    const first = renderHook(() => useCostAccumulation({
+      selectedMonth: "2023-10",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+      sources: firstSources,
+    }));
+    await waitFor(() => expect(first.result.current.summaryLoading).toBe(false));
+    expect(first.result.current.costSummary.monthApiEquivalentUsd).toBe(73);
+    first.unmount();
+
+    const selectedRequest = deferred();
+    const comparisonRequest = deferred();
+    const financialRequest = deferred();
+    const billingRequest = deferred();
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockReturnValueOnce(selectedRequest.promise)
+      .mockReturnValueOnce(comparisonRequest.promise)
+      .mockReturnValueOnce(financialRequest.promise);
+    getApiBillingAccounts.mockReturnValueOnce(billingRequest.promise);
+
+    const secondSources = ["cq03-cache-scope-b"];
+    const second = renderHook(() => useCostAccumulation({
+      selectedMonth: "2023-10",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+      sources: secondSources,
+    }));
+
+    expect(second.result.current.summaryLoading).toBe(true);
+    expect(second.result.current.costSummary.monthApiEquivalentUsd).toBeNull();
+    expect(second.result.current.apiBillingAccounts).toEqual([]);
+
+    await act(async () => {
+      selectedRequest.resolve(timeseriesTotals({ api_usd: 17, combined_usd: 17 }));
+      comparisonRequest.resolve(timeseriesTotals({ api_usd: 8, combined_usd: 8 }));
+      financialRequest.resolve(timeseriesTotals({ api_usd: 17, combined_usd: 17 }));
+      billingRequest.resolve({ accounts: [] });
+    });
+    await waitFor(() => expect(second.result.current.summaryLoading).toBe(false));
+    expect(second.result.current.costSummary.monthApiEquivalentUsd).toBe(17);
+    second.unmount();
+  });
+
+  it("does not let a late request from an unmounted instance overwrite a newer cache snapshot", async () => {
+    const scope = {
+      selectedMonth: "2023-11",
+      timeZone: "UTC",
+      tzOffsetMinutes: 0,
+      sources: ["cq03-unmount-race"],
+    };
+    const oldSelected = deferred();
+    const oldComparison = deferred();
+    const oldFinancial = deferred();
+    const oldBilling = deferred();
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockReturnValueOnce(oldSelected.promise)
+      .mockReturnValueOnce(oldComparison.promise)
+      .mockReturnValueOnce(oldFinancial.promise);
+    getApiBillingAccounts.mockReset();
+    getApiBillingAccounts.mockReturnValueOnce(oldBilling.promise);
+
+    const oldView = renderHook(() => useCostAccumulation(scope));
+    await waitFor(() => expect(getSpendTimeseries).toHaveBeenCalledTimes(3));
+    oldView.unmount();
+
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 22, combined_usd: 22 }))
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 10, combined_usd: 10 }))
+      .mockResolvedValueOnce(timeseriesTotals({ api_usd: 22, combined_usd: 22 }));
+    getApiBillingAccounts.mockReset();
+    getApiBillingAccounts.mockResolvedValueOnce({ accounts: [] });
+    const newView = renderHook(() => useCostAccumulation(scope));
+    await waitFor(() => expect(newView.result.current.costSummary.monthApiEquivalentUsd).toBe(22));
+    newView.unmount();
+
+    await act(async () => {
+      oldSelected.resolve(timeseriesTotals({ api_usd: 11, combined_usd: 11 }));
+      oldComparison.resolve(timeseriesTotals({ api_usd: 5, combined_usd: 5 }));
+      oldFinancial.resolve(timeseriesTotals({ api_usd: 11, combined_usd: 11 }));
+      oldBilling.resolve({ accounts: [] });
+      await Promise.resolve();
+    });
+
+    const pending = [deferred(), deferred(), deferred()];
+    const pendingBilling = deferred();
+    getSpendTimeseries.mockReset();
+    pending.forEach(({ promise }) => getSpendTimeseries.mockReturnValueOnce(promise));
+    getApiBillingAccounts.mockReset();
+    getApiBillingAccounts.mockReturnValueOnce(pendingBilling.promise);
+    const finalView = renderHook(() => useCostAccumulation(scope));
+    expect(finalView.result.current.costSummary.monthApiEquivalentUsd).toBe(22);
+
+    await act(async () => {
+      pending[0].resolve(timeseriesTotals({ api_usd: 23, combined_usd: 23 }));
+      pending[1].resolve(timeseriesTotals({ api_usd: 10, combined_usd: 10 }));
+      pending[2].resolve(timeseriesTotals({ api_usd: 23, combined_usd: 23 }));
+      pendingBilling.resolve({ accounts: [] });
+    });
+    await waitFor(() => expect(finalView.result.current.loading).toBe(false));
+    finalView.unmount();
   });
 });

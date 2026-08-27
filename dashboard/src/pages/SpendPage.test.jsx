@@ -29,6 +29,7 @@ import {
 } from "../lib/api";
 import { useCurrency } from "../hooks/useCurrency.js";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
+import { __resetCostAccumulationCoreCacheForTests } from "../hooks/use-cost-accumulation.js";
 
 const navigateMock = vi.fn();
 
@@ -141,6 +142,7 @@ function deferred() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetCostAccumulationCoreCacheForTests();
   useCurrency.mockReturnValue({ currency: "USD", rate: 1 });
   useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: VISIBLE_PROVIDERS });
   getLocalSettings.mockResolvedValue({ dashboardRefresh: { interval: "1m" } });
@@ -757,6 +759,53 @@ describe("SpendCostPage (v2.0 IA split)", () => {
       tzOffsetMinutes: 0,
     }));
     expect(getSpendTimeseries.mock.calls[2][0]).not.toHaveProperty("sources");
+  });
+
+  it("shows the two core cost cards while secondary cost requests are still pending", async () => {
+    const plansRequest = deferred();
+    const recordsRequest = deferred();
+    const comparisonRequest = deferred();
+    getTokenPlans.mockReturnValue(plansRequest.promise);
+    getSpendRecords.mockReturnValue(recordsRequest.promise);
+    getSpendTimeseries.mockReset();
+    getSpendTimeseries
+      .mockResolvedValueOnce({
+        totals: {
+          api_usd: 12,
+          subscription_usd: 0,
+          other_ai_usd: 0,
+          combined_usd: 12,
+          lifetime_combined_usd: 12,
+        },
+        by_source: [],
+      })
+      .mockReturnValueOnce(comparisonRequest.promise)
+      .mockResolvedValueOnce({
+        totals: {
+          api_usd: 12,
+          subscription_usd: 8,
+          other_ai_usd: 0,
+          combined_usd: 20,
+          lifetime_combined_usd: 20,
+        },
+        by_source: [],
+      });
+
+    render(
+      <MemoryRouter>
+        <SpendCostPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("cost-summary-card")).toHaveLength(2));
+    expect(screen.getAllByText("USD 12.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("USD 8.00").length).toBeGreaterThan(0);
+
+    await act(async () => {
+      plansRequest.resolve({ records: [] });
+      recordsRequest.resolve({ records: [], other_ai_group_totals: [] });
+      comparisonRequest.resolve(EMPTY_RESULT);
+    });
   });
 
   it("changes only the independent cost month and reloads the selected historical ledger", async () => {

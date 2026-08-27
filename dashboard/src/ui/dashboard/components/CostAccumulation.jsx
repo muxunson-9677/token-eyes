@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings, TrendingUp } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Code2, CreditCard, Package, Globe, Info, RefreshCw, AlertCircle, CheckCircle, Plus, Pencil, Trash2, Settings } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { formatChineseTokenCount } from "../../../lib/format";
 import { deriveDataConfidence } from "../../../lib/data-confidence";
 import { DataConfidenceBadge } from "./DataConfidenceBadge.jsx";
 import { TokenServiceList } from "./TokenServiceList.jsx";
-import { computeSubscriptionRoi } from "../../../lib/subscription-roi";
 import { isTokenPlanExpired } from "../../../lib/token-plan-validity.js";
 
 const COST_ICON_TONES = {
@@ -135,10 +134,7 @@ function formatFinancialValue(value, currency, formatter = formatAmount) {
 
 function pricingKindKey(sourceKind) {
   const normalized = sourceKind === "official" ? "official_api" : sourceKind;
-  return ["official_api", "curated", "third_party", "user_override", "mixed", "unpriced"]
-    .includes(normalized)
-    ? `pricing.provenance.${normalized}`
-    : null;
+  return normalized === "official_api" ? "pricing.provenance.official_api" : null;
 }
 
 function pricingProvenanceLabels(evidence) {
@@ -150,15 +146,10 @@ function pricingProvenanceLabels(evidence) {
   if (evidence?.source_kind === "mixed" && Array.isArray(evidence.pricing_components)) {
     for (const component of evidence.pricing_components) {
       add(pricingKindKey(component?.source_kind));
-      if (component?.match_kind === "inferred") add("pricing.provenance.inferred");
-      if (component?.estimated) add("pricing.provenance.estimated");
       if (component?.is_stale) add("pricing.provenance.stale");
     }
   }
-  if (evidence?.match_kind === "inferred") add("pricing.provenance.inferred");
-  if (evidence?.estimated) add("pricing.provenance.estimated");
   if (evidence?.is_stale) add("pricing.provenance.stale");
-  if (evidence?.pricing_coverage === "unpriced") add("pricing.provenance.unpriced");
   return labels;
 }
 
@@ -166,12 +157,17 @@ function PricingProvenance({ evidence, testId, className = "" }) {
   const labels = pricingProvenanceLabels(evidence);
   if (labels.length === 0) return null;
   const unavailable = copy("ticket06.metric.unavailable");
+  const source = evidence?.source_url
+    || (pricingKindKey(evidence?.source_kind)
+      ? evidence?.pricing_source || evidence?.source_kind
+      : null)
+    || unavailable;
   return (
     <div
       className={cn("flex flex-wrap gap-1 text-xs", className)}
       data-testid={testId}
       title={copy("pricing.provenance.tooltip", {
-        source: evidence?.source_url || evidence?.pricing_source || evidence?.source_kind || unavailable,
+        source,
         model: evidence?.matched_model || unavailable,
         updated: evidence?.source_updated_at || unavailable,
       })}
@@ -324,10 +320,6 @@ function CostSummaryCards({
     : null;
   const dailyAverage = hasApiEquivalent && elapsedDays ? Number(apiEquivalentUsd) / elapsedDays : null;
   const unavailable = copy("spend.cost.row.unavailable");
-  const roi = computeSubscriptionRoi({
-    monthApiEquivalentUsd: summary.monthTokenPlanEquivalentUsd,
-    monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
-  });
   const actualCoverageKey = summary.actualCashCoverage === "exact"
     ? "spend.cost.accuracy.exact"
     : summary.actualCashCoverage === "partial"
@@ -408,58 +400,6 @@ function CostSummaryCards({
           { label: copy("spend.cost.design.month_daily_average"), value: dailyAverage === null ? unavailable : formatAmount(dailyAverage) },
         ]}
       /> : null}
-      </div>
-      {!roi ? (
-        <p
-          data-testid="subscription-roi-empty-note"
-          className="mt-2 text-xs leading-5 text-oai-gray-400 dark:text-oai-gray-500"
-        >
-          {copy("spend.cost.roi.empty")}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Subscription ROI card (V2-W2 回本倍数)
-// ---------------------------------------------------------------------------
-
-// multiplier = token-plan API-equivalent usage value / month subscription spend.
-// No subscription recorded → guidance state; multiplier < 1 → neutral framing
-// (percentage of the subscription fee), never a shaming tone.
-function SubscriptionRoiCard({ summary, loading }) {
-  if (loading) return null;
-  const roi = computeSubscriptionRoi({
-    monthApiEquivalentUsd: summary.monthTokenPlanEquivalentUsd,
-    monthSubscriptionCostUsd: summary.monthSubscriptionCostUsd,
-  });
-  if (!roi) {
-    return null;
-  }
-  const belowOne = roi.multiplier < 1;
-  const multiplierLabel = `${roi.multiplier.toFixed(1)}×`;
-  const detailText = belowOne
-    ? copy("spend.cost.roi.below_one", {
-        percent: (roi.multiplier * 100).toFixed(0),
-      })
-    : copy("spend.cost.roi.subtitle", { value: roi.multiplier.toFixed(1) });
-  return (
-    <div className="rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 p-4 flex flex-wrap items-center gap-x-8 gap-y-2">
-      <div className="flex flex-col gap-1">
-        <span className="inline-flex items-center gap-1.5 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          <TrendingUp className="h-3.5 w-3.5" aria-hidden />
-          {copy("spend.cost.roi.title")}
-        </span>
-        <span className="text-3xl font-semibold tracking-tight tabular-nums text-oai-black dark:text-white">
-          {multiplierLabel}
-        </span>
-      </div>
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm text-oai-gray-700 dark:text-oai-gray-300">{detailText}</span>
-        <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("spend.cost.roi.formula")}
-        </span>
       </div>
     </div>
   );
@@ -1366,6 +1306,7 @@ export function CostAccumulation({
   onSelectedMonthChange,
   showMonthPicker = true,
   loading = false,
+  summaryLoading = loading,
   error = null,
   costSummaryStale = false,
   costLastSuccessfulAt = null,
@@ -1406,7 +1347,7 @@ export function CostAccumulation({
         /> : null}
         <CostSummaryCards
           summary={costSummary}
-          loading={loading}
+          loading={summaryLoading}
           selectedMonth={selectedMonth}
           stale={costSummaryStale}
           lastSuccessfulAt={costLastSuccessfulAt}
@@ -1419,9 +1360,6 @@ export function CostAccumulation({
         subscriptionUsd={costSummary.monthSubscriptionCostUsd}
         sectionsInitiallyOpen={sectionsInitiallyOpen}
       />
-
-      {/* Subscription ROI (V2-W2 回本倍数) */}
-      <SubscriptionRoiCard summary={costSummary} loading={loading} />
 
       {/* Error state */}
       {error && (
