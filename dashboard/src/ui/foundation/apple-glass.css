@@ -580,15 +580,12 @@ html.native-windows-app .tt-reference-route-spend-usage .tt-main-work-surface ma
 
 .tt-spend-usage-detail-scope .tt-request-source-chip {
   display: inline-flex;
-  max-width: 170px;
   min-height: 24px;
   align-items: center;
-  overflow: hidden;
   padding: 2px 8px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 7px;
   background: rgba(148, 163, 184, 0.07);
-  text-overflow: ellipsis;
 }
 
 .tt-spend-usage-detail-scope .tt-request-log-total-row {

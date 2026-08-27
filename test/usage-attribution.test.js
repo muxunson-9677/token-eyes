@@ -184,6 +184,43 @@ test("configured Token Plan local dates honor an IANA daylight-saving transition
   assert.equal(resolve({ ...receipt, occurred_at: "2026-03-09T04:00:00.000Z" }).billing_mode, "api_key");
 });
 
+test("configured Token Plan local dates start at the first valid instant when midnight is skipped", () => {
+  const resolve = createConfiguredTokenPlanResolver([{
+    source: "hermes",
+    provider_id: "deepseek",
+    subscription_start_date: "2026-09-06",
+    subscription_end_date: "2026-09-06",
+  }], { timeZone: "America/Santiago", offsetMinutes: -180 });
+  const receipt = {
+    source: "hermes",
+    provider_id: "deepseek",
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+  };
+
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-09-06T03:59:59.999Z" }).billing_mode, "api_key");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-09-06T04:00:00.000Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-09-07T02:59:59.999Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-09-07T03:00:00.000Z" }).billing_mode, "api_key");
+});
+
+test("configured Token Plan resolver does not invent an IANA calendar day that was skipped", () => {
+  const resolve = createConfiguredTokenPlanResolver([{
+    source: "hermes",
+    provider_id: "deepseek",
+    subscription_start_date: "2011-12-30",
+    subscription_end_date: "2011-12-30",
+  }], { timeZone: "Pacific/Apia", offsetMinutes: -600 });
+
+  assert.equal(resolve({
+    source: "hermes",
+    provider_id: "deepseek",
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    occurred_at: "2011-12-30T12:00:00.000Z",
+  }).billing_mode, "api_key");
+});
+
 test("configured Token Plan resolver does not invent a time match without usage occurrence", () => {
   const resolve = createConfiguredTokenPlanResolver([
     {

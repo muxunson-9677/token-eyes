@@ -130,7 +130,7 @@ function formatLatencyFirst(latencyMs, firstTokenMs) {
 
 function statusIsError(status) {
   const s = safeNum(status);
-  return s === 0 || s >= 400;
+  return s < 200 || s >= 300;
 }
 
 function getCacheDiagnostic(record) {
@@ -412,7 +412,11 @@ export function RequestUsageLog({
                         </span>
                       )}
                       {(record.request_source || record.origin) ? (
-                        <span className="tt-request-source-chip ml-1.5" data-testid="request-source-chip">
+                        <span
+                          className="tt-request-source-chip ml-1.5"
+                          data-testid="request-source-chip"
+                          title={record.request_source || record.origin}
+                        >
                           {record.request_source || record.origin}
                         </span>
                       ) : null}

@@ -132,6 +132,14 @@ describe("approved M/N material fidelity", () => {
     expect(declarations(distributionName)["white-space"]).toBe("normal");
   });
 
+  it("keeps request source identifiers fully visible", () => {
+    const sourceChip = ".tt-spend-usage-detail-scope .tt-request-source-chip";
+
+    expect(declarations(sourceChip)["max-width"]).toBeUndefined();
+    expect(declarations(sourceChip).overflow).not.toBe("hidden");
+    expect(declarations(sourceChip)["text-overflow"]).not.toBe("ellipsis");
+  });
+
   it("matches the Token reference with balanced evidence columns and a visible wave", () => {
     const route = ".tt-reference-route-dashboard";
     const hero = ".tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero";

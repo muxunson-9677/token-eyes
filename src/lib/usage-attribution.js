@@ -202,11 +202,7 @@ function dateOnlyTimestamp(text, { endOfDate = false, timeZone = null, offsetMin
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const hour = endOfDate ? 23 : 0;
-  const minute = endOfDate ? 59 : 0;
-  const second = endOfDate ? 59 : 0;
-  const millisecond = endOfDate ? 999 : 0;
-  const targetSecond = Date.UTC(year, month - 1, day, hour, minute, second, 0);
+  const targetDay = Date.UTC(year, month - 1, day);
   const calendar = new Date(Date.UTC(year, month - 1, day));
   if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) {
     return Number.NaN;
@@ -218,44 +214,79 @@ function dateOnlyTimestamp(text, { endOfDate = false, timeZone = null, offsetMin
         timeZone,
         calendar: "iso8601",
         numberingSystem: "latn",
-        hourCycle: "h23",
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
       });
-      let candidate = targetSecond;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+
+      const targetKey = `${match[1]}-${match[2]}-${match[3]}`;
+      const zonedDateKey = (timestamp) => {
         const parts = Object.fromEntries(
-          formatter.formatToParts(new Date(candidate))
+          formatter.formatToParts(new Date(timestamp))
             .filter((part) => part.type !== "literal")
             .map((part) => [part.type, part.value]),
         );
-        const displayed = Date.UTC(
-          Number(parts.year),
-          Number(parts.month) - 1,
-          Number(parts.day),
-          Number(parts.hour),
-          Number(parts.minute),
-          Number(parts.second),
-          0,
-        );
-        if (!Number.isFinite(displayed)) break;
-        const correction = targetSecond - displayed;
-        candidate += correction;
-        if (correction === 0) return candidate + millisecond;
+        return `${parts.year}-${parts.month}-${parts.day}`;
+      };
+      const isTargetDay = (timestamp) => zonedDateKey(timestamp) === targetKey;
+      const searchRadius = 36 * 60 * 60 * 1000;
+      const scanStep = 5 * 60 * 1000;
+      const searchStart = targetDay - searchRadius;
+      const searchEnd = targetDay + searchRadius;
+
+      if (!endOfDate) {
+        let previous = searchStart;
+        if (isTargetDay(previous)) return previous;
+        for (let candidate = previous + scanStep; candidate <= searchEnd; candidate += scanStep) {
+          if (!isTargetDay(candidate)) {
+            previous = candidate;
+            continue;
+          }
+          let outside = previous;
+          let inside = candidate;
+          while (inside - outside > 1) {
+            const midpoint = Math.floor((outside + inside) / 2);
+            if (isTargetDay(midpoint)) inside = midpoint;
+            else outside = midpoint;
+          }
+          return inside;
+        }
+      } else {
+        let next = searchEnd;
+        if (isTargetDay(next)) return next;
+        for (let candidate = next - scanStep; candidate >= searchStart; candidate -= scanStep) {
+          if (!isTargetDay(candidate)) {
+            next = candidate;
+            continue;
+          }
+          let inside = candidate;
+          let outside = next;
+          while (outside - inside > 1) {
+            const midpoint = Math.floor((inside + outside) / 2);
+            if (isTargetDay(midpoint)) inside = midpoint;
+            else outside = midpoint;
+          }
+          return inside;
+        }
       }
+
+      // A valid IANA zone can skip an entire local calendar day. Such a plan
+      // window is invalid; a request-time fixed offset must not invent it.
+      return Number.NaN;
     } catch (_error) {
       // Invalid or unsupported IANA zones fall back to the explicit offset.
     }
   }
 
-  if (Number.isFinite(Number(offsetMinutes))) {
-    return targetSecond - Number(offsetMinutes) * 60_000 + millisecond;
+  const hasExplicitOffset = offsetMinutes !== null
+    && offsetMinutes !== undefined
+    && offsetMinutes !== ""
+    && Number.isFinite(Number(offsetMinutes));
+  const localBoundary = targetDay + (endOfDate ? (24 * 60 * 60 * 1000) - 1 : 0);
+  if (hasExplicitOffset) {
+    return localBoundary - Number(offsetMinutes) * 60_000;
   }
-  return targetSecond + millisecond;
+  return localBoundary;
 }
 
 function parseAttributionTimestamp(value, {

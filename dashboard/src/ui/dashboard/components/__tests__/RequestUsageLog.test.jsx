@@ -216,6 +216,20 @@ describe("RequestUsageLog", () => {
     expect(within(row).getByText("Codex")).not.toHaveClass("truncate");
   });
 
+  it("keeps a long origin fully visible in the source column", () => {
+    const origin = "local-runtime/request-capture/provider-account-with-a-long-stable-identifier";
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ request_source: null, origin })],
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    const chip = screen.getByTestId("request-source-chip");
+    expect(chip).toHaveTextContent(origin);
+    expect(chip).toHaveAttribute("title", origin);
+  });
+
   it("keeps pricing provenance in the data layer without rendering noisy provenance labels", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
@@ -338,6 +352,17 @@ describe("RequestUsageLog", () => {
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
     const statusEl = screen.getByText("200");
     expect(statusEl.className).toContain("text-emerald");
+  });
+
+  it("does not label a non-2xx redirect as a successful request", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ status: 302 })],
+    });
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+    const statusEl = screen.getByText("302");
+    expect(statusEl).toHaveClass("text-red-600");
+    expect(statusEl).toHaveAttribute("aria-label", "Error status");
   });
 
   it("renders each sampled status verbatim and labels a missing status as unsampled", () => {
