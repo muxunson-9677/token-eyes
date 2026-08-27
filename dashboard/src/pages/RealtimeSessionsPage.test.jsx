@@ -1,4 +1,6 @@
 import React from "react";
+import fs from "node:fs";
+import path from "node:path";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +8,11 @@ import { copy } from "../lib/copy";
 import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
 import { LIMITS_DISPLAY_CHANGE_EVENT } from "../hooks/use-limits-display-prefs.js";
 import { RealtimeSessionsPage } from "./RealtimeSessionsPage.jsx";
+
+const realtimeStyles = fs.readFileSync(
+  path.resolve(process.cwd(), "src/ui/foundation/apple-glass.css"),
+  "utf8",
+);
 
 const { getRealtimeSessions, peekRealtimeSessions } = vi.hoisted(() => ({ getRealtimeSessions: vi.fn(), peekRealtimeSessions: vi.fn(() => null) }));
 vi.mock("../lib/api", () => ({ getRealtimeSessions, peekRealtimeSessions }));
@@ -71,6 +78,12 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RealtimeSessionsPage", () => {
+  it("gives an already-selected Agent card a deeper pointer-down state", () => {
+    expect(realtimeStyles).toMatch(
+      /\.rt-session-mini\.tt-pressable\[aria-pressed="true"\]:active\s*\{[^}]*transform:\s*translateY\(2px\)\s*scale\(\.985\)/u,
+    );
+  });
+
   it("renders cached Agent cards only from the limits allowlist and updates them without reload", () => {
     const cachedPayload = {
       ...payload,

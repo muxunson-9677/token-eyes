@@ -7153,6 +7153,10 @@ html.native-windows-app .tt-main-work-surface main > .mx-auto {
   box-shadow: inset 0 4px 9px rgba(24, 44, 62, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
+.rt-session-mini.tt-pressable[aria-pressed="true"]:active {
+  transform: translateY(2px) scale(.985);
+}
+
 .tt-pressable:disabled,
 .tt-pressable[aria-disabled="true"] {
   transform: none;
