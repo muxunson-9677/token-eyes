@@ -2,7 +2,13 @@ import React from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { TokenPlanSection, paginateTokenPlans, tokenPlanDisplayStatus } from "./TokenPlanSection.jsx";
+import {
+  isTokenPlanExpired,
+  TokenPlanSection,
+  paginateTokenPlans,
+  tokenPlanDisplayStatus,
+  tokenPlanExpiryTimestamp,
+} from "./TokenPlanSection.jsx";
 import { deleteTokenPlan, getTokenPlans, saveTokenPlan, refreshTokenPlan, getUsageLimits, getTokenPlanCatalog, getConsoleSessions, saveTokenPlanSecret, reorderTokenPlans, verifyCursorConsoleSession } from "../../lib/api";
 import { clearCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 
@@ -113,6 +119,19 @@ it("classifies active, attention, and expired plans and paginates ten cards at a
   const plans = Array.from({ length: 11 }, (_, index) => ({ id: `plan-${index + 1}` }));
   expect(paginateTokenPlans(plans, 0)).toMatchObject({ page: 0, pageCount: 2, records: plans.slice(0, 10) });
   expect(paginateTokenPlans(plans, 1)).toMatchObject({ page: 1, pageCount: 2, records: plans.slice(10) });
+});
+
+it("uses one numeric and fallback-aware expiry boundary", () => {
+  const now = new Date("2026-08-15T12:00:00.000Z");
+  const nowTimestamp = now.getTime();
+
+  expect(tokenPlanExpiryTimestamp(nowTimestamp)).toBe(nowTimestamp);
+  expect(isTokenPlanExpired({ expires_at: nowTimestamp }, now)).toBe(false);
+  expect(isTokenPlanExpired({ expires_at: nowTimestamp - 1 }, now)).toBe(true);
+  expect(isTokenPlanExpired({
+    subscription_end_date: "   ",
+    expires_at: "2026-08-14T12:00:00.000Z",
+  }, now)).toBe(true);
 });
 
 it("shows usable plans as status cards and advances after ten cards", async () => {

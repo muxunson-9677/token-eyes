@@ -48,6 +48,11 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { readCostSettingsSessionCache, writeCostSettingsSessionCache } from "../../lib/cost-settings-session-cache";
 import { DASHBOARD_AGENTS } from "../../lib/agent-adapters-dashboard";
+import {
+  isTokenPlanExpired as canonicalIsTokenPlanExpired,
+  tokenPlanExpiryTimestamp as canonicalTokenPlanExpiryTimestamp,
+  tokenPlanExpiryValue,
+} from "../../lib/token-plan-validity.js";
 import providerCapabilitiesRegistry from "../../../../shared/provider-capabilities.json";
 import { ProviderIcon } from "../../ui/dashboard/components/ProviderIcon.jsx";
 import {
@@ -107,29 +112,8 @@ function maskTokenPlanEmail(value) {
   return `${match[1].slice(0, Math.min(3, match[1].length))}***@${match[2]}`;
 }
 
-export function tokenPlanExpiryTimestamp(value) {
-  if (!value) return null;
-  const raw = String(value).trim();
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  if (dateOnly) {
-    return new Date(
-      Number(dateOnly[1]),
-      Number(dateOnly[2]) - 1,
-      Number(dateOnly[3]),
-      23,
-      59,
-      59,
-      999,
-    ).getTime();
-  }
-  const timestamp = Date.parse(raw);
-  return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-export function isTokenPlanExpired(record, now = new Date()) {
-  const timestamp = tokenPlanExpiryTimestamp(record?.subscription_end_date || record?.expires_at);
-  return timestamp !== null && timestamp < now.getTime();
-}
+export const tokenPlanExpiryTimestamp = canonicalTokenPlanExpiryTimestamp;
+export const isTokenPlanExpired = canonicalIsTokenPlanExpired;
 
 function isUsableTokenPlan(record) {
   return !isTokenPlanExpired(record);
@@ -152,7 +136,7 @@ export function tokenPlanDisplayStatus(record, now = new Date()) {
   if (isTokenPlanExpired(record, now)) return { kind: "expired", reasons: ["expired"] };
 
   const reasons = [];
-  const expiresAt = tokenPlanExpiryTimestamp(record?.subscription_end_date || record?.expires_at);
+  const expiresAt = tokenPlanExpiryTimestamp(tokenPlanExpiryValue(record));
   if (expiresAt !== null && expiresAt - now.getTime() <= TOKEN_PLAN_ATTENTION_WINDOW_MS) reasons.push("expiring");
 
   const quotaWindows = Array.isArray(record?.quota_windows) ? record.quota_windows : [];
@@ -1072,7 +1056,7 @@ function SortableTokenPlanCard({
         ? copy("settings.token_plan.subscription_cost_usd", { amount: subscriptionAmount })
         : `${subscriptionCurrency} ${subscriptionAmount}`
     : copy("settings.token_plan.subscription_cost_placeholder");
-  const expiryValue = record.subscription_end_date || record.expires_at;
+  const expiryValue = tokenPlanExpiryValue(record);
   const [validitySummary, validityDate] = formatTokenPlanValidity(expiryValue).split(" · ");
   const providerTitle = record.provider_id && record.provider_id !== "custom"
     && String(record.provider_id).toLowerCase() !== String(record.source).toLowerCase()
@@ -1325,7 +1309,7 @@ function TokenPlanQuotaWindows({ providerId, windows }) {
 
 function ExpiredTokenPlanRow({ record, onEdit }) {
   const providerKey = String(record.provider_id || record.source || "custom").toLowerCase();
-  const endedAt = record.subscription_end_date || record.expires_at || "—";
+  const endedAt = tokenPlanExpiryValue(record) ?? "—";
   const subscriptionCost = Number(record.subscription_amount) > 0
     ? ` · ${record.subscription_currency || "USD"} ${Number(record.subscription_amount).toLocaleString()}`
     : "";

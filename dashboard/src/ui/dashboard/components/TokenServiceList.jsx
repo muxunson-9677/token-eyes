@@ -3,7 +3,14 @@ import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { formatTokenCount } from "../../../lib/format";
+import {
+  isTokenPlanExpired,
+  tokenPlanExpiryTimestamp as expiryTimestamp,
+  tokenPlanExpiryValue,
+} from "../../../lib/token-plan-validity.js";
 import { ProviderIcon } from "./ProviderIcon.jsx";
+
+export { expiryTimestamp };
 
 export const TOKEN_SERVICE_PAGE_SIZE = 5;
 
@@ -22,28 +29,6 @@ const PROVIDER_LABELS = {
 function toNonNegativeNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : 0;
-}
-
-export function expiryTimestamp(expiresAt) {
-  const value = String(expiresAt || "").trim();
-  if (!value) return null;
-  if (/^\d{10,13}$/.test(value)) {
-    const numeric = Number(value);
-    const timestamp = value.length <= 10 ? numeric * 1000 : numeric;
-    return Number.isFinite(timestamp) ? timestamp : null;
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split("-").map(Number);
-    const timestamp = new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
-    return Number.isFinite(timestamp) ? timestamp : null;
-  }
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-function isExpired(expiresAt, now) {
-  const timestamp = expiryTimestamp(expiresAt);
-  return timestamp !== null && timestamp <= now.getTime();
 }
 
 const WINDOW_PRIORITY = [
@@ -172,7 +157,7 @@ export function normalizeTokenServices(plans, now = new Date()) {
         || metrics[0]
         || { total: 0, used: 0, percentage: 0 };
       const labels = serviceLabels(plan);
-      const effectiveExpiry = plan?.subscription_end_date || plan?.expires_at || null;
+      const effectiveExpiry = tokenPlanExpiryValue(plan);
       const verifiedExpiry = expiryTimestamp(effectiveExpiry);
       return {
         id: String(plan?.id || `${labels.provider}-${index}`),
@@ -187,7 +172,7 @@ export function normalizeTokenServices(plans, now = new Date()) {
         metrics,
         ...primaryMetric,
         configured: isConfiguredService(plan, primaryMetric.total),
-        expired: isExpired(effectiveExpiry, now),
+        expired: isTokenPlanExpired(plan, now),
         hasVerifiedFutureExpiry: verifiedExpiry !== null && verifiedExpiry > now.getTime(),
       };
     })

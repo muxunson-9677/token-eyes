@@ -966,11 +966,62 @@ describe("useCostAccumulation selected month", () => {
       amount: 20,
       currency: "USD",
       cycle: "monthly",
+      renewsAt: "2025-02-01",
       status: "expired",
       origin: "token_plan",
       readOnly: true,
     }));
     expect(result.current.tokenPackages).toEqual([]);
+  });
+
+  it("classifies and displays Unix token plan expiry consistently across packages and subscriptions", async () => {
+    getTokenPlans.mockResolvedValue({
+      records: [
+        {
+          id: "future-unix-plan",
+          source: "codex",
+          provider_id: "codex",
+          plan_label: "Future",
+          subscription_amount: 20,
+          subscription_currency: "USD",
+          subscription_cycle: "monthly",
+          subscription_start_date: "2025-01-01",
+          expires_at: "4102444800",
+        },
+        {
+          id: "expired-unix-plan",
+          source: "codex",
+          provider_id: "codex",
+          plan_label: "Expired",
+          subscription_amount: 20,
+          subscription_currency: "USD",
+          subscription_cycle: "monthly",
+          subscription_start_date: "2024-01-01",
+          expires_at: 1_704_067_200_000,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useCostAccumulation({
+      selectedMonth: "2025-06",
+      timeZone: "Asia/Shanghai",
+      sources: COST_SOURCES,
+    }));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.tokenPackages.map((plan) => plan.id)).toEqual(["future-unix-plan"]);
+    expect(result.current.subscriptionRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "token-plan-cost:future-unix-plan",
+        renewsAt: "2100-01-01T00:00:00.000Z",
+        status: "active",
+      }),
+      expect.objectContaining({
+        id: "token-plan-cost:expired-unix-plan",
+        renewsAt: "2024-01-01T00:00:00.000Z",
+        status: "expired",
+      }),
+    ]));
   });
 
   it("does not let a slower old month overwrite the latest selection", async () => {

@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getTokenPlans, getSpendRecords, getSpendTimeseries, getApiBillingAccounts } from "../lib/api";
 import { OTHER_AI_SPEND_SOURCE } from "../lib/cost-sources.js";
 import { getCostMonthRanges } from "../lib/date-range";
+import {
+  isTokenPlanExpired,
+  tokenPlanExpiryTimestamp,
+  tokenPlanExpiryValue,
+} from "../lib/token-plan-validity.js";
 
 function getUtcMonthPeriod(monthKey) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(monthKey || ""));
@@ -455,7 +460,13 @@ export function useCostAccumulation({
         || record.tokenPlanId === plan.id
       )))
       .map((plan) => {
-        const endDate = plan.subscription_end_date || plan.expires_at || null;
+        const endDate = tokenPlanExpiryValue(plan);
+        const endTimestamp = tokenPlanExpiryTimestamp(endDate);
+        const numericEndDate = typeof endDate === "number"
+          || (typeof endDate === "string" && Number.isFinite(Number(endDate)));
+        const renewsAt = numericEndDate && endTimestamp !== null
+          ? new Date(endTimestamp).toISOString()
+          : endDate;
         return {
           id: `token-plan-cost:${plan.id}`,
           tokenPlanId: plan.id,
@@ -465,11 +476,8 @@ export function useCostAccumulation({
           amount: Number(plan.subscription_amount) || 0,
           currency: plan.subscription_currency || "USD",
           startedAt: plan.subscription_start_date || null,
-          renewsAt: endDate,
-          status: getSubscriptionStatus({
-            start_date: plan.subscription_start_date,
-            end_date: endDate,
-          }),
+          renewsAt,
+          status: isTokenPlanExpired(plan) ? "expired" : "active",
           lifetimeAmount: Number(plan.subscription_amount) || 0,
           origin: "token_plan",
           readOnly: true,
@@ -482,7 +490,7 @@ export function useCostAccumulation({
   // Transform token plans for display
   const tokenPackages = useMemo(() => {
     return tokenPlans
-      .filter((plan) => !isExpiredTokenPlan(plan))
+      .filter((plan) => !isTokenPlanExpired(plan))
       .map((plan) => ({
       ...plan,
       id: plan.id,
@@ -492,7 +500,7 @@ export function useCostAccumulation({
       quota: plan.total_quota_display || formatQuota(plan.total_quota, plan.quota_unit),
       used: formatQuota(plan.used_quota, plan.quota_unit),
       remaining: formatQuota(plan.remaining_quota, plan.quota_unit),
-      expiresAt: plan.expires_at || null,
+      expiresAt: tokenPlanExpiryValue(plan),
       syncStatus: plan.sync_status || plan.last_refresh_status || "not_configured",
       syncStatusLabel: getSyncStatusLabel(plan.sync_status || plan.last_refresh_status),
       monthCostUsd: plan.month_cost_usd ?? 0,
@@ -549,17 +557,6 @@ function getSubscriptionStatus(record) {
   if (end && end < now) return "expired";
   if (record.note?.toLowerCase().includes("取消")) return "cancelled";
   return "active";
-}
-
-function isExpiredTokenPlan(plan, now = new Date()) {
-  const value = plan.subscription_end_date || plan.expires_at;
-  if (!value) return false;
-  const raw = String(value).trim();
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  const timestamp = dateOnly
-    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 23, 59, 59, 999).getTime()
-    : Date.parse(raw);
-  return Number.isFinite(timestamp) && timestamp < now.getTime();
 }
 
 function getPlanCycle(plan) {

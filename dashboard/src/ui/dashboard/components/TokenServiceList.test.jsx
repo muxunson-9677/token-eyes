@@ -48,6 +48,19 @@ describe("TokenServiceList", () => {
     expect(expiryTimestamp("2026-07-19")).toBe(new Date(2026, 6, 19, 23, 59, 59, 999).getTime());
   });
 
+  it("keeps an ISO plan active at the exact expiry instant", () => {
+    const exactExpiry = "2026-07-13T00:00:00.000Z";
+
+    render(
+      <TokenServiceList
+        plans={[plan("equal-expiry", 250, 1_000, { expires_at: exactExpiry })]}
+        now={new Date(exactExpiry)}
+      />,
+    );
+
+    expect(screen.getByText("Service equal-expiry")).toBeInTheDocument();
+  });
+
   it("sorts available plans by used quota before exhausted plans, hides expired records, and paginates five rows with global ranks", async () => {
     const user = userEvent.setup();
     const plans = [
