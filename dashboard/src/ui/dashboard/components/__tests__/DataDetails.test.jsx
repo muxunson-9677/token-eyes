@@ -722,4 +722,85 @@ describe("DataDetails daily rows", () => {
     await act(async () => user.click(totalCell));
     expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
   });
+
+  it("merges duplicate source and model rows before recalculating token shares", async () => {
+    const user = userEvent.setup();
+    const onLoadDailyModelBreakdown = vi.fn().mockResolvedValue({
+      sources: [
+        {
+          source: "Codex",
+          totals: { total_tokens: 60 },
+          models: [{ model: "gpt-5.6-sol", totals: { total_tokens: 40 } }],
+        },
+        {
+          source: " codex ",
+          totals: { total_tokens: 40 },
+          models: [
+            { model: "gpt-5.6-sol", totals: { total_tokens: 20 } },
+            { model: "gpt-5.5", totals: { total_tokens: 20 } },
+          ],
+        },
+        {
+          source: "claude",
+          totals: { total_tokens: 100 },
+          models: [{ model: "claude-sonnet-4", totals: { total_tokens: 100 } }],
+        },
+      ],
+    });
+
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        onLoadDailyModelBreakdown={onLoadDailyModelBreakdown}
+      />,
+    );
+
+    await openDailyOverlay(user);
+    const overlay = await screen.findByTestId("daily-breakdown-overlay");
+    const articles = [...overlay.querySelectorAll("article")];
+    expect(articles).toHaveLength(2);
+    const codex = articles.find((article) => article.textContent.includes("Codex"));
+    expect(codex).toBeDefined();
+    expect(within(codex).getAllByText("gpt-5.6-sol")).toHaveLength(1);
+    expect(codex.querySelector(".tt-daily-breakdown-agent")).toHaveTextContent("100");
+    expect(codex.querySelector(".tt-daily-breakdown-agent")).toHaveTextContent("50.0%");
+    const modelRows = [...codex.querySelectorAll(".tt-daily-breakdown-models > div")];
+    expect(modelRows).toHaveLength(2);
+    expect(modelRows.find((row) => row.textContent.includes("gpt-5.6-sol"))).toHaveTextContent("60");
+    expect(modelRows.find((row) => row.textContent.includes("gpt-5.6-sol"))).toHaveTextContent("60.0%");
+  });
+
+  it("closes the daily overlay with Escape or an outside pointer and restores its trigger", async () => {
+    const user = userEvent.setup();
+    const onLoadDailyModelBreakdown = vi.fn().mockResolvedValue({
+      sources: [{ source: "codex", totals: { total_tokens: 120 }, models: [] }],
+    });
+    render(
+      <DataDetails
+        {...dailyProps}
+        dailyBreakdownRows={dailyRowsWithUsage}
+        dailyBreakdownColumns={dailyColumns}
+        renderDetailCell={(row, key) => String(row[key] ?? 0)}
+        onLoadDailyModelBreakdown={onLoadDailyModelBreakdown}
+      />,
+    );
+
+    const trigger = screen.getByRole("table").querySelector(".tt-daily-row-trigger");
+    expect(trigger).not.toBeNull();
+    await act(async () => user.click(trigger));
+    expect(await screen.findByRole("dialog")).toHaveFocus();
+
+    await act(async () => user.keyboard("{Escape}"));
+    expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await act(async () => user.click(trigger));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await act(async () => user.click(screen.getByTestId("daily-summary-peak")));
+    expect(screen.queryByTestId("daily-breakdown-overlay")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
 });

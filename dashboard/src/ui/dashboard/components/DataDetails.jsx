@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronRight, FolderKanban, Loader2, X } from "lucide-react";
 import { Card } from "../../components";
 import { formatTokenCount } from "../../../lib/format";
@@ -110,6 +110,8 @@ export function DataDetails({
   const dailyOverlayCacheRef = useRef(new Map());
   const dailyOverlayRequestRef = useRef({ generation: 0, controller: null });
   const dailyOverlayLoaderRef = useRef(onLoadDailyModelBreakdown);
+  const dailyOverlayRef = useRef(null);
+  const dailyOverlayTriggerRef = useRef(null);
   const dailyTableRef = useRef(null);
   const dailyOverlayScopeKey = useMemo(
     () => buildDailyOverlayCacheKey("", dailyBreakdownScope),
@@ -253,6 +255,7 @@ export function DataDetails({
     const desiredTop = Number(tableRow?.offsetTop || 0) + Number(tableRow?.offsetHeight || 44);
     const maxTop = Math.max(46, Number(tableViewport?.clientHeight || 320) - 238);
     const top = Math.min(desiredTop, maxTop);
+    dailyOverlayTriggerRef.current = trigger || tableRow || null;
     const request = dailyOverlayRequestRef.current;
     request.generation += 1;
     request.controller?.abort();
@@ -283,27 +286,62 @@ export function DataDetails({
       if (request.generation === generation) request.controller = null;
     }
   };
-  const closeDailyOverlay = () => {
+  const closeDailyOverlay = useCallback(() => {
     const request = dailyOverlayRequestRef.current;
+    const trigger = dailyOverlayTriggerRef.current;
     request.generation += 1;
     request.controller?.abort();
     request.controller = null;
     setDailyOverlay(null);
-  };
+    queueMicrotask(() => {
+      if (trigger?.isConnected) trigger.focus?.();
+    });
+  }, []);
+  useEffect(() => {
+    if (!visibleDailyOverlay) return undefined;
+    dailyOverlayRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeDailyOverlay();
+    };
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (dailyOverlayRef.current?.contains(target)) return;
+      if (dailyOverlayTriggerRef.current?.contains?.(target)) return;
+      closeDailyOverlay();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [closeDailyOverlay, visibleDailyOverlay]);
   const dailyOverlaySources = useMemo(() => {
     const sources = Array.isArray(visibleDailyOverlay?.breakdown?.sources)
       ? visibleDailyOverlay.breakdown.sources
       : [];
-    const normalized = sources.map((source) => {
-      const total = resolveDisplayTokens(source?.totals, 0);
-      const models = (Array.isArray(source?.models) ? source.models : [])
-        .map((model) => ({
-          name: String(model?.model || copy("data.confidence.unattributed")),
-          tokens: resolveDisplayTokens(model?.totals, 0),
-        }))
+    const sourcesById = new Map();
+    for (const source of sources) {
+      const id = String(source?.source || "unknown").trim().toLowerCase() || "unknown";
+      const current = sourcesById.get(id) || { id, total: 0, models: new Map() };
+      current.total += resolveDisplayTokens(source?.totals, 0);
+      for (const model of Array.isArray(source?.models) ? source.models : []) {
+        const name = String(model?.model || copy("data.confidence.unattributed")).trim()
+          || copy("data.confidence.unattributed");
+        const key = name.toLowerCase();
+        const existing = current.models.get(key) || { name, tokens: 0 };
+        existing.tokens += resolveDisplayTokens(model?.totals, 0);
+        current.models.set(key, existing);
+      }
+      sourcesById.set(id, current);
+    }
+    const normalized = [...sourcesById.values()].map((source) => {
+      const models = [...source.models.values()]
         .filter((model) => model.tokens > 0)
         .sort((left, right) => right.tokens - left.tokens);
-      return { id: String(source?.source || "unknown"), total, models };
+      const modelTotal = models.reduce((sum, model) => sum + model.tokens, 0);
+      return { id: source.id, total: source.total > 0 ? source.total : modelTotal, models };
     }).filter((source) => source.total > 0 || source.models.length > 0);
     const grandTotal = normalized.reduce((sum, source) => sum + source.total, 0);
     return normalized.map((source) => ({
@@ -517,11 +555,14 @@ export function DataDetails({
             </table>
             {visibleDailyOverlay ? (
               <section
+                ref={dailyOverlayRef}
                 data-testid="daily-breakdown-overlay"
                 data-overlay-layout="cover"
                 className="tt-daily-breakdown-overlay"
                 style={{ top: visibleDailyOverlay.top }}
-                aria-live="polite"
+                role="dialog"
+                aria-label={`${visibleDailyOverlay.day} ${copy("dashboard.daily.overlay_title")}`}
+                tabIndex={-1}
               >
                 <header>
                   <div><strong>{visibleDailyOverlay.day}</strong><span>{copy("dashboard.daily.overlay_title")}</span></div>
