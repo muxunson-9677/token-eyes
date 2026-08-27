@@ -1,5 +1,8 @@
 const { AGENT_ADAPTERS } = require("./agent-adapters");
-const { KNOWN_PROVIDER_API_IDS } = require("./provider-api-configs");
+const {
+  applyKnownProviderPreset,
+  KNOWN_PROVIDER_API_IDS,
+} = require("./provider-api-configs");
 
 const TOKEN_FIELDS = [
   "input_tokens",
@@ -108,6 +111,31 @@ for (const providerId of KNOWN_PROVIDER_API_IDS) {
   KNOWN_ATTRIBUTION_PROVIDER_IDS.add(providerId);
 }
 
+const KNOWN_PROVIDER_ID_BY_PRESET_URL = new Map(
+  KNOWN_PROVIDER_API_IDS.map((providerId) => {
+    const preset = applyKnownProviderPreset({ providerId });
+    return [String(preset?.requestUrl || ""), providerId];
+  }).filter(([requestUrl]) => requestUrl),
+);
+
+function normalizeAttributionProviderId(value) {
+  const providerId = String(value || "").trim().toLowerCase();
+  if (!providerId) return "";
+  if (KNOWN_ATTRIBUTION_PROVIDER_IDS.has(providerId)) return providerId;
+
+  const candidates = [...new Set([
+    providerId,
+    providerId.replace(/[/-]+/g, "_"),
+  ])];
+  for (const candidate of candidates) {
+    if (KNOWN_ATTRIBUTION_PROVIDER_IDS.has(candidate)) return candidate;
+    const preset = applyKnownProviderPreset({ providerId: candidate });
+    const canonicalId = KNOWN_PROVIDER_ID_BY_PRESET_URL.get(String(preset?.requestUrl || ""));
+    if (canonicalId) return canonicalId;
+  }
+  return providerId;
+}
+
 function isAllowedEvidenceReference(field, value) {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
@@ -136,7 +164,9 @@ function normalizeUsageAttribution(input) {
   };
 
   for (const field of EVIDENCE_REF_FIELDS) {
-    const value = evidence[field];
+    const value = field === "provider_id"
+      ? normalizeAttributionProviderId(evidence[field])
+      : evidence[field];
     if (isAllowedEvidenceReference(field, value)) result[field] = value.trim();
   }
 
@@ -156,18 +186,64 @@ function normalizeAttributionIdentity(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function hasTimestampValue(value) {
+  return value !== null
+    && value !== undefined
+    && (typeof value !== "string" || value.trim() !== "");
+}
+
+function firstTimestampValue(...values) {
+  return values.find(hasTimestampValue);
+}
+
+function parseAttributionTimestamp(value, { endOfDate = false } = {}) {
+  if (!hasTimestampValue(value)) return null;
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return Number.NaN;
+    return Math.abs(value) < 1e12 ? value * 1000 : value;
+  }
+
+  const text = String(value).trim();
+  if (/^-?\d+(?:\.\d+)?$/.test(text)) {
+    const timestamp = Number(text);
+    if (!Number.isFinite(timestamp)) return Number.NaN;
+    return Math.abs(timestamp) < 1e12 ? timestamp * 1000 : timestamp;
+  }
+  const dateTime = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? `${text}${endOfDate ? "T23:59:59.999Z" : "T00:00:00.000Z"}`
+    : text;
+  const timestamp = Date.parse(dateTime);
+  return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+}
+
 function createConfiguredTokenPlanResolver(configuredPlans) {
   const plansByIdentity = new Map();
   for (const plan of Array.isArray(configuredPlans) ? configuredPlans : []) {
     const source = normalizeAttributionIdentity(plan?.source);
-    const providerId = normalizeAttributionIdentity(plan?.provider_id);
+    const providerId = normalizeAttributionProviderId(plan?.provider_id);
     if (!source || !providerId) continue;
     const key = `${source}\u0000${providerId}`;
     const matches = plansByIdentity.get(key) || [];
+    const startedAt = parseAttributionTimestamp(
+      firstTimestampValue(plan?.started_at, plan?.subscription_start_date),
+    );
+    const expiresAt = parseAttributionTimestamp(
+      firstTimestampValue(plan?.subscription_end_date, plan?.expires_at),
+      { endOfDate: true },
+    );
     matches.push({
       plan_ref: isAllowedEvidenceReference("plan_ref", plan?.plan_ref)
         ? plan.plan_ref.trim()
         : null,
+      started_at: startedAt,
+      expires_at: expiresAt,
+      window_valid: !Number.isNaN(startedAt)
+        && !Number.isNaN(expiresAt)
+        && (startedAt === null || expiresAt === null || startedAt <= expiresAt),
     });
     plansByIdentity.set(key, matches);
   }
@@ -183,10 +259,22 @@ function createConfiguredTokenPlanResolver(configuredPlans) {
     }
 
     const source = normalizeAttributionIdentity(evidence.source);
-    const providerId = normalizeAttributionIdentity(evidence.provider_id);
-    const matches = source && providerId
+    const providerId = normalizeAttributionProviderId(evidence.provider_id);
+    const occurredAt = parseAttributionTimestamp(firstTimestampValue(
+      evidence.occurred_at,
+      evidence.timestamp,
+      evidence.hour_start,
+    ));
+    const identityMatches = source && providerId
       ? plansByIdentity.get(`${source}\u0000${providerId}`) || []
       : [];
+    const matches = occurredAt === null || Number.isNaN(occurredAt)
+      ? []
+      : identityMatches.filter((plan) => (
+        plan.window_valid
+        && (plan.started_at === null || occurredAt >= plan.started_at)
+        && (plan.expires_at === null || occurredAt <= plan.expires_at)
+      ));
     if (matches.length > 0) {
       const { plan_ref: _planRef, ...retainedEvidence } = attribution;
       return normalizeUsageAttribution({
@@ -238,6 +326,7 @@ module.exports = {
   accumulateBillingModeAttribution,
   attributeUsage,
   createConfiguredTokenPlanResolver,
+  normalizeAttributionProviderId,
   normalizeBillingMode,
   normalizeEndpointOrigin,
   normalizeUsageAttribution,

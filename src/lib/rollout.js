@@ -7,7 +7,11 @@ const readline = require("node:readline");
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
 const { readSqliteJsonRows } = require("./sqlite-reader");
-const { normalizeBillingMode, normalizeUsageAttribution } = require("./usage-attribution");
+const {
+  normalizeAttributionProviderId,
+  normalizeBillingMode,
+  normalizeUsageAttribution,
+} = require("./usage-attribution");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -3512,24 +3516,25 @@ function sqliteStringLiteral(value) {
 }
 
 function normalizeObservedProviderId(value) {
-  const provider = String(value || "").trim().toLowerCase();
-  if (!provider) return null;
-  if (provider.startsWith("deepseek")) return "deepseek";
-  if (provider === "xiaomi" || provider.startsWith("mimo")) return "xiaomi_mimo";
-  return provider.replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || null;
+  return normalizeAttributionProviderId(value) || null;
 }
 
 function hermesBillingAttribution(row) {
   const explicitMode = normalizeBillingMode(row?.billing_mode);
   const providerId = normalizeObservedProviderId(row?.billing_provider);
   const endpoint = typeof row?.billing_base_url === "string" ? row.billing_base_url.trim() : "";
-  const hasExplicitMode = explicitMode === "api_key" || explicitMode === "token_plan";
+  const hasExplicitTokenPlan = explicitMode === "token_plan";
+  const hasApiKeyEvidence = explicitMode === "api_key";
   const hasProviderReceipt = Boolean(providerId && endpoint);
   return {
-    billing_mode: hasExplicitMode ? explicitMode : hasProviderReceipt ? "api_key" : "unknown",
-    billing_mode_confidence: hasExplicitMode
+    billing_mode: hasExplicitTokenPlan
+      ? "token_plan"
+      : hasApiKeyEvidence || hasProviderReceipt
+        ? "api_key"
+        : "unknown",
+    billing_mode_confidence: hasExplicitTokenPlan
       ? "explicit_runtime"
-      : hasProviderReceipt
+      : hasApiKeyEvidence || hasProviderReceipt
         ? "provider_receipt"
         : "unavailable",
     provider_id: providerId,

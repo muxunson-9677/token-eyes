@@ -6,11 +6,13 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const { parseHermesIncremental } = require("../src/lib/rollout");
 const {
   accumulateBillingModeAttribution,
   normalizeBillingMode,
   normalizeUsageAttribution,
 } = require("../src/lib/usage-attribution");
+const { execSqlScript } = require("./helpers/sqlite-builder.cjs");
 
 function deriveRowBillingMode(row) {
   const attribution = normalizeUsageAttribution(row);
@@ -390,6 +392,101 @@ test("usage-model-breakdown: exact configured provider attribution preserves pre
     assert.ok(
       overridden.totals.total_cost_usd === null || Number(overridden.totals.total_cost_usd) > 0,
       "override cost must be a known positive value or explicitly unavailable, never fake zero",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("usage-model-breakdown: parsed Hermes API-key route honors its exact configured plan window", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-billing-hermes-parser-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const dbPath = path.join(tmp, "state.db");
+    const beforeWindow = Date.parse("2026-07-31T23:58:00.000Z") / 1000;
+    const insideWindow = Date.parse("2026-08-18T00:00:00.000Z") / 1000;
+    const afterWindow = Date.parse("2026-09-01T00:01:00.000Z") / 1000;
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.writeFile(
+      path.join(trackerDir, "config.json"),
+      JSON.stringify({
+        tokenPlans: [{
+          id: "plan-parser-1",
+          source: "hermes",
+          provider_id: "xiaomi_mimo",
+          plan_id: "xiaomi_mimo_standard_monthly",
+          plan_label: "Xiaomi MiMo Token Plan",
+          subscription_start_date: "2026-08-01",
+          expires_at: "2026-08-31T23:59:59.999Z",
+        }],
+      }),
+    );
+    execSqlScript(dbPath, `
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, model TEXT, started_at INTEGER, ended_at INTEGER,
+        input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+        cache_write_tokens INTEGER, reasoning_tokens INTEGER, message_count INTEGER,
+        billing_provider TEXT, billing_base_url TEXT, billing_mode TEXT
+      );
+      INSERT INTO sessions VALUES (
+        'session-before-window', 'mimo-before-window', ${beforeWindow}, ${beforeWindow + 60},
+        10, 5, 0, 0, 0, 1,
+        'xiaomi-mimo', 'https://api.xiaomimimo.com/v1', 'api_key'
+      );
+      INSERT INTO sessions VALUES (
+        'session-plan-route', 'mimo-v2.5-pro', ${insideWindow}, ${insideWindow + 60},
+        10, 5, 0, 0, 0, 1,
+        'xiaomi/mimo', 'https://api.xiaomimimo.com/v1', 'api_key'
+      );
+      INSERT INTO sessions VALUES (
+        'session-after-window', 'mimo-after-window', ${afterWindow}, ${afterWindow + 60},
+        10, 5, 0, 0, 0, 1,
+        'xiaomi_mimo', 'https://api.xiaomimimo.com/v1', 'api_key'
+      );
+    `);
+
+    await parseHermesIncremental({ dbPath, cursors: {}, queuePath });
+    const queued = (await fs.readFile(queuePath, "utf8"))
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line));
+    assert.equal(queued.length, 3);
+    for (const row of queued) {
+      assert.equal(row.billing_mode, "api_key");
+      assert.equal(row.billing_mode_confidence, "provider_receipt");
+      assert.equal(row.provider_id, "xiaomi_mimo");
+    }
+
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: trackerDir });
+    const body = await call(
+      handler,
+      "/functions/tokentracker-usage-model-breakdown?from=2026-07-31&to=2026-09-01&tz=UTC",
+    );
+    const source = body.sources.find((entry) => entry.source === "hermes");
+    const models = new Map(source.models.map((entry) => [entry.model, entry]));
+    assert.equal(models.get("mimo-before-window").billing_mode, "api_key");
+    assert.equal(models.get("mimo-v2.5-pro").billing_mode, "token_plan");
+    assert.equal(
+      models.get("mimo-v2.5-pro").billing_mode_confidence,
+      "configured_plan_provider_match",
+    );
+    assert.equal(models.get("mimo-after-window").billing_mode, "api_key");
+    assert.deepEqual(source.billing_mode_token_totals, {
+      api_key: 30,
+      token_plan: 15,
+      unknown: 0,
+    });
+    assert.equal(source.totals.total_tokens, 45);
+    assert.equal(
+      Object.values(source.billing_mode_token_totals).reduce((sum, value) => sum + value, 0),
+      source.totals.total_tokens,
+    );
+    assert.ok(
+      Math.abs(
+        Object.values(source.billing_mode_cost_totals).reduce((sum, value) => sum + value, 0)
+          - Number(source.totals.total_cost_usd),
+      ) < 0.000002,
     );
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });

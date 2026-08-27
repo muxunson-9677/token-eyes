@@ -6274,6 +6274,8 @@ function createLocalApiHandler({
         association_state: plan.detection_method === "official_account" && accountBound
           ? "configured_current_account"
           : "configured_plan",
+        started_at: plan.subscription_start_date || null,
+        expires_at: plan.subscription_end_date || plan.expires_at || null,
       };
       plans.push(link);
       if (!bySource.has(source)) bySource.set(source, link);

@@ -68,6 +68,19 @@ test("configured Token Plan resolver preserves explicit runtime and user overrid
     resolve({
       source: "hermes",
       provider_id: "xiaomi_mimo",
+      billing_mode: "token_plan",
+      billing_mode_confidence: "explicit_runtime",
+    }),
+    {
+      billing_mode: "token_plan",
+      billing_mode_confidence: "explicit_runtime",
+      provider_id: "xiaomi_mimo",
+    },
+  );
+  assert.deepEqual(
+    resolve({
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
       billing_mode: "api_key",
       billing_mode_confidence: "user_override",
     }),
@@ -77,6 +90,107 @@ test("configured Token Plan resolver preserves explicit runtime and user overrid
       provider_id: "xiaomi_mimo",
     },
   );
+});
+
+test("configured Token Plan resolver canonicalizes exact provider aliases", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+  ]);
+
+  for (const providerId of ["xiaomi-mimo", "xiaomi/mimo"]) {
+    assert.deepEqual(
+      resolve({
+        source: "hermes",
+        provider_id: providerId,
+        occurred_at: "2026-08-18T00:00:00.000Z",
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
+      }),
+      {
+        billing_mode: "token_plan",
+        billing_mode_confidence: "configured_plan_provider_match",
+        provider_id: "xiaomi_mimo",
+        plan_ref: "token-plan/xiaomi_mimo/plan-1",
+      },
+      providerId,
+    );
+  }
+});
+
+test("configured Token Plan resolver matches only usage inside the plan window", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+      started_at: "2026-08-01T00:00:00.000Z",
+      expires_at: "2026-08-31T23:59:59.999Z",
+    },
+  ]);
+  const receipt = {
+    source: "hermes",
+    provider_id: "xiaomi_mimo",
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+  };
+
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-07-31T23:59:59.999Z" }).billing_mode, "api_key");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-08-01T00:00:00.000Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-08-31T23:59:59.999Z" }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: "2026-09-01T00:00:00.000Z" }).billing_mode, "api_key");
+});
+
+test("configured Token Plan resolver does not invent a time match without usage occurrence", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+  ]);
+
+  assert.deepEqual(
+    resolve({
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+    }),
+    {
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+      provider_id: "xiaomi_mimo",
+    },
+  );
+});
+
+test("configured Token Plan resolver accepts Unix-second and Unix-millisecond window boundaries", () => {
+  const startedAtMs = Date.parse("2026-08-01T00:00:00.000Z");
+  const expiresAtMs = Date.parse("2026-08-31T23:59:59.999Z");
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+      started_at: startedAtMs / 1000,
+      expires_at: expiresAtMs,
+    },
+  ]);
+  const receipt = {
+    source: "hermes",
+    provider_id: "xiaomi_mimo",
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+  };
+
+  assert.equal(resolve({ ...receipt, occurred_at: startedAtMs / 1000 }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: expiresAtMs }).billing_mode, "token_plan");
+  assert.equal(resolve({ ...receipt, occurred_at: startedAtMs - 1 }).billing_mode, "api_key");
+  assert.equal(resolve({ ...receipt, occurred_at: expiresAtMs + 1 }).billing_mode, "api_key");
 });
 
 test("configured Token Plan resolver matches only the normalized source and provider pair", () => {
@@ -92,6 +206,7 @@ test("configured Token Plan resolver matches only the normalized source and prov
     resolve({
       source: "Hermes",
       provider_id: "xiaomi_mimo",
+      occurred_at: "2026-08-18T00:00:00.000Z",
       billing_mode: "api_key",
       billing_mode_confidence: "provider_receipt",
     }),
@@ -118,7 +233,11 @@ test("configured Token Plan resolver classifies an ambiguous pair without invent
     },
   ]);
 
-  const result = resolve({ source: "hermes", provider_id: "xiaomi_mimo" });
+  const result = resolve({
+    source: "hermes",
+    provider_id: "xiaomi_mimo",
+    occurred_at: "2026-08-18T00:00:00.000Z",
+  });
   assert.equal(result.billing_mode, "token_plan");
   assert.equal(result.billing_mode_confidence, "configured_plan_provider_match");
   assert.equal(Object.prototype.hasOwnProperty.call(result, "plan_ref"), false);
@@ -144,6 +263,7 @@ test("configured Token Plan resolver ignores source-only and deceptive label or 
     resolve({
       source: "hermes",
       provider_id: "deepseek",
+      occurred_at: "2026-08-18T00:00:00.000Z",
       model: "mimo-coding-plan",
       plan_label: "MiMo coding plan",
       quota_unit: "tokens",
@@ -160,6 +280,7 @@ test("configured Token Plan resolver ignores source-only and deceptive label or 
     resolve({
       source: "hermes",
       provider_id: "deepseek",
+      occurred_at: "2026-08-18T00:00:00.000Z",
       billing_mode: "token_plan",
       billing_mode_confidence: "provider_receipt",
     }),
@@ -440,7 +561,7 @@ test("rollout queue keeps unknown and explicit deltas in separate records", asyn
   }
 });
 
-test("Hermes parser retains explicit billing evidence and sanitizes its endpoint", async () => {
+test("Hermes parser records API-key routing as overridable provider evidence and sanitizes its endpoint", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-attribution-"));
   try {
     const dbPath = path.join(tmp, "state.db");
@@ -476,7 +597,7 @@ test("Hermes parser retains explicit billing evidence and sanitizes its endpoint
 
     const queued = JSON.parse((await fs.readFile(queuePath, "utf8")).trim());
     assert.equal(queued.billing_mode, "api_key");
-    assert.equal(queued.billing_mode_confidence, "explicit_runtime");
+    assert.equal(queued.billing_mode_confidence, "provider_receipt");
     assert.equal(queued.provider_id, "deepseek");
     assert.equal(queued.endpoint_origin, "https://api.deepseek.com");
     assert.equal(JSON.stringify(queued).includes("secret"), false);
