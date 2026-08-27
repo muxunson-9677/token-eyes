@@ -259,7 +259,7 @@ test("usage-model-breakdown: an explicit row remains authoritative across model 
   }
 });
 
-test("usage-model-breakdown: plan records and model keywords remain unknown and preserve totals", async () => {
+test("usage-model-breakdown: exact configured provider attribution preserves precedence and totals", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-billing-hermes-"));
   try {
     const trackerDir = path.join(tmp, ".tokentracker", "tracker");
@@ -275,6 +275,7 @@ test("usage-model-breakdown: plan records and model keywords remain unknown and 
             {
               id: "plan-1",
               source: "hermes",
+              provider_id: "xiaomi_mimo",
               plan_label: "Xiaomi MiMo Token Plan",
               total_quota: 1000,
               used_quota: 0,
@@ -295,6 +296,9 @@ test("usage-model-breakdown: plan records and model keywords remain unknown and 
         hour_start: "2026-06-20T00:00:00.000Z",
         source: "hermes",
         model: "mimo-v2.5-pro",
+        provider_id: "xiaomi_mimo",
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
         input_tokens: 1000,
         output_tokens: 200,
         cached_input_tokens: 0,
@@ -307,12 +311,30 @@ test("usage-model-breakdown: plan records and model keywords remain unknown and 
         hour_start: "2026-06-20T00:00:00.000Z",
         source: "hermes",
         model: "deepseek-v4-pro",
+        provider_id: "deepseek",
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
         input_tokens: 500,
         output_tokens: 100,
         cached_input_tokens: 0,
         cache_creation_input_tokens: 0,
         reasoning_output_tokens: 0,
         total_tokens: 600,
+        conversation_count: 1,
+      },
+      {
+        hour_start: "2026-06-20T00:00:00.000Z",
+        source: "hermes",
+        model: "gpt-4o",
+        provider_id: "xiaomi_mimo",
+        billing_mode: "api_key",
+        billing_mode_confidence: "user_override",
+        input_tokens: 250,
+        output_tokens: 50,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 300,
         conversation_count: 1,
       },
     ];
@@ -324,19 +346,51 @@ test("usage-model-breakdown: plan records and model keywords remain unknown and 
     );
     const src = body.sources.find((s) => s.source === "hermes");
     assert.ok(src, "hermes source must exist");
-    assert.equal(src.billing_mode, "unknown");
-    assert.deepEqual(src.billing_modes, ["unknown"]);
-    assert.equal(src.totals.total_tokens, 1800);
+    assert.equal(src.billing_mode, "mixed");
+    assert.deepEqual(src.billing_modes, ["api_key", "token_plan"]);
+    assert.equal(src.totals.total_tokens, 2100);
+    assert.deepEqual(src.billing_mode_token_totals, {
+      api_key: 900,
+      token_plan: 1200,
+      unknown: 0,
+    });
+    assert.equal(
+      Object.values(src.billing_mode_token_totals).reduce((sum, value) => sum + value, 0),
+      src.totals.total_tokens,
+    );
+    assert.ok(
+      Math.abs(
+        Object.values(src.billing_mode_cost_totals).reduce((sum, value) => sum + value, 0)
+          - Number(src.totals.total_cost_usd),
+      ) < 0.000002,
+    );
 
     const mimo = src.models.find((m) => m.model === "mimo-v2.5-pro");
-    assert.equal(mimo.billing_mode, "unknown");
-    assert.equal(mimo.billing_mode_confidence, "unavailable");
+    assert.equal(mimo.billing_mode, "token_plan");
+    assert.equal(mimo.billing_mode_confidence, "configured_plan_provider_match");
     assert.equal(mimo.totals.total_tokens, 1200);
+    assert.ok(
+      mimo.totals.total_cost_usd === null || Number(mimo.totals.total_cost_usd) > 0,
+      "MiMo cost must be a known positive value or explicitly unavailable, never fake zero",
+    );
 
     const deepseek = src.models.find((m) => m.model === "deepseek-v4-pro");
-    assert.equal(deepseek.billing_mode, "unknown");
-    assert.equal(deepseek.billing_mode_confidence, "unavailable");
+    assert.equal(deepseek.billing_mode, "api_key");
+    assert.equal(deepseek.billing_mode_confidence, "provider_receipt");
     assert.equal(deepseek.totals.total_tokens, 600);
+    assert.ok(
+      deepseek.totals.total_cost_usd === null || Number(deepseek.totals.total_cost_usd) > 0,
+      "API cost must be a known positive value or explicitly unavailable, never fake zero",
+    );
+
+    const overridden = src.models.find((m) => m.model === "gpt-4o");
+    assert.equal(overridden.billing_mode, "api_key");
+    assert.equal(overridden.billing_mode_confidence, "user_override");
+    assert.equal(overridden.totals.total_tokens, 300);
+    assert.ok(
+      overridden.totals.total_cost_usd === null || Number(overridden.totals.total_cost_usd) > 0,
+      "override cost must be a known positive value or explicitly unavailable, never fake zero",
+    );
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

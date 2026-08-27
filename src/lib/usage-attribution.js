@@ -22,6 +22,7 @@ const GROUP_FIELDS = {
 const BILLING_MODES = new Set(["api_key", "token_plan", "unknown"]);
 
 const BILLING_MODE_CONFIDENCES = new Set([
+  "configured_plan_provider_match",
   "explicit_runtime",
   "provider_receipt",
   "user_override",
@@ -151,6 +152,63 @@ function normalizeUsageAttribution(input) {
   return result;
 }
 
+function normalizeAttributionIdentity(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function createConfiguredTokenPlanResolver(configuredPlans) {
+  const plansByIdentity = new Map();
+  for (const plan of Array.isArray(configuredPlans) ? configuredPlans : []) {
+    const source = normalizeAttributionIdentity(plan?.source);
+    const providerId = normalizeAttributionIdentity(plan?.provider_id);
+    if (!source || !providerId) continue;
+    const key = `${source}\u0000${providerId}`;
+    const matches = plansByIdentity.get(key) || [];
+    matches.push({
+      plan_ref: isAllowedEvidenceReference("plan_ref", plan?.plan_ref)
+        ? plan.plan_ref.trim()
+        : null,
+    });
+    plansByIdentity.set(key, matches);
+  }
+
+  return function resolveConfiguredTokenPlan(input) {
+    const evidence = input && typeof input === "object" ? input : {};
+    const attribution = normalizeUsageAttribution(evidence);
+    const confidence = attribution.billing_mode_confidence;
+    const hasTrustedMode = attribution.billing_mode === "api_key"
+      || attribution.billing_mode === "token_plan";
+    if (hasTrustedMode && (confidence === "explicit_runtime" || confidence === "user_override")) {
+      return attribution;
+    }
+
+    const source = normalizeAttributionIdentity(evidence.source);
+    const providerId = normalizeAttributionIdentity(evidence.provider_id);
+    const matches = source && providerId
+      ? plansByIdentity.get(`${source}\u0000${providerId}`) || []
+      : [];
+    if (matches.length > 0) {
+      const { plan_ref: _planRef, ...retainedEvidence } = attribution;
+      return normalizeUsageAttribution({
+        ...retainedEvidence,
+        billing_mode: "token_plan",
+        billing_mode_confidence: "configured_plan_provider_match",
+        provider_id: providerId,
+        ...(matches.length === 1 && matches[0].plan_ref
+          ? { plan_ref: matches[0].plan_ref }
+          : {}),
+      });
+    }
+
+    if (hasTrustedMode && confidence === "provider_receipt") return attribution;
+    return normalizeUsageAttribution({
+      ...attribution,
+      billing_mode: "unknown",
+      billing_mode_confidence: "unavailable",
+    });
+  };
+}
+
 function queueUsageIdentity(row, { dimensionsKey } = {}) {
   const record = row && typeof row === "object" ? row : {};
   const parts = [record.source || "", record.model || "", record.hour_start || ""];
@@ -179,6 +237,7 @@ function accumulateBillingModeAttribution(targets, row, evaluate = normalizeUsag
 module.exports = {
   accumulateBillingModeAttribution,
   attributeUsage,
+  createConfiguredTokenPlanResolver,
   normalizeBillingMode,
   normalizeEndpointOrigin,
   normalizeUsageAttribution,

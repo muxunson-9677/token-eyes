@@ -7,6 +7,7 @@ const { test } = require("node:test");
 const { AGENT_ADAPTERS } = require("../src/lib/agent-adapters");
 const providerApiConfigs = require("../src/lib/provider-api-configs");
 const {
+  createConfiguredTokenPlanResolver,
   normalizeUsageAttribution,
 } = require("../src/lib/usage-attribution");
 const {
@@ -39,6 +40,143 @@ test("missing evidence stays unknown even when the model resembles a plan", () =
       billing_mode_confidence: "unavailable",
     },
   );
+});
+
+test("configured Token Plan resolver preserves explicit runtime and user override modes", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+  ]);
+
+  assert.deepEqual(
+    resolve({
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      billing_mode: "api_key",
+      billing_mode_confidence: "explicit_runtime",
+    }),
+    {
+      billing_mode: "api_key",
+      billing_mode_confidence: "explicit_runtime",
+      provider_id: "xiaomi_mimo",
+    },
+  );
+  assert.deepEqual(
+    resolve({
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      billing_mode: "api_key",
+      billing_mode_confidence: "user_override",
+    }),
+    {
+      billing_mode: "api_key",
+      billing_mode_confidence: "user_override",
+      provider_id: "xiaomi_mimo",
+    },
+  );
+});
+
+test("configured Token Plan resolver matches only the normalized source and provider pair", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: " HERMES ",
+      provider_id: " XIAOMI_MIMO ",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+  ]);
+
+  assert.deepEqual(
+    resolve({
+      source: "Hermes",
+      provider_id: "xiaomi_mimo",
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+    }),
+    {
+      billing_mode: "token_plan",
+      billing_mode_confidence: "configured_plan_provider_match",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+  );
+});
+
+test("configured Token Plan resolver classifies an ambiguous pair without inventing a plan_ref", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_ref: "token-plan/xiaomi_mimo/plan-2",
+    },
+  ]);
+
+  const result = resolve({ source: "hermes", provider_id: "xiaomi_mimo" });
+  assert.equal(result.billing_mode, "token_plan");
+  assert.equal(result.billing_mode_confidence, "configured_plan_provider_match");
+  assert.equal(Object.prototype.hasOwnProperty.call(result, "plan_ref"), false);
+});
+
+test("configured Token Plan resolver ignores source-only and deceptive label or model matches", () => {
+  const resolve = createConfiguredTokenPlanResolver([
+    {
+      source: "hermes",
+      provider_id: "xiaomi_mimo",
+      plan_label: "MiMo coding plan",
+      quota_unit: "tokens",
+      plan_ref: "token-plan/xiaomi_mimo/plan-1",
+    },
+    {
+      source: "codex",
+      plan_label: "DeepSeek API plan",
+      plan_ref: "token-plan/deepseek/plan-2",
+    },
+  ]);
+
+  assert.deepEqual(
+    resolve({
+      source: "hermes",
+      provider_id: "deepseek",
+      model: "mimo-coding-plan",
+      plan_label: "MiMo coding plan",
+      quota_unit: "tokens",
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+    }),
+    {
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+      provider_id: "deepseek",
+    },
+  );
+  assert.deepEqual(
+    resolve({
+      source: "hermes",
+      provider_id: "deepseek",
+      billing_mode: "token_plan",
+      billing_mode_confidence: "provider_receipt",
+    }),
+    {
+      billing_mode: "token_plan",
+      billing_mode_confidence: "provider_receipt",
+      provider_id: "deepseek",
+    },
+  );
+  assert.deepEqual(resolve({ source: "hermes", model: "mimo-coding-plan" }), {
+    billing_mode: "unknown",
+    billing_mode_confidence: "unavailable",
+  });
+  assert.deepEqual(resolve({ source: "codex", model: "deepseek-api-plan" }), {
+    billing_mode: "unknown",
+    billing_mode_confidence: "unavailable",
+  });
 });
 
 test("mixed is invalid for a single record and normalizes to unknown", () => {
@@ -338,10 +476,49 @@ test("Hermes parser retains explicit billing evidence and sanitizes its endpoint
 
     const queued = JSON.parse((await fs.readFile(queuePath, "utf8")).trim());
     assert.equal(queued.billing_mode, "api_key");
+    assert.equal(queued.billing_mode_confidence, "explicit_runtime");
     assert.equal(queued.provider_id, "deepseek");
     assert.equal(queued.endpoint_origin, "https://api.deepseek.com");
     assert.equal(JSON.stringify(queued).includes("secret"), false);
     assert.equal(JSON.stringify(queued).includes("password"), false);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Hermes parser treats an invalid billing alias as provider-endpoint fallback evidence", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-invalid-billing-mode-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    execSqlScript(dbPath, `
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        model TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cache_read_tokens INTEGER,
+        cache_write_tokens INTEGER,
+        reasoning_tokens INTEGER,
+        message_count INTEGER,
+        billing_provider TEXT,
+        billing_base_url TEXT,
+        billing_mode TEXT
+      );
+      INSERT INTO sessions VALUES (
+        'session-invalid-mode', 'deepseek-chat', 1787011200, 1787011260,
+        10, 5, 0, 0, 0, 1,
+        'deepseek', 'https://api.deepseek.com/v1', 'subscription'
+      );
+    `);
+
+    await parseHermesIncremental({ dbPath, cursors: {}, queuePath });
+
+    const queued = JSON.parse((await fs.readFile(queuePath, "utf8")).trim());
+    assert.equal(queued.billing_mode, "api_key");
+    assert.equal(queued.billing_mode_confidence, "provider_receipt");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

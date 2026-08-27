@@ -7,7 +7,7 @@ const readline = require("node:readline");
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
 const { readSqliteJsonRows } = require("./sqlite-reader");
-const { normalizeUsageAttribution } = require("./usage-attribution");
+const { normalizeBillingMode, normalizeUsageAttribution } = require("./usage-attribution");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -3520,12 +3520,18 @@ function normalizeObservedProviderId(value) {
 }
 
 function hermesBillingAttribution(row) {
-  const explicitMode = String(row?.billing_mode || "").trim();
+  const explicitMode = normalizeBillingMode(row?.billing_mode);
   const providerId = normalizeObservedProviderId(row?.billing_provider);
   const endpoint = typeof row?.billing_base_url === "string" ? row.billing_base_url.trim() : "";
+  const hasExplicitMode = explicitMode === "api_key" || explicitMode === "token_plan";
+  const hasProviderReceipt = Boolean(providerId && endpoint);
   return {
-    billing_mode: explicitMode || (providerId && endpoint ? "api_key" : "unknown"),
-    billing_mode_confidence: "provider_receipt",
+    billing_mode: hasExplicitMode ? explicitMode : hasProviderReceipt ? "api_key" : "unknown",
+    billing_mode_confidence: hasExplicitMode
+      ? "explicit_runtime"
+      : hasProviderReceipt
+        ? "provider_receipt"
+        : "unavailable",
     provider_id: providerId,
     endpoint,
   };

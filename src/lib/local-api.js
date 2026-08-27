@@ -58,6 +58,7 @@ const {
 const { getCodexUsageLimits } = require("./usage-limits");
 const {
   accumulateBillingModeAttribution,
+  createConfiguredTokenPlanResolver,
   normalizeBillingMode,
   normalizeUsageAttribution,
   queueUsageIdentity,
@@ -3116,8 +3117,7 @@ function createLocalApiHandler({
     });
   }
 
-  function getPricingOptions() {
-    const config = readTrackerConfig();
+  function getPricingOptions(config = readTrackerConfig()) {
     const agentDefaultPricing = normalizeAgentDefaultPricing(config.agentDefaultPricing);
     return {
       agentDefaultPricing,
@@ -6263,6 +6263,7 @@ function createLocalApiHandler({
       const catalogPlan = getPlanById(provider, plan.plan_id);
       const link = {
         source,
+        provider_id: provider,
         plan_ref: `token-plan/${provider}/${publicValueRealtimeId("plan", plan.id || `${source}:${plan.plan_id}`)}`,
         account_ref: plan.detection_method === "official_account" && accountBound
           ? `account/${provider}/official-bound`
@@ -8355,7 +8356,11 @@ function createLocalApiHandler({
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
       const { rows: scopedRows, scope, excludedSources } = scopedQueueRows(qp, url);
-      const pricingOptions = getPricingOptions();
+      const trackerConfig = readTrackerConfig();
+      const pricingOptions = getPricingOptions(trackerConfig);
+      const resolveBillingMode = createConfiguredTokenPlanResolver(
+        configuredPlanAttribution(trackerConfig).plans,
+      );
       const requestedSources = new Set(
         url.searchParams.getAll("source")
           .flatMap((value) => value.split(","))
@@ -8399,7 +8404,7 @@ function createLocalApiHandler({
         const { mode: billingMode } = accumulateBillingModeAttribution([
           { tokenTotals: sa.billingModeTokenTotals },
           { tokenTotals: ma.billingModeTokenTotals, confidences: ma.billingModeConfidences },
-        ], row);
+        ], row, resolveBillingMode);
         const rowCost = computeRowCostDetailed(row, pricingOptions);
         sa.pricingRecords.push(rowCost);
         ma.pricingRecords.push(rowCost);
