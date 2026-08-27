@@ -37,7 +37,7 @@ function mapToRequestDiagnosticV2(row = {}, { observedAt = new Date().toISOStrin
     },
     requested_model: text(row.requested_model) || text(row.model), response_model: recordKind === "request_event" ? text(row.response_model) || text(row.model) : null,
     pricing_model: text(row.pricing_model) || text(row.model), ...tokens,
-    success: recordKind === "request_event" && status != null ? status >= 200 && status < 400 : null,
+    success: recordKind === "request_event" && status != null ? status >= 200 && status < 300 : null,
     status_code: recordKind === "request_event" ? status : null,
     latency_ms: recordKind === "request_event" ? nonNullableInt(row.latency_ms) : null,
     first_token_ms: recordKind === "request_event" ? nonNullableInt(row.first_token_ms) : null,

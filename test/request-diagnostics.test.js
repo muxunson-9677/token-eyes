@@ -9,6 +9,14 @@ test("request diagnostics retain measured fields but exclude prompt and message 
   assert.equal(JSON.stringify(diagnostic).includes("secret"), false);
 });
 
+test("request diagnostics classify only 2xx HTTP statuses as successful", () => {
+  const row = { source: "codex", record_kind: "request_event", timestamp: "2026-07-27T00:00:00.000Z" };
+  assert.equal(mapToRequestDiagnosticV2({ ...row, request_id: "ok", status: 200 }).success, true);
+  assert.equal(mapToRequestDiagnosticV2({ ...row, request_id: "redirect", status: 302 }).success, false);
+  assert.equal(mapToRequestDiagnosticV2({ ...row, request_id: "limited", status: 429 }).success, false);
+  assert.equal(mapToRequestDiagnosticV2({ ...row, request_id: "failed", status: 500 }).success, false);
+});
+
 test("request diagnostics keep aggregate-only sources explicitly unmeasured", () => {
   const response = buildRequestDiagnosticsResponse({ rows: [{ source: "claude", id: "a", timestamp: "2026-07-27T00:00:00.000Z", model: "claude", total_tokens: 50 }] });
   assert.equal(response.diagnostics[0].status_code, null);
