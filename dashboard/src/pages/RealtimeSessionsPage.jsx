@@ -4,6 +4,8 @@ import {
 } from "lucide-react";
 import { copy } from "../lib/copy";
 import { getRealtimeSessions, peekRealtimeSessions } from "../lib/api";
+import { normalizeVisibleProviderIds } from "../lib/spend-provider-visibility.js";
+import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { ValueRealtimeEvidence } from "../components/ValueRealtimeEvidence";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
 import "./value-realtime-pages.css";
@@ -274,6 +276,7 @@ function SidePanels({ data, stateCounts }) {
 }
 
 export function RealtimeSessionsPage() {
+  const { visibleOrdered } = useLimitsDisplayPrefs();
   const [range, setRange] = useState("today");
   const [month, setMonth] = useState("");
   const [data, setData] = useState(() => peekRealtimeSessions("today"));
@@ -319,7 +322,11 @@ export function RealtimeSessionsPage() {
 
   const sessions = data?.sessions || [];
   const focus = focusSession(sessions);
-  const agentHistory = data?.agent_history || [];
+  const visibleAgentIds = new Set(normalizeVisibleProviderIds(visibleOrdered));
+  const agentHistory = (data?.agent_history || []).filter((agent) => {
+    const [providerId] = normalizeVisibleProviderIds([agent?.source]);
+    return visibleAgentIds.has(providerId);
+  });
   const monthOptions = data?.month_options?.length ? data.month_options : data?.available_months || [];
   const selectedMonth = month || data?.data_month || monthOptions[0] || "";
   const stateCounts = useMemo(() => sessions.reduce((counts, session) => ({ ...counts, [session.state]: (counts[session.state] || 0) + 1 }), {}), [sessions]);

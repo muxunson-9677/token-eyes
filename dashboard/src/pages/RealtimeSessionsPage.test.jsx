@@ -3,6 +3,8 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
+import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
+import { LIMITS_DISPLAY_CHANGE_EVENT } from "../hooks/use-limits-display-prefs.js";
 import { RealtimeSessionsPage } from "./RealtimeSessionsPage.jsx";
 
 const { getRealtimeSessions, peekRealtimeSessions } = vi.hoisted(() => ({ getRealtimeSessions: vi.fn(), peekRealtimeSessions: vi.fn(() => null) }));
@@ -38,7 +40,22 @@ const payload = {
   ],
 };
 
+function setVisibleAgents(agentIds) {
+  const visible = new Set(agentIds);
+  window.localStorage.setItem(
+    "tt.limits.providerOrder",
+    JSON.stringify(LIMIT_PROVIDER_IDS),
+  );
+  window.localStorage.setItem(
+    "tt.limits.providerVisibility",
+    JSON.stringify(Object.fromEntries(
+      LIMIT_PROVIDER_IDS.map((id) => [id, visible.has(id)]),
+    )),
+  );
+}
+
 beforeEach(() => {
+  window.localStorage.clear();
   peekRealtimeSessions.mockReset();
   peekRealtimeSessions.mockReturnValue(null);
   globalThis.ResizeObserver = class ResizeObserverStub {
@@ -54,6 +71,45 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RealtimeSessionsPage", () => {
+  it("renders cached Agent cards only from the limits allowlist and updates them without reload", () => {
+    const cachedPayload = {
+      ...payload,
+      agent_history: [
+        { ...payload.agent_history[0], source: " CODEX ", agent_label: "Cached Codex" },
+        { ...payload.agent_history[2], agent_label: "Hidden Claude" },
+        { ...payload.agent_history[1], agent_label: "Hidden Cursor" },
+        { ...payload.agent_history[3], source: "unknown-cache", agent_label: "Unknown Cache" },
+      ],
+    };
+    setVisibleAgents(["codex"]);
+    peekRealtimeSessions.mockReturnValue(cachedPayload);
+    getRealtimeSessions.mockImplementation(() => new Promise(() => {}));
+
+    render(<RealtimeSessionsPage />);
+
+    expect(document.querySelectorAll(".rt-session-mini")).toHaveLength(1);
+    expect(screen.getByText("Cached Codex")).toBeInTheDocument();
+    expect(screen.queryByText("Hidden Claude")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hidden Cursor")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unknown Cache")).not.toBeInTheDocument();
+
+    act(() => {
+      setVisibleAgents(["claude"]);
+      window.dispatchEvent(new CustomEvent(LIMITS_DISPLAY_CHANGE_EVENT));
+    });
+
+    expect(screen.queryByText("Cached Codex")).not.toBeInTheDocument();
+    expect(screen.getByText("Hidden Claude")).toBeInTheDocument();
+
+    act(() => {
+      setVisibleAgents([]);
+      window.dispatchEvent(new CustomEvent(LIMITS_DISPLAY_CHANGE_EVENT));
+    });
+
+    expect(document.querySelector(".rt-session-strip")).toBeNull();
+    expect(document.querySelector(".rt-session-mini")).toBeNull();
+  });
+
   it("renders the cached realtime aggregate immediately while refreshing in the background", () => {
     peekRealtimeSessions.mockReturnValue(payload);
     getRealtimeSessions.mockImplementation(() => new Promise(() => {}));
@@ -112,7 +168,7 @@ describe("RealtimeSessionsPage", () => {
     expect(traeCard).not.toHaveTextContent(copy("value.data_unavailable"));
     expect(codeBuddyCard).not.toHaveTextContent(copy("value.data_unavailable"));
     await act(async () => { await user.click(screen.getByRole("button", { name: copy("realtime.agent.next") })); });
-    expect(await screen.findByText("DeepSeek Harness")).toBeInTheDocument();
+    expect(screen.queryByText("DeepSeek Harness")).not.toBeInTheDocument();
     expect(await screen.findByText("总积分 180")).toBeInTheDocument();
     expect(await screen.findByText("已消耗 12")).toBeInTheDocument();
     const previous = screen.getByRole("button", { name: copy("realtime.agent.previous") });
@@ -286,7 +342,6 @@ describe("RealtimeSessionsPage", () => {
       CodeBuddy: "/brand-logos/codebuddy.svg",
       Codex: "/brand-logos/codex.svg",
       Cursor: "/brand-logos/cursor.svg",
-      "DeepSeek Harness": "/brand-logos/deepseek-harness.svg",
       "Hermes Agent": "/brand-logos/hermes.svg",
       Trae: "/brand-logos/trae.svg",
       WorkBuddy: "/brand-logos/codebuddy.svg",
@@ -306,7 +361,7 @@ describe("RealtimeSessionsPage", () => {
       auditVisibleCards();
     }
     expect([...seen].sort()).toEqual([
-      "Claude Code", "CodeBuddy", "Codex", "Cursor", "DeepSeek Harness", "Hermes Agent", "Trae", "WorkBuddy",
+      "Claude Code", "CodeBuddy", "Codex", "Cursor", "Hermes Agent", "Trae", "WorkBuddy",
     ]);
   });
 
