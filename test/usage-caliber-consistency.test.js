@@ -6,6 +6,34 @@ const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
 
+const TEST_PRICING_RULES = [
+  ["claude", "claude-sonnet-4-6"],
+  ["gemini", "gemini-2.5-pro"],
+  ["codex", "gpt-5"],
+].map(([source, model]) => ({
+  source,
+  model,
+  inputPricePer1M: 1,
+  outputPricePer1M: 1,
+  currency: "USD",
+}));
+
+async function ensureTestPricing(trackerDataDir) {
+  const configPath = path.join(trackerDataDir, "config.json");
+  let config = {};
+  try {
+    config = JSON.parse(await fs.promises.readFile(configPath, "utf8"));
+  } catch {
+    config = {};
+  }
+  if (Array.isArray(config.pricingRules) && config.pricingRules.length > 0) return;
+  await fs.promises.writeFile(
+    configPath,
+    `${JSON.stringify({ ...config, pricingRules: TEST_PRICING_RULES }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 async function writeQueue(queuePath, rows) {
   await fs.promises.writeFile(
     queuePath,
@@ -14,6 +42,7 @@ async function writeQueue(queuePath, rows) {
 }
 
 async function callEndpoint(queuePath, endpoint) {
+  await ensureTestPricing(path.dirname(queuePath));
   const handler = createLocalApiHandler({
     queuePath,
     trackerDataDir: path.dirname(queuePath),
@@ -57,6 +86,9 @@ const CONSISTENCY_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 350,
     conversation_count: 2,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "anthropic",
   },
   {
     source: "claude",
@@ -69,6 +101,9 @@ const CONSISTENCY_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 35,
     conversation_count: 1,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "anthropic",
   },
   {
     source: "gemini",
@@ -81,6 +116,9 @@ const CONSISTENCY_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 1500,
     conversation_count: 3,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "google",
   },
 ];
 
@@ -184,7 +222,7 @@ test("three-caliber consistency: usage-summary === spend-timeseries totals === p
   }
 });
 
-test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-stats, and model-stats when queue is empty", async () => {
+test("Codex rollout logs without Provider evidence stay out of API Provider stats", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-rollout-"));
   const originalCreateReadStream = fs.createReadStream;
   try {
@@ -247,11 +285,12 @@ test("Codex real rollout logs feed usage-summary, spend-timeseries, provider-sta
     assert.equal(summary.totals.cached_input_tokens, 30);
     assert.equal(summary.totals.output_tokens, 70);
     assert.equal(timeseries.totals.total_tokens, 260);
-    assert.equal(providerStats.totals.total_tokens, 260);
+    assert.equal(providerStats.totals.total_tokens, 0);
     assert.equal(modelStats.totals.total_tokens, 260);
-    assert.equal(providerStats.providers[0].source, "codex");
+    assert.deepEqual(providerStats.providers, []);
+    assert.equal(providerStats.totals_scope, "api_key_attributed_cost_positive");
     assert.equal(modelStats.models[0].model, "gpt-4o");
-    assert.equal(rolloutReads, 1);
+    assert.equal(rolloutReads, 2, "the seven-day Provider query has a distinct rollout scan range");
   } finally {
     fs.createReadStream = originalCreateReadStream;
     await fs.promises.rm(tmp, { recursive: true, force: true });
@@ -545,10 +584,13 @@ test("aggregate views prefer synced Codex queue rows over redundant rollout resc
       total_tokens: 100,
       billable_total_tokens: 100,
       conversation_count: 1,
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+      provider_id: "openai",
     }]);
     await fs.promises.writeFile(
       path.join(trackerDataDir, "config.json"),
-      JSON.stringify({ dataDirectories: { codex: codexHome } }),
+      JSON.stringify({ dataDirectories: { codex: codexHome }, pricingRules: TEST_PRICING_RULES }),
       "utf8",
     );
     await fs.promises.writeFile(

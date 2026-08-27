@@ -10,6 +10,14 @@ const PLAN_MARKET_SNAPSHOT_VERSION = 1;
 const PLAN_MARKET_SNAPSHOT_FILE = "plan-market-snapshot.json";
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 15_000;
+const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
+const PLAN_STATUS_VALUES = new Set(["active", "available", "discontinued", "removed", "unavailable"]);
+const PLAN_CYCLE_VALUES = new Set(["monthly", "quarterly", "yearly", "one_time"]);
+const PROVIDER_ACCESS_VALUES = new Set(["direct", "vpn"]);
+const PROVIDER_RISK_VALUES = new Set(["low", "medium", "high", "extreme"]);
+const PROVIDER_REGION_VALUES = new Set(["CN", "GLOBAL"]);
+const PROVIDER_TAG_VALUES = new Set(["discount", "hot", "new"]);
+const PLAN_BADGE_VALUES = new Set(["entry", "hot", "premium", "recommended"]);
 const BUNDLED_CATALOG_PATH = path.join(__dirname, "..", "..", "..", "shared", "plan-market-catalog.json");
 const PROVIDER_LINKS_PATH = path.join(__dirname, "..", "..", "..", "shared", "provider-links.json");
 
@@ -159,6 +167,107 @@ function safeIso(now) {
   return date.toISOString();
 }
 
+function assertDisplayString(value, maximum = 240) {
+  return typeof value === "string"
+    && value.trim() !== ""
+    && value.length <= maximum
+    && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function assertPriceSchema(price) {
+  if (!price || typeof price !== "object" || Array.isArray(price)) return false;
+  if (!Object.hasOwn(price, "amount")) return assertDisplayString(price.display, 240);
+  return typeof price.amount === "number"
+    && Number.isFinite(price.amount)
+    && price.amount >= 0
+    && price.amount <= 1_000_000_000
+    && /^[A-Z]{3}$/u.test(String(price.currency || ""))
+    && PLAN_CYCLE_VALUES.has(price.cycle);
+}
+
+function assertPlanMarketCatalogSchema(catalog) {
+  if (
+    !catalog
+    || typeof catalog !== "object"
+    || Array.isArray(catalog)
+    || catalog?._meta?.version !== 1
+    || !Array.isArray(catalog.providers)
+  ) {
+    throw new PlanMarketRefreshError("feed_catalog_invalid", "套餐目录内容无效。");
+  }
+  const providerIds = new Set();
+  for (const provider of catalog.providers) {
+    if (
+      !provider
+      || typeof provider !== "object"
+      || Array.isArray(provider)
+      || !PROVIDER_ID_PATTERN.test(String(provider.id || ""))
+      || providerIds.has(provider.id)
+      || !assertDisplayString(provider.display_name)
+      || !Array.isArray(provider.plans)
+      || !Array.isArray(provider.sources)
+      || (provider.announcement !== undefined && !assertDisplayString(provider.announcement, 2000))
+      || (provider.tags !== undefined && (
+        !Array.isArray(provider.tags)
+        || provider.tags.some((tag) => !PROVIDER_TAG_VALUES.has(tag))
+      ))
+      || (provider.region !== undefined && !PROVIDER_REGION_VALUES.has(provider.region))
+      || (provider.access !== undefined && !PROVIDER_ACCESS_VALUES.has(provider.access))
+      || (provider.risk !== undefined && !PROVIDER_RISK_VALUES.has(provider.risk))
+    ) {
+      throw new PlanMarketRefreshError("feed_catalog_invalid", "套餐目录内容无效。");
+    }
+    providerIds.add(provider.id);
+
+    const sourceIds = new Set();
+    for (const source of provider.sources) {
+      if (
+        !source
+        || typeof source !== "object"
+        || Array.isArray(source)
+        || !assertDisplayString(source.link_id, 160)
+        || !assertDisplayString(source.label, 320)
+        || sourceIds.has(source.link_id)
+        || !Array.isArray(source.supports)
+        || source.supports.some((support) => !assertDisplayString(support, 80))
+      ) {
+        throw new PlanMarketRefreshError("feed_catalog_invalid", "套餐目录内容无效。");
+      }
+      sourceIds.add(source.link_id);
+    }
+
+    const planIds = new Set();
+    for (const plan of provider.plans) {
+      if (
+        !plan
+        || typeof plan !== "object"
+        || Array.isArray(plan)
+        || !PROVIDER_ID_PATTERN.test(String(plan.plan_id || ""))
+        || planIds.has(plan.plan_id)
+        || !assertDisplayString(plan.display_name)
+        || !PLAN_STATUS_VALUES.has(plan.status)
+        || !assertPriceSchema(plan.price)
+        || !assertDisplayString(plan.quota_summary, 2000)
+        || (plan.highlights !== undefined && (
+          !Array.isArray(plan.highlights)
+          || plan.highlights.some((highlight) => !assertDisplayString(highlight, 1000))
+        ))
+        || (plan.badges !== undefined && (
+          !Array.isArray(plan.badges)
+          || plan.badges.some((badge) => !PLAN_BADGE_VALUES.has(badge))
+        ))
+        || (plan.alt_prices !== undefined && (
+          !Array.isArray(plan.alt_prices)
+          || plan.alt_prices.some((price) => !assertPriceSchema(price))
+        ))
+      ) {
+        throw new PlanMarketRefreshError("feed_catalog_invalid", "套餐目录内容无效。");
+      }
+      planIds.add(plan.plan_id);
+    }
+  }
+}
+
 function assertFeedEnvelope(payload, feedUrl) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new PlanMarketRefreshError("feed_invalid", "套餐目录响应格式无效。");
@@ -175,9 +284,7 @@ function assertFeedEnvelope(payload, feedUrl) {
   if (!Number.isFinite(Date.parse(String(payload.generated_at || "")))) {
     throw new PlanMarketRefreshError("feed_generated_at_invalid", "套餐目录生成时间无效。");
   }
-  if (!payload.catalog || payload.catalog?._meta?.version !== 1 || !Array.isArray(payload.catalog?.providers)) {
-    throw new PlanMarketRefreshError("feed_catalog_invalid", "套餐目录内容无效。");
-  }
+  assertPlanMarketCatalogSchema(payload.catalog);
   const actualHash = hashPlanMarketCatalog(payload.catalog);
   if (!/^[a-f0-9]{64}$/u.test(String(payload.catalog_sha256 || "")) || payload.catalog_sha256 !== actualHash) {
     throw new PlanMarketRefreshError("feed_hash_mismatch", "套餐目录完整性校验失败。");
@@ -210,6 +317,59 @@ function writeSnapshotAtomic(snapshotPath, value, fsImpl, nowMs) {
   }
 }
 
+function abortPromise(signal) {
+  return new Promise((_, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason || new Error("aborted"));
+      return;
+    }
+    signal?.addEventListener("abort", () => reject(signal.reason || new Error("aborted")), { once: true });
+  });
+}
+
+function withAbort(promise, signal) {
+  return signal ? Promise.race([promise, abortPromise(signal)]) : promise;
+}
+
+async function readLimitedResponseText(response, signal) {
+  const contentLength = Number(response.headers?.get?.("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_FEED_BYTES) {
+    throw new PlanMarketRefreshError("feed_too_large", "套餐目录响应超出大小限制。");
+  }
+
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let byteLength = 0;
+    let complete = false;
+    try {
+      while (true) {
+        const { done, value } = await withAbort(reader.read(), signal);
+        if (done) {
+          complete = true;
+          break;
+        }
+        const chunk = Buffer.from(value);
+        byteLength += chunk.byteLength;
+        if (byteLength > MAX_FEED_BYTES) {
+          throw new PlanMarketRefreshError("feed_too_large", "套餐目录响应超出大小限制。");
+        }
+        chunks.push(chunk);
+      }
+    } finally {
+      if (!complete) void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+    return Buffer.concat(chunks, byteLength).toString("utf8");
+  }
+
+  const text = await withAbort(response.text(), signal);
+  if (Buffer.byteLength(text, "utf8") > MAX_FEED_BYTES) {
+    throw new PlanMarketRefreshError("feed_too_large", "套餐目录响应超出大小限制。");
+  }
+  return text;
+}
+
 function createPlanMarketUpdateService({
   trackerDataDir,
   projectCatalog,
@@ -236,6 +396,7 @@ function createPlanMarketUpdateService({
 
   function validateCatalog(catalog, at) {
     try {
+      assertPlanMarketCatalogSchema(catalog);
       return projectCatalog(catalog, providerLinks, { now: at });
     } catch (_error) {
       throw new PlanMarketRefreshError("feed_catalog_invalid", "套餐目录证据校验失败。");
@@ -293,42 +454,41 @@ function createPlanMarketUpdateService({
   async function refreshOnce() {
     const checkedAt = safeIso(now());
     lastCheckedAt = checkedAt;
-    let response;
     const controller = typeof AbortController === "function" ? new AbortController() : null;
     const timeout = controller && fetchTimeoutMs > 0
       ? setTimeout(() => controller.abort(), fetchTimeoutMs)
       : null;
+    let response;
+    let text;
     try {
-      response = await fetchImpl(feedUrl, {
+      response = await withAbort(fetchImpl(feedUrl, {
         method: "GET",
         headers: { Accept: "application/json" },
         cache: "no-store",
+        redirect: "error",
         signal: controller?.signal,
-      });
-    } catch (_error) {
+      }), controller?.signal);
+      if (!response?.ok) {
+        throw new PlanMarketRefreshError("feed_unavailable", "远程套餐目录暂不可用，已保留上次成功数据。");
+      }
+      const responseUrl = String(response.url || feedUrl);
+      if (responseUrl !== feedUrl) {
+        throw new PlanMarketRefreshError("feed_source_rejected", "套餐目录来源不在允许列表中。");
+      }
+      const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
+      if (!contentType.includes("application/json")) {
+        throw new PlanMarketRefreshError("feed_invalid", "套餐目录响应格式无效。");
+      }
+      text = await readLimitedResponseText(response, controller?.signal);
+    } catch (error) {
+      if (error?.name === "PlanMarketRefreshError") {
+        lastErrorCode = error.code;
+        throw error;
+      }
       lastErrorCode = "feed_unavailable";
       throw new PlanMarketRefreshError(lastErrorCode, "远程套餐目录暂不可用，已保留上次成功数据。");
     } finally {
       if (timeout) clearTimeout(timeout);
-    }
-    if (!response?.ok) {
-      lastErrorCode = "feed_unavailable";
-      throw new PlanMarketRefreshError(lastErrorCode, "远程套餐目录暂不可用，已保留上次成功数据。");
-    }
-    const responseUrl = String(response.url || feedUrl);
-    if (responseUrl !== feedUrl) {
-      lastErrorCode = "feed_source_rejected";
-      throw new PlanMarketRefreshError(lastErrorCode, "套餐目录来源不在允许列表中。");
-    }
-    const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
-    if (!contentType.includes("application/json")) {
-      lastErrorCode = "feed_invalid";
-      throw new PlanMarketRefreshError(lastErrorCode, "套餐目录响应格式无效。");
-    }
-    const text = await response.text();
-    if (Buffer.byteLength(text, "utf8") > MAX_FEED_BYTES) {
-      lastErrorCode = "feed_too_large";
-      throw new PlanMarketRefreshError(lastErrorCode, "套餐目录响应超出大小限制。");
     }
     let payload;
     try {

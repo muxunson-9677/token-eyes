@@ -220,24 +220,98 @@ export interface UsageSummaryResponse {
   };
 }
 
-export interface ProviderStat extends PricingCoverageFields {
-  source: string;
-  source_display_name: string;
+export type ProviderRequestCountBasis = "request_event" | "unavailable";
+
+export interface ProviderCostBasis {
+  authority: "local_list_price_estimate";
+  accuracy: Extract<EvidenceAccuracy, "estimated">;
+}
+
+export interface ProviderBreakdown {
+  id: string;
+  display_name: string;
+  tokens: number;
   request_count: number | null;
+  cost_usd: number;
+}
+
+export interface ProviderPeriod {
+  from: string;
+  to: string;
+  days: number;
+  time_zone: string;
+}
+
+export interface ProviderDailyUsage {
+  date: string;
+  agents: ProviderBreakdown[];
+  models: ProviderBreakdown[];
+  tokens: number;
+  request_count: number | null;
+  request_count_basis: ProviderRequestCountBasis;
+  cost_usd: number;
+  cost_basis: ProviderCostBasis;
+  period: ProviderPeriod;
+}
+
+export interface ProviderBalance {
+  amount: number;
+  currency: string | null;
+  observed_at: string | null;
+}
+
+export interface ProviderStat extends PricingCoverageFields {
+  provider_id: string;
+  display_name: string;
+  account_label: string | null;
+  account_ref: string | null;
+  agents: ProviderBreakdown[];
+  models: ProviderBreakdown[];
+  period: ProviderPeriod;
+  daily: ProviderDailyUsage[];
+  balance: ProviderBalance | null;
+  request_count: number | null;
+  request_count_basis: ProviderRequestCountBasis;
   conversation_count: number;
   tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_input_tokens: number;
+  cache_creation_input_tokens: number;
+  reasoning_output_tokens: number;
   cost_usd: number;
+  cost_basis: ProviderCostBasis;
+  success_count: number | null;
+  interrupted_count: number;
+  failure_count: number;
   success_rate: number | null;
   avg_latency_ms: number | null;
+  status_sample_count: number;
+  success_rate_sample_count: number;
+  latency_sample_count: number;
+  availability: {
+    status: Extract<MetricAvailability, "measured" | "unavailable">;
+    latency: Extract<MetricAvailability, "measured" | "unavailable">;
+  };
   metric_availability: MetricAvailability;
+}
+
+export interface ProviderStatsTotals extends TokenTotals, PricingCoverageFields {
+  provider_count: number;
+  conversation_count: number;
+  request_count: number | null;
 }
 
 export interface ProviderStatsResponse {
   ok: boolean;
   from: string;
   to: string;
+  requested_from?: string | null;
+  requested_to?: string | null;
+  period: ProviderPeriod;
+  totals_scope: "api_key_attributed_cost_positive";
   providers: ProviderStat[];
-  totals: TokenTotals & PricingCoverageFields;
+  totals: ProviderStatsTotals;
   scope?: string;
   excluded_sources?: Array<{ source: string; source_scope: string; reason: string }>;
   sources?: string[];

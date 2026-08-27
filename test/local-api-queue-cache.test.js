@@ -23,6 +23,9 @@ function queueRow(totalTokens, hourStart = "2026-05-09T10:00:00Z") {
     total_tokens: totalTokens,
     billable_total_tokens: totalTokens,
     conversation_count: 1,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "anthropic",
   };
 }
 
@@ -198,8 +201,17 @@ test("aggregate response cache hits repeat requests and invalidates on queue cha
   const queuePath = path.join(tmp, "queue.jsonl");
   try {
     await writeRows(queuePath, [queueRow(100)]);
+    await fs.promises.writeFile(path.join(tmp, "config.json"), JSON.stringify({
+      pricingRules: [{
+        source: "claude",
+        model: "claude-sonnet-4",
+        inputPricePer1M: 1,
+        outputPricePer1M: 1,
+        currency: "USD",
+      }],
+    }), "utf8");
     const handler = createLocalApiHandler({ queuePath, trackerDataDir: tmp });
-    const endpoint = "/functions/tokentracker-provider-stats?from=2026-05-09&to=2026-05-09&tz=UTC&sources=claude";
+    const endpoint = "/functions/tokentracker-provider-stats?from=2026-05-03&to=2026-05-09&tz=UTC&sources=claude";
 
     const first = await callHandlerWithHeaders(handler, endpoint);
     const repeated = await callHandlerWithHeaders(handler, endpoint);

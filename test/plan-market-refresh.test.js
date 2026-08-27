@@ -140,6 +140,7 @@ test("plan market refresh validates the public feed and atomically persists its 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, PLAN_MARKET_FEED_URL);
     assert.equal(calls[0].init.method, "GET");
+    assert.equal(calls[0].init.redirect, "error");
     assert.equal(refreshed.ok, true);
     assert.equal(refreshed.refresh.last_successful_at, "2026-08-27T08:05:00.000Z");
     assert.equal(refreshed.refresh.catalog_version, "2026-08-27.1");
@@ -263,5 +264,156 @@ test("plan market reader ignores a structurally corrupt snapshot and falls back 
     assert.equal(current.refresh.last_successful_at, null);
   } finally {
     await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("plan market refresh timeout covers a response body that never finishes", async () => {
+  const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-body-timeout-"));
+  const service = createPlanMarketUpdateService({
+    trackerDataDir,
+    fetchTimeoutMs: 10,
+    fetchImpl: async () => ({
+      ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: async () => new Promise(() => {}),
+    }),
+  });
+
+  try {
+    await assert.rejects(
+      Promise.race([
+        service.refresh(),
+        new Promise((resolve, reject) => setTimeout(() => reject(new Error("body_timeout_not_enforced")), 100)),
+      ]),
+      (error) => error?.code === "feed_unavailable",
+    );
+  } finally {
+    await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("plan market refresh aborts and cancels a stalled streamed response body", async () => {
+  const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-stream-timeout-"));
+  let cancelCount = 0;
+  const body = new ReadableStream({
+    pull() {},
+    cancel() { cancelCount += 1; },
+  });
+  const service = createPlanMarketUpdateService({
+    trackerDataDir,
+    fetchTimeoutMs: 10,
+    fetchImpl: async () => new Response(body, {
+      headers: { "content-type": "application/json" },
+    }),
+  });
+
+  try {
+    await assert.rejects(
+      Promise.race([
+        service.refresh(),
+        new Promise((resolve, reject) => setTimeout(() => reject(new Error("stream_timeout_not_enforced")), 100)),
+      ]),
+      (error) => error?.code === "feed_unavailable",
+    );
+    assert.equal(cancelCount, 1);
+  } finally {
+    await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("plan market refresh stops reading an oversized streamed body at the byte limit", async () => {
+  const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-stream-limit-"));
+  const chunk = new Uint8Array(1024 * 1024);
+  const totalChunks = 20;
+  let pullCount = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      pullCount += 1;
+      if (pullCount <= totalChunks) controller.enqueue(chunk);
+      if (pullCount === totalChunks) controller.close();
+    },
+  });
+  const service = createPlanMarketUpdateService({
+    trackerDataDir,
+    fetchImpl: async () => new Response(body, {
+      headers: { "content-type": "application/json" },
+    }),
+  });
+
+  try {
+    await assert.rejects(
+      service.refresh(),
+      (error) => error?.code === "feed_too_large",
+    );
+    assert.ok(pullCount < totalChunks, `oversized body was fully buffered (${pullCount} chunks)`);
+  } finally {
+    await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("plan market refresh rejects duplicate provider identities before replacing LKG", async () => {
+  const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-duplicate-provider-"));
+  const duplicateCatalog = structuredClone(bundledCatalog);
+  duplicateCatalog.providers.push(structuredClone(bundledCatalog.providers[0]));
+  const service = createPlanMarketUpdateService({
+    trackerDataDir,
+    fetchImpl: async () => response(feed(duplicateCatalog)),
+  });
+
+  try {
+    await assert.rejects(
+      service.refresh(),
+      (error) => error?.code === "feed_catalog_invalid",
+    );
+    assert.equal(service.read().refresh.last_successful_at, null);
+  } finally {
+    await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("plan market refresh rejects duplicate plans and invalid status or price values", async () => {
+  const invalidCatalogs = [
+    (() => {
+      const catalog = structuredClone(bundledCatalog);
+      catalog.providers[0].plans.push(structuredClone(catalog.providers[0].plans[0]));
+      return catalog;
+    })(),
+    (() => {
+      const catalog = structuredClone(bundledCatalog);
+      catalog.providers[0].plans[0].status = "surprise";
+      return catalog;
+    })(),
+    (() => {
+      const catalog = structuredClone(bundledCatalog);
+      catalog.providers[0].plans[0].price.amount = -1;
+      return catalog;
+    })(),
+    (() => {
+      const catalog = structuredClone(bundledCatalog);
+      catalog.providers[0].sources[0].label = { unsafe: true };
+      return catalog;
+    })(),
+    (() => {
+      const catalog = structuredClone(bundledCatalog);
+      catalog.providers[0].plans[0].highlights = [{ unsafe: true }];
+      return catalog;
+    })(),
+  ];
+
+  for (const [index, catalog] of invalidCatalogs.entries()) {
+    const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), `tokentracker-plan-market-invalid-${index}-`));
+    const service = createPlanMarketUpdateService({
+      trackerDataDir,
+      fetchImpl: async () => response(feed(catalog)),
+    });
+    try {
+      await assert.rejects(
+        service.refresh(),
+        (error) => error?.code === "feed_catalog_invalid",
+      );
+      assert.equal(service.read().refresh.last_successful_at, null);
+    } finally {
+      await fsp.rm(trackerDataDir, { recursive: true, force: true });
+    }
   }
 });

@@ -14,6 +14,25 @@ async function writeQueue(queuePath, rows) {
 }
 
 async function callEndpoint(queuePath, endpoint) {
+  const configPath = path.join(path.dirname(queuePath), "config.json");
+  if (!fs.existsSync(configPath)) {
+    await fs.promises.writeFile(configPath, JSON.stringify({
+      pricingRules: [
+        ["codex", "gpt-5-codex"],
+        ["claude", "claude-sonnet-4-6"],
+        ["claude", "claude-opus-4"],
+        ["kilocode", "claude-sonnet-4"],
+        ["omp", "mimo"],
+        ["kiro", "claude-sonnet-4"],
+      ].map(([source, model]) => ({
+        source,
+        model,
+        inputPricePer1M: 1,
+        outputPricePer1M: 1,
+        currency: "USD",
+      })),
+    }), "utf8");
+  }
   const handler = createLocalApiHandler({
     queuePath,
     trackerDataDir: path.dirname(queuePath),
@@ -54,6 +73,9 @@ const BASE_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 350,
     conversation_count: 2,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "openai",
   },
   {
     source: "claude",
@@ -66,6 +88,9 @@ const BASE_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 120,
     conversation_count: 1,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "anthropic",
   },
   {
     source: "codex",
@@ -78,6 +103,9 @@ const BASE_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 35,
     conversation_count: 1,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "openai",
   },
   {
     source: "claude",
@@ -90,10 +118,13 @@ const BASE_ROWS = [
     reasoning_output_tokens: 0,
     total_tokens: 1500,
     conversation_count: 3,
+    billing_mode: "api_key",
+    billing_mode_confidence: "provider_receipt",
+    provider_id: "anthropic",
   },
 ];
 
-test("provider-stats returns providers sorted by tokens descending", async () => {
+test("provider-stats returns true Providers while preserving Agent breakdowns", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-provider-stats-"));
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
@@ -106,30 +137,24 @@ test("provider-stats returns providers sorted by tokens descending", async () =>
 
     assert.equal(result.ok, true);
     assert.ok(Array.isArray(result.providers));
-    assert.equal(result.providers.length, 2, "should have 2 providers (codex + claude)");
+    assert.equal(result.providers.length, 2, "should have 2 true API Providers");
 
-    // codex total_tokens = 350 + 35 = 385; claude total_tokens = 120 + 1500 = 1620
-    // So claude should be first (more tokens)
-    assert.equal(result.providers[0].source, "claude");
-    assert.equal(result.providers[0].tokens, 1620);
-    assert.equal(result.providers[0].request_count, null); // TICKET-06: non-codex has no request-level data
-    assert.equal(result.providers[0].success_rate, null); // TICKET-06: non-codex has no request-level data
-    assert.equal(result.providers[0].avg_latency_ms, null); // TICKET-06: non-codex has no request-level data
-    assert.equal(result.providers[0].conversation_count, 4); // 1 + 3
-    assert.equal(result.providers[0].metric_availability, "aggregate_only"); // TICKET-06
-    assert.ok(result.providers[0].source_display_name, "should have display name");
+    const anthropic = result.providers.find((provider) => provider.provider_id === "anthropic");
+    assert.ok(anthropic);
+    assert.equal(anthropic.tokens, 1620);
+    assert.equal(anthropic.request_count, null);
+    assert.equal(anthropic.request_count_basis, "unavailable");
+    assert.equal(anthropic.success_rate, null);
+    assert.equal(anthropic.avg_latency_ms, null);
+    assert.equal(anthropic.conversation_count, 4);
+    assert.equal(anthropic.metric_availability, "unavailable");
+    assert.deepEqual(anthropic.agents.map((agent) => agent.id), ["claude"]);
 
-    assert.equal(result.providers[1].source, "codex");
-    assert.equal(result.providers[1].tokens, 385);
-    assert.equal(result.providers[1].request_count, null); // TICKET-06: codex queue data has no request-level data
-
-    // Verify tokens are sorted descending
-    for (let i = 1; i < result.providers.length; i++) {
-      assert.ok(
-        result.providers[i - 1].tokens >= result.providers[i].tokens,
-        "providers should be sorted by tokens descending",
-      );
-    }
+    const openai = result.providers.find((provider) => provider.provider_id === "openai");
+    assert.ok(openai);
+    assert.equal(openai.tokens, 385);
+    assert.equal(openai.request_count, null);
+    assert.deepEqual(openai.agents.map((agent) => agent.id), ["codex"]);
 
     // totals should match sum of all providers' tokens
     assert.equal(result.totals.total_tokens, 2005); // 385 + 1620
@@ -139,7 +164,7 @@ test("provider-stats returns providers sorted by tokens descending", async () =>
   }
 });
 
-test("provider-stats source_display_name is correct for edge-case sources", async () => {
+test("provider-stats uses Provider names and keeps edge-case sources as Agents", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-provider-display-"));
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
@@ -155,6 +180,9 @@ test("provider-stats source_display_name is correct for edge-case sources", asyn
         reasoning_output_tokens: 0,
         total_tokens: 15,
         conversation_count: 1,
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
+        provider_id: "deepseek",
       },
       {
         source: "omp",
@@ -167,6 +195,9 @@ test("provider-stats source_display_name is correct for edge-case sources", asyn
         reasoning_output_tokens: 0,
         total_tokens: 30,
         conversation_count: 1,
+        billing_mode: "api_key",
+        billing_mode_confidence: "provider_receipt",
+        provider_id: "moonshot",
       },
     ]);
 
@@ -175,16 +206,17 @@ test("provider-stats source_display_name is correct for edge-case sources", asyn
       "/functions/tokentracker-provider-stats?from=2026-05-09&to=2026-05-09&tz=UTC",
     );
 
-    // These exercise the getAgentAdapter id≠queueSource trap: kilocode has
-    // id="kilo-code", omp has id="oh-my-pi". SOURCE_DISPLAY_NAME_MAP is built
-    // from listAgentAdapters() keyed by queueSource, so these must resolve.
-    const kilocode = result.providers.find((p) => p.source === "kilocode");
-    assert.ok(kilocode, "kilocode provider should exist");
-    assert.equal(kilocode.source_display_name, "Kilo Code");
+    const deepseek = result.providers.find((provider) => provider.provider_id === "deepseek");
+    assert.ok(deepseek);
+    assert.equal(deepseek.display_name, "DeepSeek");
+    assert.equal(deepseek.agents[0].id, "kilocode");
+    assert.equal(deepseek.agents[0].display_name, "Kilo Code");
 
-    const omp = result.providers.find((p) => p.source === "omp");
-    assert.ok(omp, "omp provider should exist");
-    assert.equal(omp.source_display_name, "oh-my-pi");
+    const moonshot = result.providers.find((provider) => provider.provider_id === "moonshot");
+    assert.ok(moonshot);
+    assert.equal(moonshot.display_name, "Moonshot");
+    assert.equal(moonshot.agents[0].id, "omp");
+    assert.equal(moonshot.agents[0].display_name, "oh-my-pi");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -202,7 +234,7 @@ test("provider-stats filters by sources param", async () => {
     );
 
     assert.equal(result.providers.length, 1);
-    assert.equal(result.providers[0].source, "codex");
+    assert.equal(result.providers[0].provider_id, "openai");
     assert.equal(result.providers[0].tokens, 385);
     // totals should also be filtered
     assert.equal(result.totals.total_tokens, 385);
@@ -223,7 +255,7 @@ test("provider-stats agent_ids is equivalent to sources filter", async () => {
     );
 
     assert.equal(result.providers.length, 1);
-    assert.equal(result.providers[0].source, "codex");
+    assert.equal(result.providers[0].provider_id, "openai");
     assert.equal(result.totals.total_tokens, 385);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
@@ -236,7 +268,7 @@ test("provider-stats maps simultaneous Kiro IDE and CLI agent ids to one kiro so
     const queuePath = path.join(tmp, "queue.jsonl");
     await writeQueue(queuePath, [{
       source: "kiro",
-      model: "kiro-cli-agent",
+      model: "claude-sonnet-4",
       hour_start: "2026-05-09T10:00:00.000Z",
       input_tokens: 40,
       cached_input_tokens: 0,
@@ -245,6 +277,9 @@ test("provider-stats maps simultaneous Kiro IDE and CLI agent ids to one kiro so
       reasoning_output_tokens: 0,
       total_tokens: 50,
       conversation_count: 1,
+      billing_mode: "api_key",
+      billing_mode_confidence: "provider_receipt",
+      provider_id: "deepseek",
     }]);
 
     const result = await callEndpoint(
@@ -252,8 +287,9 @@ test("provider-stats maps simultaneous Kiro IDE and CLI agent ids to one kiro so
       "/functions/tokentracker-provider-stats?from=2026-05-09&to=2026-05-09&tz=UTC&agent_ids=kiro,kiro-cli",
     );
 
-    assert.deepEqual(result.providers.map((provider) => provider.source), ["kiro"]);
-    assert.equal(result.providers[0].source_display_name, "Kiro（含 CLI）");
+    assert.deepEqual(result.providers.map((provider) => provider.provider_id), ["deepseek"]);
+    assert.equal(result.providers[0].display_name, "DeepSeek");
+    assert.deepEqual(result.providers[0].agents.map((agent) => agent.id), ["kiro"]);
     assert.equal(result.totals.total_tokens, 50);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });

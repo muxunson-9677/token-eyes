@@ -1211,37 +1211,142 @@ export function getMockUsageCategoryBreakdown({ from, to, source = "claude" }: A
   };
 }
 
-/** TICKET-01 A4: mock provider-stats response. Returns a small set of
- *  providers with token/cost breakdowns for dashboard mock mode. */
-export function getMockProviderStats({ from, to, seed }: AnyRecord = {}) {
-  const rows = buildDailyRows({ from, to, seed });
+/** Mock mode mirrors the production seven-day true-Provider response shape. */
+export function getMockProviderStats({ from, to, seed, timeZone = "UTC" }: AnyRecord = {}) {
+  const effectiveToDate = parseUtcDate(to) || parseUtcDate(formatDateLocal(new Date())) || new Date();
+  const effectiveTo = formatDateUTC(effectiveToDate);
+  const effectiveFrom = formatDateUTC(addUtcDays(effectiveToDate, -6));
+  const rows = buildDailyRows({ from: effectiveFrom, to: effectiveTo, seed });
   const totals = sumDailyRows(rows);
-  const withCostTotals = withCost(totals);
+  const period = { from: effectiveFrom, to: effectiveTo, days: 7, time_zone: timeZone || "UTC" };
+  const money = (tokens: number, rate: number) => Number(((tokens * rate) / 1_000_000).toFixed(9));
+  const costBasis = { authority: "local_list_price_estimate", accuracy: "estimated" } as const;
 
-  const providers = [
-    { source: "codex", source_display_name: "Codex", weight: 0.7 },
-    { source: "claude", source_display_name: "Claude Code", weight: 0.2 },
-    { source: "gemini", source_display_name: "Gemini CLI", weight: 0.1 },
-  ].map((p) => {
-    const scaled = scaleTotals(totals, p.weight);
+  const definitions = [
+    {
+      provider_id: "deepseek",
+      display_name: "DeepSeek",
+      weight: 0.5,
+      rate: 1.8,
+      agents: [["claude", "Claude Code"], ["codex", "Codex"]],
+      models: [["deepseek-chat", "deepseek-chat"]],
+    },
+    {
+      provider_id: "moonshot",
+      display_name: "Moonshot",
+      weight: 0.3,
+      rate: 2.4,
+      agents: [["hermes", "Hermes Agent"]],
+      models: [["kimi-k2", "kimi-k2"]],
+    },
+    {
+      provider_id: "openai",
+      display_name: "OpenAI",
+      weight: 0.2,
+      rate: 3.2,
+      agents: [["cursor", "Cursor"]],
+      models: [["gpt-5", "gpt-5"]],
+    },
+  ];
+
+  const providers = definitions.map((definition) => {
+    const scaled = scaleTotals(totals, definition.weight);
+    const conversationCount = Math.max(1, Math.round(totals.conversation_count * definition.weight));
+    const costUsd = money(scaled.total_tokens, definition.rate);
+    const splitBreakdowns = (
+      entries: string[][],
+      tokens: number,
+      requests: number | null,
+      cost: number,
+    ) => entries.map(([id, display_name], index) => {
+      const divisor = entries.length;
+      const entryTokens = index === entries.length - 1
+        ? tokens - Math.floor(tokens / divisor) * index
+        : Math.floor(tokens / divisor);
+      const entryRequests = requests === null ? null : index === entries.length - 1
+        ? requests - Math.floor(requests / divisor) * index
+        : Math.floor(requests / divisor);
+      const entryCost = index === entries.length - 1
+        ? Number((cost - Number((cost / divisor).toFixed(9)) * index).toFixed(9))
+        : Number((cost / divisor).toFixed(9));
+      return { id, display_name, tokens: entryTokens, request_count: entryRequests, cost_usd: entryCost };
+    });
+    const daily = rows.map((row: AnyRecord) => {
+      const tokens = Math.max(0, Math.round(Number(row.total_tokens || 0) * definition.weight));
+      const cost = money(tokens, definition.rate);
+      return {
+        date: row.day,
+        agents: splitBreakdowns(definition.agents, tokens, null, cost),
+        models: splitBreakdowns(definition.models, tokens, null, cost),
+        tokens,
+        request_count: null,
+        request_count_basis: "unavailable",
+        cost_usd: cost,
+        cost_basis: costBasis,
+        period,
+      };
+    });
     return {
-      source: p.source,
-      source_display_name: p.source_display_name,
-      request_count: Math.max(1, Math.round(scaled.total_tokens / 1000)),
+      provider_id: definition.provider_id,
+      display_name: definition.display_name,
+      account_label: null,
+      account_ref: null,
+      agents: splitBreakdowns(definition.agents, scaled.total_tokens, null, costUsd),
+      models: splitBreakdowns(definition.models, scaled.total_tokens, null, costUsd),
+      period,
+      daily,
+      balance: null,
+      request_count: null,
+      request_count_basis: "unavailable",
+      conversation_count: conversationCount,
       tokens: scaled.total_tokens,
-      cost_usd: withCost(scaled).cost_usd,
-      success_rate: 100,
-      avg_latency_ms: 0,
+      input_tokens: scaled.input_tokens,
+      output_tokens: scaled.output_tokens,
+      cached_input_tokens: scaled.cached_input_tokens,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: scaled.reasoning_output_tokens,
+      cost_usd: costUsd,
+      cost_basis: costBasis,
+      priced_tokens: scaled.total_tokens,
+      unpriced_tokens: 0,
+      pricing_coverage: "complete",
+      success_count: null,
+      interrupted_count: 0,
+      failure_count: 0,
+      success_rate: null,
+      avg_latency_ms: null,
+      status_sample_count: 0,
+      success_rate_sample_count: 0,
+      latency_sample_count: 0,
+      availability: { status: "unavailable", latency: "unavailable" },
+      metric_availability: "unavailable",
     };
-  });
-  providers.sort((a, b) => b.tokens - a.tokens);
+  }).sort((left, right) => right.cost_usd - left.cost_usd);
 
   return {
     ok: true,
-    from,
-    to,
+    from: effectiveFrom,
+    to: effectiveTo,
+    requested_from: from || null,
+    requested_to: to || null,
+    period,
+    totals_scope: "api_key_attributed_cost_positive",
     providers,
-    totals: withCostTotals,
+    totals: {
+      provider_count: providers.length,
+      total_tokens: providers.reduce((sum, provider) => sum + provider.tokens, 0),
+      input_tokens: providers.reduce((sum, provider) => sum + provider.input_tokens, 0),
+      output_tokens: providers.reduce((sum, provider) => sum + provider.output_tokens, 0),
+      cached_input_tokens: providers.reduce((sum, provider) => sum + provider.cached_input_tokens, 0),
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: providers.reduce((sum, provider) => sum + provider.reasoning_output_tokens, 0),
+      cost_usd: Number(providers.reduce((sum, provider) => sum + provider.cost_usd, 0).toFixed(9)),
+      conversation_count: providers.reduce((sum, provider) => sum + provider.conversation_count, 0),
+      request_count: null,
+      priced_tokens: providers.reduce((sum, provider) => sum + provider.priced_tokens, 0),
+      unpriced_tokens: 0,
+      pricing_coverage: "complete",
+    },
   };
 }
 

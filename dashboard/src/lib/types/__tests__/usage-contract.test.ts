@@ -106,21 +106,55 @@ describe("TICKET-06 truthful usage metrics contract", () => {
     expectTypeOf(pricingEvidence.pricing_components).toBeArray();
   });
 
-  it("ProviderStat supports aggregate_only metrics", () => {
+  it("ProviderStat carries Provider identity, seven-day details, and truthful metric availability", () => {
+    const period = { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "Asia/Shanghai" };
     const aggregateProvider: ProviderStat = {
-      source: "claude",
-      source_display_name: "Claude",
+      provider_id: "deepseek",
+      display_name: "DeepSeek",
+      cost_basis: { authority: "local_list_price_estimate", accuracy: "estimated" },
+      account_label: null,
+      account_ref: "account/deepseek/main",
+      agents: [{ id: "claude", display_name: "Claude", tokens: 10, request_count: null, cost_usd: 0.1 }],
+      models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 10, request_count: null, cost_usd: 0.1 }],
+      period,
+      daily: [{
+        date: "2026-08-21",
+        agents: [],
+        models: [],
+        tokens: 10,
+        request_count: null,
+        request_count_basis: "unavailable",
+        cost_usd: 0.1,
+        cost_basis: { authority: "local_list_price_estimate", accuracy: "estimated" },
+        period,
+      }],
+      balance: null,
       request_count: null,
-      conversation_count: 2,
+      request_count_basis: "unavailable",
+      conversation_count: 0,
       tokens: 10,
-      cost_usd: 0,
-      priced_tokens: 0,
-      unpriced_tokens: 10,
-      pricing_coverage: "unpriced",
+      input_tokens: 10,
+      output_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      reasoning_output_tokens: 0,
+      cost_usd: 0.1,
+      priced_tokens: 10,
+      unpriced_tokens: 0,
+      pricing_coverage: "complete",
+      success_count: null,
+      interrupted_count: 0,
+      failure_count: 0,
       success_rate: null,
       avg_latency_ms: null,
-      metric_availability: "aggregate_only",
+      status_sample_count: 0,
+      success_rate_sample_count: 0,
+      latency_sample_count: 0,
+      availability: { status: "unavailable", latency: "unavailable" },
+      metric_availability: "unavailable",
     };
+    expectTypeOf(aggregateProvider.provider_id).toBeString();
+    expectTypeOf(aggregateProvider.daily).toBeArray();
     expectTypeOf(aggregateProvider.request_count).toBeNullable();
     expectTypeOf(aggregateProvider.success_rate).toBeNullable();
     expectTypeOf(aggregateProvider.avg_latency_ms).toBeNullable();

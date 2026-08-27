@@ -125,6 +125,7 @@ const ZONED_PARTS_CACHE_MAX_ENTRIES = 20_000;
 const zonedPartsCache = new Map();
 const USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS = 30_000;
 const USAGE_AGGREGATE_RESPONSE_CACHE_MAX_ENTRIES = 64;
+const PROVIDER_BALANCE_FRESHNESS_TTL_MS = 30_000;
 const USAGE_AGGREGATE_RESPONSE_PATHS = new Set([
   "/functions/tokentracker-usage-bounds",
   "/functions/tokentracker-usage-summary",
@@ -370,8 +371,10 @@ const glmTokenPlan = require("./glm-token-plan");
 const { createPlanMarketUpdateService } = require("./plan-market");
 const { getAgentAdapter, listAgentAdapters } = require("./agent-adapters");
 const {
+  SPEND_AUTHORITIES,
   collectApiBillingAccounts,
   fetchOpenAiCostsInvoice,
+  getProviderName,
   getUtcMonthPeriod,
   isOpenAiCostsConfig,
 } = require("./api-billing");
@@ -571,7 +574,11 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
     const key = dedupeMode === "dimensions"
       ? queueUsageIdentity(row, { dimensionsKey: queueRowDimensionsKey(row) })
-      : queueUsageIdentity(row);
+      : dedupeMode === "provider"
+        ? queueUsageIdentity(row, {
+            dimensionsKey: providerQueueDimensionsKey(row),
+          })
+        : queueUsageIdentity(row);
     seen.set(key, normalizeQueueRow(row));
   }
   const rows = Array.from(seen.values());
@@ -642,6 +649,19 @@ function queueRowDimensionsKey(row) {
     dimensions.project_key,
     dimensions.model_id,
   ].map((value) => value == null ? "" : String(value)).join("\u0001");
+}
+
+function providerQueueDimensionsKey(row) {
+  const attribution = normalizeUsageAttribution(row);
+  const requestIdentity = row?.record_kind === "request_event"
+    ? String(row.id || row.request_id || row.message_id || row.task_id || row.timestamp || "")
+    : "";
+  return [
+    queueRowDimensionsKey(row),
+    `provider:${attribution.provider_id || "unknown"}`,
+    `account:${attribution.account_ref || ""}`,
+    `request:${requestIdentity}`,
+  ].join("\u0001");
 }
 
 function clearQueueDataCacheForTests() {
@@ -1367,14 +1387,110 @@ function computeRecordTotals(records) {
   return Object.assign(totals, summarizePricingProvenance(records));
 }
 
-// Aggregate queue rows by source for the provider-stats endpoint.
-// Each provider entry contains source / display_name / conversation_count /
-// tokens (= total_tokens) / cost_usd / and null for request_count,
-// success_rate, avg_latency_ms (queue.jsonl has no per-request granularity).
-// Results are sorted by tokens descending. Shares the same filter semantics
-// as computeQueueTotals so the three-caliber consistency (usage-summary /
-// spend-timeseries / provider-stats) is preserved.
-function aggregateBySource(rows, options = {}) {
+function providerDisplayName(providerId) {
+  const preset = providerApiConfigs.applyKnownProviderPreset({ providerId });
+  const presetLabel = String(preset?.label || "").trim();
+  if (presetLabel && presetLabel !== String(providerId || "")) {
+    return presetLabel;
+  }
+  return getProviderName(providerId);
+}
+
+function createProviderBreakdownEntry(id, displayName) {
+  return {
+    id,
+    display_name: displayName,
+    tokens: 0,
+    request_count: null,
+    cost_usd: 0,
+  };
+}
+
+function addProviderBreakdown(map, id, displayName, row, rowCost, requestCount) {
+  if (!map.has(id)) map.set(id, createProviderBreakdownEntry(id, displayName));
+  const entry = map.get(id);
+  entry.tokens += Math.max(0, Number(row.total_tokens || 0));
+  if (requestCount !== null) entry.request_count = Number(entry.request_count || 0) + requestCount;
+  entry.cost_usd += rowCost;
+}
+
+function roundProviderMoney(value) {
+  return Number(Number(value || 0).toFixed(9));
+}
+
+function providerCostBasis() {
+  return {
+    authority: SPEND_AUTHORITIES.LOCAL_LIST_PRICE_ESTIMATE,
+    accuracy: "estimated",
+  };
+}
+
+function finalizeProviderBreakdown(map) {
+  return Array.from(map.values())
+    .map((entry) => ({ ...entry, cost_usd: roundProviderMoney(entry.cost_usd) }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function providerRequestFact(row) {
+  if (row?.record_kind === "request_event") {
+    return { count: 1, basis: "request_event" };
+  }
+  return { count: null, basis: null };
+}
+
+function providerRequestBasis(bases) {
+  return bases.has("request_event") ? "request_event" : "unavailable";
+}
+
+function providerPricingCoverage(pricedTokens, unpricedTokens) {
+  const priced = Math.max(0, Number(pricedTokens || 0));
+  const unpriced = Math.max(0, Number(unpricedTokens || 0));
+  if (unpriced === 0) return "complete";
+  if (priced === 0) return "unpriced";
+  return "partial";
+}
+
+function providerDayKeys(fromKey, toKey) {
+  const keys = [];
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/u.test(toKey)) {
+    return keys;
+  }
+  let cursor = fromKey;
+  for (let guard = 0; guard < 7 && cursor <= toKey; guard += 1) {
+    keys.push(cursor);
+    cursor = shiftDayKey(cursor, 1);
+  }
+  return keys;
+}
+
+function providerTimeZoneLabel(timeZoneContext) {
+  if (timeZoneContext?.timeZone) return timeZoneContext.timeZone;
+  const offset = Number(timeZoneContext?.offsetMinutes);
+  if (!Number.isFinite(offset) || offset === 0) return "UTC";
+  const sign = offset >= 0 ? "+" : "-";
+  const absolute = Math.abs(Math.trunc(offset));
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
+}
+
+function finalizeProviderDay(day, period) {
+  return {
+    date: day.date,
+    agents: finalizeProviderBreakdown(day.agentMap),
+    models: finalizeProviderBreakdown(day.modelMap),
+    tokens: day.tokens,
+    request_count: day.request_count,
+    request_count_basis: providerRequestBasis(day.requestBases),
+    cost_usd: roundProviderMoney(day.cost_usd),
+    cost_basis: providerCostBasis(),
+    period,
+  };
+}
+
+// Aggregate only trusted API-key usage by its explicit Provider evidence.
+// Agent/source is a breakdown dimension, never a Provider fallback.
+function aggregateByProvider(rows, options = {}) {
   const {
     fromKey = null,
     toKey = null,
@@ -1383,6 +1499,14 @@ function aggregateBySource(rows, options = {}) {
     sources = null,
     models = null,
   } = options;
+  const dayKeys = providerDayKeys(fromKey, toKey);
+  const dayKeySet = new Set(dayKeys);
+  const period = {
+    from: fromKey,
+    to: toKey,
+    days: dayKeys.length,
+    time_zone: providerTimeZoneLabel(timeZoneContext),
+  };
   const map = new Map();
   for (const row of rows) {
     if (!row || !row.hour_start) continue;
@@ -1391,48 +1515,192 @@ function aggregateBySource(rows, options = {}) {
     const modelKey = String(row.model || "").trim().toLowerCase();
     if (models && !models.includes(modelKey)) continue;
     const dayKey = rowDayKey(row, timeZoneContext);
-    if (fromKey && dayKey < fromKey) continue;
-    if (toKey && dayKey > toKey) continue;
-    if (!map.has(src)) {
-      map.set(src, {
-        source: src,
-        source_display_name: getSourceDisplayName(src),
+    if (!dayKeySet.has(dayKey)) continue;
+    const attribution = normalizeUsageAttribution(row);
+    const providerId = attribution.provider_id || "";
+    if (attribution.billing_mode !== "api_key" || !providerId || providerId === "unknown") continue;
+    if (!map.has(providerId)) {
+      map.set(providerId, {
+        provider_id: providerId,
+        display_name: providerDisplayName(providerId),
+        accountRefs: new Set(),
+        agentMap: new Map(),
+        modelMap: new Map(),
+        dailyMap: new Map(dayKeys.map((date) => [date, {
+          date,
+          agentMap: new Map(),
+          modelMap: new Map(),
+          tokens: 0,
+          request_count: null,
+          requestBases: new Set(),
+          cost_usd: 0,
+        }])),
+        requestBases: new Set(),
         request_count: null,
         conversation_count: 0,
         tokens: 0,
         cost_usd: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: 0,
         priced_tokens: 0,
         unpriced_tokens: 0,
-        pricing_coverage: "complete",
-        success_rate: null,
-        avg_latency_ms: null,
-        metric_availability: "aggregate_only",
+        status_sample_count: 0,
+        latency_sample_count: 0,
+        success_count: 0,
+        failure_count: 0,
+        interrupted_count: 0,
+        latencySum: 0,
+        rawCostUsd: 0,
       });
     }
-    const acc = map.get(src);
+    const acc = map.get(providerId);
+    if (attribution.account_ref) acc.accountRefs.add(attribution.account_ref);
+    const requestFact = providerRequestFact(row);
+    if (requestFact.count !== null) {
+      acc.request_count = Number(acc.request_count || 0) + requestFact.count;
+      acc.requestBases.add(requestFact.basis);
+    }
     acc.conversation_count += Number(row.conversation_count || 0);
     acc.tokens += Number(row.total_tokens || 0);
     const rowCost = computeRowCostDetailed(row, pricingOptions);
-    acc.cost_usd += Number(rowCost.cost_usd || 0);
+    const costUsd = Number.isFinite(Number(rowCost.cost_usd)) ? Number(rowCost.cost_usd) : 0;
+    acc.rawCostUsd += costUsd;
+    acc.cost_usd += costUsd;
+    acc.input_tokens += Number(row.input_tokens || 0);
+    acc.output_tokens += Number(row.output_tokens || 0);
+    acc.cached_input_tokens += Number(row.cached_input_tokens || 0);
+    acc.cache_creation_input_tokens += Number(row.cache_creation_input_tokens || 0);
+    acc.reasoning_output_tokens += Number(row.reasoning_output_tokens || 0);
     acc.priced_tokens += Number(rowCost.priced_tokens || 0);
     acc.unpriced_tokens += Number(rowCost.unpriced_tokens || 0);
-  }
-  const providers = Array.from(map.values());
-  for (const p of providers) {
-    p.cost_usd = Number(p.cost_usd.toFixed(6));
-    const total = p.priced_tokens + p.unpriced_tokens;
-    if (total === 0) {
-      p.pricing_coverage = "complete";
-    } else if (p.unpriced_tokens === 0) {
-      p.pricing_coverage = "complete";
-    } else if (p.priced_tokens === 0) {
-      p.pricing_coverage = "unpriced";
-    } else {
-      p.pricing_coverage = "partial";
+
+    const modelId = modelKey || "unknown";
+    addProviderBreakdown(acc.agentMap, src || "unknown", getSourceDisplayName(src), row, costUsd, requestFact.count);
+    addProviderBreakdown(acc.modelMap, modelId, String(row.model || "unknown"), row, costUsd, requestFact.count);
+    const day = acc.dailyMap.get(dayKey);
+    day.tokens += Number(row.total_tokens || 0);
+    day.cost_usd += costUsd;
+    if (requestFact.count !== null) {
+      day.request_count = Number(day.request_count || 0) + requestFact.count;
+      day.requestBases.add(requestFact.basis);
+    }
+    addProviderBreakdown(day.agentMap, src || "unknown", getSourceDisplayName(src), row, costUsd, requestFact.count);
+    addProviderBreakdown(day.modelMap, modelId, String(row.model || "unknown"), row, costUsd, requestFact.count);
+
+    // Only explicit request events can contribute request-quality samples.
+    if (row.record_kind === "request_event") {
+      const status = Number(row.status);
+      if (row.status !== null && row.status !== undefined && Number.isFinite(status)) {
+        acc.status_sample_count += 1;
+        if (status >= 200 && status < 300) acc.success_count += 1;
+        else if (status === 499) acc.interrupted_count += 1;
+        else acc.failure_count += 1;
+      }
+      const latency = Number(row.latency_ms);
+      if (row.latency_ms !== null && row.latency_ms !== undefined && Number.isFinite(latency) && latency >= 0) {
+        acc.latency_sample_count += 1;
+        acc.latencySum += latency;
+      }
     }
   }
-  providers.sort((a, b) => b.tokens - a.tokens);
+  const providers = Array.from(map.values())
+    .filter((provider) => provider.rawCostUsd > 0)
+    .map((provider) => {
+      const completedStatusCount = provider.success_count + provider.failure_count;
+      const accountRefs = Array.from(provider.accountRefs);
+      const result = {
+        provider_id: provider.provider_id,
+        display_name: provider.display_name,
+        account_label: null,
+        account_ref: accountRefs.length === 1 ? accountRefs[0] : null,
+        agents: finalizeProviderBreakdown(provider.agentMap),
+        models: finalizeProviderBreakdown(provider.modelMap),
+        period,
+        tokens: provider.tokens,
+        input_tokens: provider.input_tokens,
+        output_tokens: provider.output_tokens,
+        cached_input_tokens: provider.cached_input_tokens,
+        cache_creation_input_tokens: provider.cache_creation_input_tokens,
+        reasoning_output_tokens: provider.reasoning_output_tokens,
+        request_count: provider.request_count,
+        request_count_basis: providerRequestBasis(provider.requestBases),
+        conversation_count: provider.conversation_count,
+        cost_usd: roundProviderMoney(provider.cost_usd),
+        cost_basis: providerCostBasis(),
+        priced_tokens: provider.priced_tokens,
+        unpriced_tokens: provider.unpriced_tokens,
+        pricing_coverage: providerPricingCoverage(provider.priced_tokens, provider.unpriced_tokens),
+        success_count: provider.status_sample_count > 0 ? provider.success_count : null,
+        interrupted_count: provider.interrupted_count,
+        failure_count: provider.failure_count,
+        success_rate: completedStatusCount > 0
+          ? Number(((provider.success_count / completedStatusCount) * 100).toFixed(2))
+          : null,
+        avg_latency_ms: provider.latency_sample_count > 0
+          ? Math.round(provider.latencySum / provider.latency_sample_count)
+          : null,
+        status_sample_count: provider.status_sample_count,
+        success_rate_sample_count: completedStatusCount,
+        latency_sample_count: provider.latency_sample_count,
+        availability: {
+          status: provider.status_sample_count > 0 ? "measured" : "unavailable",
+          latency: provider.latency_sample_count > 0 ? "measured" : "unavailable",
+        },
+        metric_availability: provider.status_sample_count > 0 || provider.latency_sample_count > 0
+          ? "measured"
+          : "unavailable",
+        daily: Array.from(provider.dailyMap.values()).map((day) => finalizeProviderDay(day, period)),
+        balance: null,
+      };
+      return result;
+    });
+  providers.sort((left, right) => (
+    right.cost_usd - left.cost_usd
+    || right.tokens - left.tokens
+    || left.provider_id.localeCompare(right.provider_id)
+  ));
   return providers;
+}
+
+function summarizeProviderTotals(providers) {
+  const totals = {
+    provider_count: providers.length,
+    total_tokens: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    reasoning_output_tokens: 0,
+    cost_usd: 0,
+    conversation_count: 0,
+    request_count: null,
+    priced_tokens: 0,
+    unpriced_tokens: 0,
+    pricing_coverage: "complete",
+  };
+  let measuredRequestCount = 0;
+  let allProvidersHaveRequestCounts = providers.length > 0;
+  for (const provider of providers) {
+    totals.total_tokens += Number(provider.tokens || 0);
+    totals.input_tokens += Number(provider.input_tokens || 0);
+    totals.output_tokens += Number(provider.output_tokens || 0);
+    totals.cached_input_tokens += Number(provider.cached_input_tokens || 0);
+    totals.cache_creation_input_tokens += Number(provider.cache_creation_input_tokens || 0);
+    totals.reasoning_output_tokens += Number(provider.reasoning_output_tokens || 0);
+    totals.cost_usd += Number(provider.cost_usd || 0);
+    totals.conversation_count += Number(provider.conversation_count || 0);
+    if (provider.request_count === null) allProvidersHaveRequestCounts = false;
+    else measuredRequestCount += Number(provider.request_count || 0);
+    totals.priced_tokens += Number(provider.priced_tokens || 0);
+    totals.unpriced_tokens += Number(provider.unpriced_tokens || 0);
+  }
+  totals.request_count = allProvidersHaveRequestCounts ? measuredRequestCount : null;
+  totals.cost_usd = roundProviderMoney(totals.cost_usd);
+  totals.pricing_coverage = providerPricingCoverage(totals.priced_tokens, totals.unpriced_tokens);
+  return totals;
 }
 
 // Aggregate queue rows by (source, model) for the model-stats endpoint.
@@ -1643,9 +1911,9 @@ function getRequestedUsageScope(url) {
   return normalizeUsageScope(url.searchParams.get("scope"));
 }
 
-function scopedQueueRows(queuePath, url) {
+function scopedQueueRows(queuePath, url, { dedupeMode = "legacy" } = {}) {
   const scope = getRequestedUsageScope(url);
-  const allRows = readQueueData(queuePath);
+  const allRows = readQueueData(queuePath, { dedupeMode });
   return {
     scope,
     allRows,
@@ -2623,6 +2891,61 @@ function createLocalApiHandler({
     return observed;
   }
 
+  function overlayProviderRuntimeFacts(payload) {
+    if (!payload || !Array.isArray(payload.providers)) return payload;
+    const providerConfigs = providerApiConfigs.readProviderApiConfigs(readTrackerConfig());
+    const currentTimeMs = nowProvider().getTime();
+    for (const provider of payload.providers) {
+      provider.account_label = null;
+      provider.balance = null;
+      const matchingConfigs = providerConfigs.filter((config) => {
+        if (config.enabled === false) return false;
+        return normalizeUsageAttribution({
+          billing_mode: "api_key",
+          provider_id: config.providerId,
+        }).provider_id === provider.provider_id;
+      });
+      if (matchingConfigs.length !== 1) continue;
+      const configuredLabel = trustedLocalDisplayText(matchingConfigs[0].label, 160);
+      if (configuredLabel && trustedLocalStatusMessage(configuredLabel) === configuredLabel) {
+        provider.account_label = configuredLabel;
+      }
+      const cached = providerApiBalanceManager.getCachedBalance(matchingConfigs[0].id);
+      const amount = Number(cached?.balance);
+      const observedAtMs = Date.parse(cached?.lastSyncedAt || "");
+      const ageMs = currentTimeMs - observedAtMs;
+      const isFresh = Number.isFinite(observedAtMs)
+        && ageMs >= -5_000
+        && ageMs <= PROVIDER_BALANCE_FRESHNESS_TTL_MS;
+      if (
+        cached?.status !== providerApiBalance.STATUS_SYNCED
+        || !Number.isFinite(amount)
+        || amount < 0
+        || !isFresh
+      ) continue;
+      provider.balance = {
+        amount,
+        currency: typeof cached.currency === "string" && cached.currency ? cached.currency : null,
+        observed_at: cached.lastSyncedAt,
+      };
+    }
+    return payload;
+  }
+
+  function providerAggregateCacheBody(rawBody) {
+    try {
+      const payload = JSON.parse(rawBody);
+      if (!Array.isArray(payload?.providers)) return rawBody;
+      for (const provider of payload.providers) {
+        provider.account_label = null;
+        provider.balance = null;
+      }
+      return JSON.stringify(payload);
+    } catch {
+      return rawBody;
+    }
+  }
+
   function prepareUsageAggregateResponseCache(req, res, url) {
     if (String(req.method || "GET").toUpperCase() !== "GET") return false;
     if (!USAGE_AGGREGATE_RESPONSE_PATHS.has(url.pathname)) return false;
@@ -2641,6 +2964,14 @@ function createLocalApiHandler({
     ].join("\u0001");
     const cached = usageAggregateResponseCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt <= USAGE_AGGREGATE_RESPONSE_CACHE_TTL_MS) {
+      let responseBody = cached.body;
+      if (url.pathname === "/functions/tokentracker-provider-stats") {
+        try {
+          responseBody = JSON.stringify(overlayProviderRuntimeFacts(JSON.parse(cached.body)));
+        } catch {
+          responseBody = cached.body;
+        }
+      }
       res.writeHead(cached.statusCode, {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
@@ -2648,7 +2979,7 @@ function createLocalApiHandler({
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-TokenTracker-Local-Auth",
         "X-TokenTracker-Usage-Cache": "hit",
       });
-      res.end(cached.body);
+      res.end(responseBody);
       return true;
     }
     if (cached) usageAggregateResponseCache.delete(cacheKey);
@@ -2662,9 +2993,12 @@ function createLocalApiHandler({
     };
     res.end = (body, ...args) => {
       if (statusCode === 200 && body !== undefined && body !== null) {
+        const serializedBody = Buffer.isBuffer(body) ? body.toString("utf8") : String(body);
         usageAggregateResponseCache.delete(cacheKey);
         usageAggregateResponseCache.set(cacheKey, {
-          body: Buffer.isBuffer(body) ? body.toString("utf8") : String(body),
+          body: url.pathname === "/functions/tokentracker-provider-stats"
+            ? providerAggregateCacheBody(serializedBody)
+            : serializedBody,
           cachedAt: Date.now(),
           statusCode,
         });
@@ -7729,14 +8063,27 @@ function createLocalApiHandler({
     }
 
     // --- provider-stats (A4) ---
-    // Aggregates queue rows by source for the Spend provider leaderboard.
-    // Shares filter + scope semantics with usage-summary so totals stay
-    // three-way consistent (usage-summary / spend-timeseries / provider-stats).
+    // The API subpage is always a seven-local-day Provider view. Only rows
+    // carrying trusted api_key + provider_id evidence can enter this response;
+    // source/Agent is retained only as a Provider breakdown.
     if (p === "/functions/tokentracker-provider-stats") {
-      const from = url.searchParams.get("from") || "";
-      const to = url.searchParams.get("to") || "";
+      const requestedFrom = url.searchParams.get("from") || "";
+      const requestedTo = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows: baseScopedRows, scope, excludedSources } = scopedQueueRows(qp, url);
+      const validDayKey = (value) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+        const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+        return Number.isFinite(timestamp)
+          && new Date(timestamp).toISOString().slice(0, 10) === value;
+      };
+      const to = validDayKey(requestedTo)
+        ? requestedTo
+        : formatPartsDayKey(getZonedParts(nowProvider(), timeZoneContext))
+          || nowProvider().toISOString().slice(0, 10);
+      const from = shiftDayKey(to, -6);
+      const { rows: baseScopedRows, scope, excludedSources } = scopedQueueRows(qp, url, {
+        dedupeMode: "provider",
+      });
       const pricingOptions = getPricingOptions();
       const sourcesParam = parseMultiParam(url, "sources");
       const agentIds = parseMultiParam(url, "agent_ids");
@@ -7748,36 +8095,39 @@ function createLocalApiHandler({
         timeZoneContext,
         sources: effectiveSources,
       });
-      const directoryStates = typeof tokenOnlyDirectoryStatesProvider === "function"
-        ? tokenOnlyDirectoryStatesProvider(readLocalSettings(), { home: handlerHome })
-        : resolveTokenOnlyDirectoryStates(readLocalSettings(), { home: handlerHome });
-      const providers = appendDetectedTokenOnlyProviders(aggregateBySource(scopedRows, {
-        fromKey: from || null,
-        toKey: to || null,
-        timeZoneContext,
-        pricingOptions,
-        sources: effectiveSources,
-        models: modelsParam,
-      }), directoryStates, effectiveSources);
-      const totals = computeQueueTotals(scopedRows, {
-        fromKey: from || null,
-        toKey: to || null,
+      const providers = aggregateByProvider(scopedRows, {
+        fromKey: from,
+        toKey: to,
         timeZoneContext,
         pricingOptions,
         sources: effectiveSources,
         models: modelsParam,
       });
-      json(res, {
+
+      const totals = summarizeProviderTotals(providers);
+      const period = {
+        from,
+        to,
+        days: 7,
+        time_zone: providerTimeZoneLabel(timeZoneContext),
+      };
+      const response = {
         ok: true,
         from,
         to,
+        requested_from: requestedFrom || null,
+        requested_to: requestedTo || null,
+        period,
+        totals_scope: "api_key_attributed_cost_positive",
         scope,
         excluded_sources: excludedSources,
         sources: effectiveSources || [],
         models: modelsParam || [],
         providers,
         totals,
-      });
+      };
+      overlayProviderRuntimeFacts(response);
+      json(res, response);
       return true;
     }
 
