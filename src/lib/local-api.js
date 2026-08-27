@@ -7022,15 +7022,21 @@ function createLocalApiHandler({
       try {
         const nowDate = nowProvider();
         const timeZoneContext = getTimeZoneContext(url);
-        const range = valueRealtimeRange(url.searchParams.get("range") || "today", nowDate, timeZoneContext);
-        const currentMonthKey = range.to.slice(0, 7);
-        const historyMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(url.searchParams.get("month") || ""))
+        const requestedRange = url.searchParams.get("range") || "today";
+        const todayRange = valueRealtimeRange("today", nowDate, timeZoneContext);
+        const currentMonthKey = todayRange.to.slice(0, 7);
+        const rawRequestedMonth = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(url.searchParams.get("month") || ""))
           ? String(url.searchParams.get("month"))
+          : null;
+        const requestedMonth = requestedRange === "month" ? rawRequestedMonth : null;
+        const historyMonth = requestedMonth && requestedMonth <= currentMonthKey
+          ? requestedMonth
           : currentMonthKey;
-        const historyMonthDate = new Date(`${historyMonth}-01T00:00:00.000Z`);
+        const range = valueRealtimeRange(requestedRange, nowDate, timeZoneContext, historyMonth);
         const historyRange = valueRealtimeRange("month", nowDate, timeZoneContext, historyMonth);
+        const currentMonthDate = new Date(`${currentMonthKey}-01T00:00:00.000Z`);
         const monthOptions = Array.from({ length: 6 }, (_unused, index) => {
-          const month = new Date(Date.UTC(historyMonthDate.getUTCFullYear(), historyMonthDate.getUTCMonth() - index, 1));
+          const month = new Date(Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth() - index, 1));
           return month.toISOString().slice(0, 7);
         });
         const config = readTrackerConfig();
@@ -7117,13 +7123,21 @@ function createLocalApiHandler({
           : [];
         const installedSources = [...new Set([...tokenOnlyInstalledSources, ...environmentInstalledSources])];
         const nativeResources = workbuddyNativeResources(workbuddyQuota);
+        const lifecycleSessionsInRange = range.to === todayRange.to
+          ? lifecycleSessionsWithMessageSpans
+          : [];
         privateLocalJson(req, res, buildRealtimeSessionViewModel({
           observedAt: nowDate.toISOString(),
+          range: range.range,
+          rangeFrom: range.from,
+          rangeTo: range.to,
+          requestedMonth,
           todayKey: range.to,
           dataMonth: historyMonth,
           monthOptions,
           usageRows: usageRowsWithMessageSpans.map((row, index) => publicRealtimeUsageRow(row, index, timeZoneContext)),
-          lifecycleSessions: lifecycleSessionsWithMessageSpans.map(publicRealtimeLifecycleSession),
+          lifecycleSessions: lifecycleSessionsInRange.map(publicRealtimeLifecycleSession),
+          runtimeSessions: lifecycleSessionsWithMessageSpans.map(publicRealtimeLifecycleSession),
           agentHistory: attachNativeResourcesToHistory(buildAgentHistoryInventory({
             rows: historyRows,
             installedSources,

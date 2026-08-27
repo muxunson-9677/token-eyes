@@ -319,20 +319,27 @@ function buildRealtimeSessionViewModel(input = {}) {
   const totalTokens = sessionTokenValues.length ? sessionTokenValues.reduce((sumValue, value) => sumValue + value, 0) : null;
   const totalCost = sessionCostValues.length ? sessionCostValues.reduce((sumValue, value) => sumValue + value, 0) : null;
   const summaryEvidence = buildEvidence(rawRows, null, rawRows.at(-1));
+  const runtimeItems = Array.isArray(input.runtimeSessions) ? input.runtimeSessions : sessions;
+  const runtimeBySource = runtimeItems.reduce((states, item) => {
+    const source = safeText(item?.source || item?.agent);
+    const state = safeText(item?.state || item?.status);
+    if (!source) return states;
+    if (state === "running" || !states.has(source)) states.set(source, state === "running" ? "running" : "idle");
+    return states;
+  }, new Map());
   const payload = {
     observed_at: typeof input.observedAt === "string" ? input.observedAt : null,
+    range: ["today", "7d", "month", "30d"].includes(input.range) ? input.range : "today",
+    range_from: /^\d{4}-\d{2}-\d{2}$/.test(String(input.rangeFrom || "")) ? input.rangeFrom : null,
+    range_to: /^\d{4}-\d{2}-\d{2}$/.test(String(input.rangeTo || "")) ? input.rangeTo : null,
+    requested_month: /^\d{4}-\d{2}$/.test(String(input.requestedMonth || "")) ? input.requestedMonth : null,
     data_month: typeof input.dataMonth === "string" ? input.dataMonth : null,
     month_options: Array.isArray(input.monthOptions) ? input.monthOptions.filter((item) => /^\d{4}-\d{2}$/.test(item)).slice(0, 12) : [],
     sessions,
     session_tree: buildSessionTree(sessions),
     activity_points: buildActivityPoints(rawRows),
     requests: buildRequests(rawRows),
-    agent_history: buildAgentHistory(input.agentHistory, sessions.reduce((states, session) => {
-      const source = safeText(session?.source);
-      if (!source) return states;
-      if (session.state === "running" || !states.has(source)) states.set(source, session.state === "running" ? "running" : "idle");
-      return states;
-    }, new Map())),
+    agent_history: buildAgentHistory(input.agentHistory, runtimeBySource),
     summary: {
       active_agents: metric(new Set(sessions.filter((session) => session.state === "running").map((session) => session.source)).size, "agents", "partial", summaryEvidence),
       realtime_tokens: metric(totalTokens, "tokens", totalTokens === null ? "connected_no_exact_data" : "partial", summaryEvidence),

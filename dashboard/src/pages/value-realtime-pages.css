@@ -238,7 +238,10 @@
 .rt-session-strip { align-items: center; display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 8px; margin-top: var(--vr-space-4); }
 .rt-session-viewport { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--vr-space-4); min-width: 0; }
 .rt-session-controls { align-items: center; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
-.rt-session-mini { box-sizing: border-box; display: flex; flex-direction: column; height: 90px; justify-content: center; min-width: 0; padding: 11px 13px; }
+.rt-session-mini { box-sizing: border-box; color: inherit; cursor: pointer; display: flex; flex-direction: column; font: inherit; height: 90px; justify-content: center; min-width: 0; padding: 11px 13px; position: relative; text-align: left; width: 100%; }
+.rt-session-mini[aria-pressed="true"] { border-color: rgba(43,120,255,.75); box-shadow: 0 7px 18px rgba(43,120,255,.14); transform: none; }
+.rt-session-mini[aria-pressed="true"]::before { border-bottom: 11px solid rgba(43,120,255,.88); border-left: 10px solid transparent; border-right: 10px solid transparent; content: ""; left: 50%; position: absolute; top: -12px; transform: translateX(-50%); }
+.rt-session-mini[aria-pressed="true"]:active { transform: translateY(1px); }
 .rt-mini-head { align-items: center; display: flex; gap: 6px; justify-content: space-between; }
 .rt-mini-name { align-items: center; display: flex; flex: 1 1 auto; gap: 7px; font-size: 13px; font-weight: 750; min-width: 0; }
 .rt-mini-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -253,6 +256,10 @@
 .rt-mini-data--workbuddy { font-size: 12px; letter-spacing: -.02em; }
 .rt-session-nav { align-items: center; aspect-ratio: 1; background: #fff; border: 1px solid var(--vr-line); border-radius: 50%; box-shadow: 0 2px 8px rgba(38,58,99,.08); color: #30496e; cursor: pointer; display: inline-flex; justify-content: center; padding: 0; width: 34px; }
 .rt-session-nav:hover { background: #f5f8ff; color: var(--vr-blue); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-session-mini[aria-pressed="true"]:active { transform: none; }
+}
 .rt-workspace { align-items: stretch; display: grid; grid-template-columns: minmax(0, 1fr) 377px; gap: var(--vr-space-5); margin-top: var(--vr-space-4); }
 .rt-analysis { min-height: 288px; padding: 0 19px 0; }
 .rt-tabs { border-bottom: 1px solid var(--vr-line); display: flex; gap: 34px; }

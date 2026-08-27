@@ -26,6 +26,95 @@ async function call(handler, endpoint) {
   return (await callResponse(handler, endpoint)).body;
 }
 
+test("realtime range clamps future months and returns its actual local date window", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-range-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, "");
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: root,
+      now: () => new Date("2026-08-21T08:30:00.000Z"),
+      codexLifecycleProvider: async () => [],
+      detectAllAgentEnvironments: () => [],
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+
+    const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=month&month=2027-01&tz=Asia%2FShanghai&tz_offset_minutes=480");
+    assert.equal(realtime.requested_month, "2027-01");
+    assert.equal(realtime.data_month, "2026-08");
+    assert.equal(realtime.range, "month");
+    assert.equal(realtime.range_from, "2026-08-01");
+    assert.equal(realtime.range_to, "2026-08-21");
+    assert.deepEqual(realtime.month_options, ["2026-08", "2026-07", "2026-06", "2026-05", "2026-04", "2026-03"]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("realtime non-month ranges ignore a stale month and honor the requested timezone across a month boundary", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-boundary-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, "");
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: root,
+      now: () => new Date("2026-07-31T16:30:00.000Z"),
+      codexLifecycleProvider: async () => [],
+      detectAllAgentEnvironments: () => [],
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+
+    const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=30d&month=2025-12&tz=Asia%2FShanghai&tz_offset_minutes=480");
+    assert.equal(realtime.requested_month, null);
+    assert.equal(realtime.data_month, "2026-08");
+    assert.equal(realtime.range, "30d");
+    assert.equal(realtime.range_from, "2026-07-03");
+    assert.equal(realtime.range_to, "2026-08-01");
+    assert.equal(realtime.month_options[0], "2026-08");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a historical realtime month excludes current lifecycle sessions while preserving their live Agent badge", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-historical-lifecycle-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, `${JSON.stringify({
+      source: "codex",
+      model: "gpt-5",
+      hour_start: "2026-07-18T08:00:00.000Z",
+      input_tokens: 40,
+      output_tokens: 10,
+      total_tokens: 50,
+    })}\n`);
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: root,
+      now: () => new Date("2026-08-21T08:30:00.000Z"),
+      codexLifecycleProvider: async () => [{
+        agent: "codex",
+        sessionId: "current-live-session",
+        status: "running",
+        updatedAt: "2026-08-21T08:25:00.000Z",
+      }],
+      detectAllAgentEnvironments: () => [],
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+
+    const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=month&month=2026-07&tz=UTC&tz_offset_minutes=0");
+    assert.equal(realtime.sessions.length, 0, "the current live task is outside the selected historical month");
+    assert.equal(realtime.agent_history.find((agent) => agent.source === "codex")?.runtime_state, "running");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("value and realtime endpoints return privacy-safe, explicit evidence payloads", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-value-realtime-"));
   try {

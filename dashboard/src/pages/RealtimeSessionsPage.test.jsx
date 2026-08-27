@@ -367,7 +367,13 @@ describe("RealtimeSessionsPage", () => {
 
   it("uses the page month selector for Agent history while keeping the green badge as runtime state", async () => {
     const user = userEvent.setup();
-    getRealtimeSessions.mockResolvedValue({ ...payload, data_month: "2026-08", available_months: ["2026-08", "2026-07"] });
+    getRealtimeSessions.mockImplementation(async (_range, _signal, requestedMonth) => ({
+      ...payload,
+      data_month: requestedMonth || "2026-08",
+      range_from: requestedMonth === "2026-07" ? "2026-07-01" : "2026-08-21",
+      range_to: requestedMonth === "2026-07" ? "2026-07-31" : "2026-08-21",
+      available_months: ["2026-08", "2026-07"],
+    }));
     render(<RealtimeSessionsPage />);
     const codexCard = (await screen.findAllByText("Codex")).map((node) => node.closest(".rt-session-mini")).find(Boolean);
     expect(codexCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.running"));
@@ -375,6 +381,111 @@ describe("RealtimeSessionsPage", () => {
     await act(async () => {
       await user.selectOptions(screen.getByRole("combobox", { name: copy("realtime.month.select") }), "2026-07");
     });
-    await waitFor(() => expect(getRealtimeSessions).toHaveBeenLastCalledWith("today", expect.any(AbortSignal), "2026-07"));
+    await waitFor(() => expect(getRealtimeSessions).toHaveBeenLastCalledWith("month", expect.any(AbortSignal), "2026-07"));
+    expect(screen.getByRole("combobox", { name: copy("realtime.range.select") })).toHaveValue("month");
+    expect(screen.getByTestId("realtime-range-window")).toHaveTextContent("2026-07-01 至 2026-07-31");
+  });
+
+  it("ignores an older response that resolves after a newer range response", async () => {
+    const user = userEvent.setup();
+    let resolveToday;
+    let resolveSevenDays;
+    getRealtimeSessions
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveToday = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSevenDays = resolve; }));
+    render(<RealtimeSessionsPage />);
+    await act(async () => {
+      await user.selectOptions(screen.getByRole("combobox", { name: copy("realtime.range.select") }), "7d");
+    });
+    await act(async () => {
+      resolveSevenDays({ ...payload, sessions: [{ ...session, task_label: "newer seven day response" }] });
+    });
+    expect(await screen.findByText("newer seven day response")).toBeInTheDocument();
+    await act(async () => {
+      resolveToday({ ...payload, sessions: [{ ...session, task_label: "stale today response" }] });
+    });
+    expect(screen.queryByText("stale today response")).not.toBeInTheDocument();
+    expect(screen.getByText("newer seven day response")).toBeInTheDocument();
+  });
+
+  it("selects an Agent card with mouse and derives task, model, sparkline, and requests from that session", async () => {
+    const user = userEvent.setup();
+    const cursorSession = {
+      ...session,
+      session_id: "cursor-session",
+      source: "cursor",
+      agent_label: "Cursor",
+      model: "cursor-model",
+      task_label: "Cursor selected task",
+      total_tokens: metric(222),
+      input_tokens: metric(200),
+      output_tokens: metric(22),
+      request_count: metric(1),
+      activity_points: [
+        { observed_at: "2026-08-21T07:00:00.000Z", total_tokens: 10 },
+        { observed_at: "2026-08-21T08:00:00.000Z", total_tokens: 222 },
+      ],
+    };
+    getRealtimeSessions.mockResolvedValue({
+      ...payload,
+      sessions: [session, cursorSession],
+      session_tree: [{ ...session, children: [] }, { ...cursorSession, children: [] }],
+      requests: [
+        ...payload.requests,
+        { ...payload.requests[0], record_ref: "request:cursor-session:0", session_ref: "session:cursor-session", source: "cursor", model: "cursor-model", total_tokens: metric(222) },
+      ],
+    });
+
+    render(<RealtimeSessionsPage />);
+    const cursorCard = await screen.findByRole("button", { name: /Cursor/u });
+    expect(document.querySelectorAll('.rt-session-mini[aria-pressed="true"]')).toHaveLength(1);
+    await act(async () => { await user.click(cursorCard); });
+
+    expect(cursorCard).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelectorAll('.rt-session-mini[aria-pressed="true"]')).toHaveLength(1);
+    expect(screen.getByText("Cursor selected task")).toBeInTheDocument();
+    expect(document.querySelector(".rt-focus")).toHaveTextContent("cursor-model");
+    expect(screen.getByTestId("focus-sparkline")).toHaveAttribute("data-series-signature", "10,222");
+    await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") })); });
+    expect(screen.getByText("request:cursor-session:0")).toBeInTheDocument();
+    expect(screen.queryByText("request:safe-session:0")).not.toBeInTheDocument();
+  });
+
+  it("shows a truthful empty detail when the selected Agent has no session", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    expect(await screen.findByText("完善价值对比与实时会话")).toBeInTheDocument();
+
+    await act(async () => { await user.click(screen.getByRole("button", { name: copy("realtime.agent.next") })); });
+    await act(async () => { await user.click(screen.getByRole("button", { name: /Trae/u })); });
+
+    expect(screen.queryByText("完善价值对比与实时会话")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("focus-sparkline")).not.toBeInTheDocument();
+    expect(document.querySelector(".rt-focus")).toBeNull();
+    expect(screen.getAllByText(copy("realtime.empty")).length).toBeGreaterThan(0);
+  });
+
+  it("supports native keyboard selection and keeps one selected indicator while paging", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    const cursorCard = await screen.findByRole("button", { name: /Cursor/u });
+    cursorCard.focus();
+    await act(async () => { await user.keyboard("{Enter}"); });
+    expect(cursorCard).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Codex/u })).toHaveAttribute("aria-pressed", "false");
+    expect(document.querySelectorAll('.rt-session-mini[aria-pressed="true"]')).toHaveLength(1);
+
+    const next = screen.getByRole("button", { name: copy("realtime.agent.next") });
+    await act(async () => { await user.click(next); });
+    expect(document.querySelectorAll('.rt-session-mini[aria-pressed="true"]')).toHaveLength(1);
+    expect(document.querySelector('.rt-session-mini[aria-pressed="true"]')).toBeVisible();
+
+    const selected = document.querySelector('.rt-session-mini[aria-pressed="true"]');
+    selected.focus();
+    await act(async () => { await user.keyboard(" "); });
+    expect(selected).toHaveAttribute("aria-pressed", "true");
+    expect(selected).toHaveClass("tt-pressable", "tt-product-focusable");
   });
 });
