@@ -532,6 +532,8 @@
     "reset_history.completed":  "额度已重置",
     "reset_history.restored":  "额度提前恢复",
     "reset_history.empty":  "暂无重置记录",
+    "reset_history.data_unavailable":  "数据不可用",
+    "reset_history.data_cached":  "公告刷新失败，正在显示上次已验证的重置记录",
     "reset_history.source.tibo":  "Tibo @thsottiaux · X",
     "reset_history.source.openai":  "OpenAI 官方来源",
     "reset_history.kind.hard":  "使用限额重置",

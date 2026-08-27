@@ -2,7 +2,8 @@ import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CodexResetHistoryEvent } from "../lib/api";
+import type { CodexResetHistoryEvent, CodexResetMonitorStatus } from "../lib/api";
+import zhDashboardRaw from "../content/i18n/zh/dashboard.json?raw";
 
 const resetContext = vi.hoisted(() => ({
   value: {
@@ -10,7 +11,7 @@ const resetContext = vi.hoisted(() => ({
     events: [],
     history: [] as CodexResetHistoryEvent[],
     unreadCount: 0,
-    status: null,
+    status: null as CodexResetMonitorStatus | null,
     acknowledge: vi.fn(),
     checkNow: vi.fn(),
   },
@@ -96,13 +97,39 @@ function officialReset(
   } as unknown as CodexResetHistoryEvent;
 }
 
+function feedErrorStatus(errorCode = "http_error"): CodexResetMonitorStatus {
+  return {
+    enabled: true,
+    configured: true,
+    running: false,
+    last_checked_at: TEST_NOW.toISOString(),
+    last_successful_at: TEST_NOW.toISOString(),
+    next_check_at: null,
+    last_error_code: null,
+    failure_count: 0,
+    unread_count: 0,
+    feed_enabled: true,
+    feed_last_checked_at: new Date(TEST_NOW.getTime() - 60_000).toISOString(),
+    feed_error_code: errorCode,
+    backfill_error_code: null,
+  };
+}
+
 describe("ResetHistoryPage", () => {
+  it("ships explicit Chinese copy for unavailable and trusted-cache states", () => {
+    const zhDashboard = JSON.parse(zhDashboardRaw) as Record<string, string>;
+    expect(zhDashboard["reset_history.data_unavailable"]).toBe("数据不可用");
+    expect(zhDashboard["reset_history.data_cached"])
+      .toBe("公告刷新失败，正在显示上次已验证的重置记录");
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(TEST_NOW);
     window.localStorage.clear();
     resetContext.value.available = true;
     resetContext.value.history = [];
+    resetContext.value.status = null;
     apiMocks.openExternalLink.mockReset();
     apiMocks.openExternalLink.mockResolvedValue(true);
     document.documentElement.classList.remove("tt-reference-route-reset-history");
@@ -133,6 +160,34 @@ describe("ResetHistoryPage", () => {
       .toHaveTextContent("copy:reset_history.loading_detail");
   });
 
+  it("shows data unavailable instead of zero when the local API reports a feed error without trusted history", () => {
+    resetContext.value.status = feedErrorStatus();
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getByTestId("reset-history-data-state"))
+      .toHaveTextContent("copy:reset_history.data_unavailable");
+    expect(screen.queryByTestId("reset-history-statistics")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reset-history-activity")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reset-history-list").querySelector(".tt-reset-history-empty"))
+      .toHaveTextContent("copy:reset_history.data_unavailable");
+  });
+
+  it("keeps trusted signed history visible and marks it as cached when feed refresh fails", () => {
+    resetContext.value.status = feedErrorStatus("network_error");
+    resetContext.value.history = [
+      officialReset("trusted-cache", new Date("2026-08-13T04:00:00.000Z")),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getByTestId("reset-history-data-state"))
+      .toHaveTextContent("copy:reset_history.data_cached");
+    expect(screen.getByTestId("reset-history-statistics")).toBeInTheDocument();
+    expect(screen.getByTestId("reset-history-activity")).toBeInTheDocument();
+    expect(screen.getByTestId("reset-history-item")).toBeInTheDocument();
+  });
+
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
     resetContext.value.history = [
       officialReset("activity", new Date("2026-08-01T11:32:00.000Z")),
@@ -147,6 +202,22 @@ describe("ResetHistoryPage", () => {
     expect(dataGroup?.querySelector(".tt-reset-heatmap")).not.toBeNull();
     expect(dataGroup?.querySelectorAll(".tt-reset-activity-stat")).toHaveLength(2);
     expect(dataGroup?.querySelector(".tt-reset-activity-peak")).toHaveClass("tt-reset-activity-stat--divided");
+  });
+
+  it("assigns reset activity to the explicit Asia/Shanghai day across UTC midnight", () => {
+    vi.setSystemTime(new Date("2026-08-22T04:00:00.000Z"));
+    resetContext.value.history = [
+      officialReset("before-shanghai-midnight", new Date("2026-08-21T15:59:59.999Z")),
+      officialReset("after-shanghai-midnight", new Date("2026-08-21T16:00:00.000Z")),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    const days = screen.getByTestId("reset-history-activity")
+      .querySelectorAll(".tt-reset-heatmap-day");
+    const activeCells = (day: Element) => day.querySelectorAll('[data-level]:not([data-level="0"])').length;
+    expect(activeCells(days[days.length - 2])).toBe(2);
+    expect(activeCells(days[days.length - 1])).toBe(2);
   });
 
   it("shows only official extra resets with a concise source, reset type, scope, and exact time", () => {

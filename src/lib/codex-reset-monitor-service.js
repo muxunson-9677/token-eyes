@@ -17,7 +17,7 @@ const STARTUP_DELAY_MS = 10_000;
 const SUCCESS_INTERVAL_MS = 30_000;
 const FOCUS_FRESHNESS_MS = 60_000;
 const FEED_CACHE_MS = 5 * 60_000;
-const FEED_URL = "https://a62b9nf2.ap-southeast.insforge.app/functions/tokentracker-codex-reset-feed";
+const FEED_URL = "https://a62b9nf2.function2.insforge.app/tokentracker-codex-reset-feed";
 const FAILURE_BACKOFF_MS = Object.freeze([
   2 * 60_000,
   10 * 60_000,
@@ -45,9 +45,13 @@ function materializeOfficialFeedEvents(
   { nowMs = Date.now() } = {},
 ) {
   const compactedEvents = compactCodexResetEvents(events, { nowMs });
-  if (!Array.isArray(announcements)) return compactedEvents;
-  const previousById = new Map(compactedEvents.map((event) => [event.id, event]));
-  const localEvents = compactedEvents.filter(
+  const retainedEvents = compactedEvents.filter(
+    (event) => event.type !== "official_reset_announcement"
+      || isConfirmedResetAnnouncement(event),
+  );
+  if (!Array.isArray(announcements)) return retainedEvents;
+  const previousById = new Map(retainedEvents.map((event) => [event.id, event]));
+  const localEvents = retainedEvents.filter(
     (event) => event.type !== "official_reset_announcement",
   );
   const officialEvents = announcements.filter(isConfirmedResetAnnouncement).map((announcement) => {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { calculateResetStatistics } from "./reset-history-stats";
+import {
+  calculateResetActivityDays,
+  calculateResetStatistics,
+  RESET_HISTORY_TIME_ZONE,
+  resetHistoryDayKey,
+} from "./reset-history-stats";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW_MS = Date.parse("2026-07-30T12:00:00.000Z");
@@ -62,5 +67,23 @@ describe("calculateResetStatistics", () => {
     expect(result.count).toBe(1);
     expect(result.previousCount).toBe(4);
     expect(result.countChangePercent).toBe(-75);
+  });
+});
+
+describe("Asia/Shanghai reset day keys", () => {
+  it("uses the explicit Shanghai midnight boundary", () => {
+    expect(RESET_HISTORY_TIME_ZONE).toBe("Asia/Shanghai");
+    expect(resetHistoryDayKey("2026-08-21T15:59:59.999Z")).toBe("2026-08-21");
+    expect(resetHistoryDayKey("2026-08-21T16:00:00.000Z")).toBe("2026-08-22");
+  });
+
+  it("counts adjacent UTC timestamps on their Shanghai calendar days", () => {
+    const days = calculateResetActivityDays([
+      event("before-midnight", "2026-08-21T15:59:59.999Z"),
+      event("after-midnight", "2026-08-21T16:00:00.000Z"),
+    ], Date.parse("2026-08-22T04:00:00.000Z"));
+
+    expect(days.at(-2)).toEqual({ key: "2026-08-21", count: 1, offset: 1 });
+    expect(days.at(-1)).toEqual({ key: "2026-08-22", count: 1, offset: 0 });
   });
 });

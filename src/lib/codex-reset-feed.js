@@ -141,8 +141,8 @@ function validateAnnouncement(item, { nowMs }) {
 
 function isConfirmedResetAnnouncement(item) {
   if (!item || typeof item !== "object") return false;
-  if (item.announcement_state === "confirmed") return true;
-  if (item.source_author !== "thsottiaux") return true;
+  if ((item.announcement_state ?? item.announcementState) === "confirmed") return true;
+  if ((item.source_author ?? item.sourceAuthor) !== "thsottiaux") return true;
   return CONFIRMED_RESET_CONCEPT.test(String(item.body || item.summary || ""));
 }
 

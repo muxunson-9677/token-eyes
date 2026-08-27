@@ -215,7 +215,7 @@ test("acknowledging the newest official reset never promotes older history into 
 test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
   assert.equal(
     FEED_URL,
-    "https://a62b9nf2.ap-southeast.insforge.app/functions/tokentracker-codex-reset-feed",
+    "https://a62b9nf2.function2.insforge.app/tokentracker-codex-reset-feed",
   );
   assert.equal(FEED_CACHE_MS, 5 * 60_000);
   const keys = crypto.generateKeyPairSync("ed25519");
@@ -338,6 +338,50 @@ test("startup rematerializes cached official events when a newer app adds feed m
   assert.equal(event.body, announcement.body);
   assert.equal(h.service.listHistory().length, 1);
   assert.notEqual(event.sourcePostId, scheduledAnnouncement.source_post_id);
+});
+
+test("startup removes an orphaned scheduled X event even without cached feed metadata", () => {
+  const expiresAt = new Date(BASE + 30 * 24 * 60 * 60_000).toISOString();
+  const persistedEvent = (id, body) => ({
+    id: `official:x:${id}`,
+    type: "official_reset_announcement",
+    createdAt: new Date(BASE - 60_000).toISOString(),
+    occurredAt: new Date(BASE - 60_000).toISOString(),
+    expiresAt,
+    officialUrl: "https://chatgpt.com/codex",
+    sourceUrl: `https://x.com/thsottiaux/status/${id}`,
+    sourceAuthor: "thsottiaux",
+    sourcePostId: id,
+    summary: body,
+    body,
+    source: "signed_feed",
+    alertEligible: true,
+    deliveredChannels: [],
+    acknowledgedChannels: [],
+  });
+  const scheduled = persistedEvent(
+    "2091407991736332689",
+    "We will do a full reset of usage for all paid subscriptions tomorrow.",
+  );
+  const confirmed = persistedEvent(
+    "2091688655828246890",
+    "Reset has been propagated to accounts.",
+  );
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({
+      version: 2,
+      events: [scheduled, confirmed],
+      windows: {},
+      restoreCandidates: {},
+      acknowledgedEventIds: [],
+      feed: null,
+    }),
+  });
+
+  assert.deepEqual(
+    h.service.listHistory().map((event) => event.sourcePostId),
+    ["2091688655828246890"],
+  );
 });
 
 test("offline or invalid feed keeps prior unexpired events and never blocks quota checks", async () => {

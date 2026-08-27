@@ -2488,6 +2488,8 @@ reset_history.codex,ui,ResetHistoryPage,ResetRecord,codex,"Codex",,active
 reset_history.completed,ui,ResetHistoryPage,ResetRecord,completed,"Quota reset completed",,active
 reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored early",,active
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
+reset_history.data_unavailable,ui,ResetHistoryPage,ResetHistoryPage,data_unavailable,"Data unavailable",,active
+reset_history.data_cached,ui,ResetHistoryPage,ResetHistoryPage,data_cached,"Feed refresh failed. Showing the last trusted reset history.",,active
 reset_history.activity.day_today,ui,ResetHistoryPage,ResetHistoryPage,activity_day_today,"Today",,active
 reset_history.activity.day_yesterday,ui,ResetHistoryPage,ResetHistoryPage,activity_day_yesterday,"Yesterday",,active
 reset_history.source.tibo,ui,ResetHistoryPage,ResetRecord,source_tibo,"Tibo @thsottiaux · X",,active

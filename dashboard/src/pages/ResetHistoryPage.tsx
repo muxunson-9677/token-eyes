@@ -20,8 +20,10 @@ import { copy, getCopyLocale } from "../lib/copy";
 import { openExternalLink, type CodexResetHistoryEvent } from "../lib/api";
 import { isTauriRuntime } from "../lib/local-api-url";
 import {
+  calculateResetActivityDays,
   calculateResetStatistics,
   filterRecentOfficialResets,
+  RESET_HISTORY_TIME_ZONE,
   type ResetStatistics,
 } from "../lib/reset-history-stats";
 import { triggerResetCelebrationPreview } from "../ui/celebration/ResetCelebrationProvider.jsx";
@@ -48,6 +50,7 @@ export function formatResetDateTime(iso: string) {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat(getCopyLocale(), {
+    timeZone: RESET_HISTORY_TIME_ZONE,
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -115,6 +118,7 @@ function formatResetStatDate(iso: string) {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat(getCopyLocale(), {
+    timeZone: RESET_HISTORY_TIME_ZONE,
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
@@ -255,13 +259,9 @@ function ResetActivitySummary({ events, statistics }: { events: TimelineEvent[];
   // V4 item-9a: the 7-day window is anchored to TODAY (it used to anchor to
   // the newest event, so the whole panel looked frozen on that date), and all
   // counts are real — no minimum-2 floor, no force-lit heatmap cells.
-  const today = new Date();
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
-    const key = date.toISOString().slice(0, 10);
-    const count = events.filter((event) => event.occurred_at.slice(0, 10) === key).length;
-    return { key, count, label: `${date.getMonth() + 1}/${date.getDate()}`, offset: 6 - index };
+  const days = calculateResetActivityDays(events).map((day) => {
+    const [, month, date] = day.key.split("-");
+    return { ...day, label: `${Number(month)}/${Number(date)}` };
   });
   const peak = days.reduce((best, day) => day.count > best.count ? day : best, days[0]);
   const hasRecentActivity = peak.count > 0;
@@ -345,10 +345,10 @@ function resetSourceLinkId(event: TimelineEvent) {
 
 function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLatest?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const cardRef = useRef<HTMLLIElement>(null);
-  const detailRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [overlayStyle, setOverlayStyle] = useState<React.CSSProperties>({});
+  const cardRef = useRef(null as HTMLLIElement | null);
+  const detailRef = useRef(null as HTMLDivElement | null);
+  const triggerRef = useRef(null as HTMLButtonElement | null);
+  const [overlayStyle, setOverlayStyle] = useState({} as React.CSSProperties);
   const sourceLabel = getSourceLabel(event);
   const resetKind = event.reset_kind && event.reset_kind in RESET_KIND_VISUALS
     ? event.reset_kind as keyof typeof RESET_KIND_VISUALS
@@ -528,7 +528,7 @@ export function ResetHistoryPage() {
     };
   }, []);
 
-  const { history, available } = useCodexResetEvents();
+  const { history, available, status } = useCodexResetEvents();
   const [celebrationEffect, setCelebrationEffect] = useState(readResetCelebrationEffect);
   const [visibleRecordCount, setVisibleRecordCount] = useState(11);
   const { events, statistics } = useMemo(() => {
@@ -539,6 +539,10 @@ export function ResetHistoryPage() {
     // are still filtered inside calculateResetStatistics.
     return { events: official, statistics: calculateResetStatistics(history) };
   }, [history]);
+  const feedFailed = available && Boolean(status?.feed_error_code);
+  const hasTrustedHistory = Boolean(events.length);
+  const showingCachedHistory = feedFailed && hasTrustedHistory;
+  const feedUnavailable = feedFailed && !hasTrustedHistory;
   const visibleEvents = events.slice(0, visibleRecordCount);
   const hasMoreRecords = visibleEvents.length < events.length;
 
@@ -586,13 +590,29 @@ export function ResetHistoryPage() {
             </div>
           </div>
 
-          <ResetStatisticsSummary
-            statistics={statistics}
-            events={events}
-            isLoading={!available}
-          />
+          {feedFailed ? (
+            <p
+              className="mb-6 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
+              data-testid="reset-history-data-state"
+              role={feedUnavailable ? "alert" : "status"}
+            >
+              {copy(showingCachedHistory
+                ? "reset_history.data_cached"
+                : "reset_history.data_unavailable")}
+            </p>
+          ) : null}
 
-          <ResetActivitySummary events={events} statistics={statistics} />
+          {!feedUnavailable ? (
+            <>
+              <ResetStatisticsSummary
+                statistics={statistics}
+                events={events}
+                isLoading={!available}
+              />
+
+              <ResetActivitySummary events={events} statistics={statistics} />
+            </>
+          ) : null}
 
           <section aria-labelledby="reset-history-title">
             <div className="mb-2 flex items-center gap-2">
@@ -628,7 +648,9 @@ export function ResetHistoryPage() {
                 </>
               ) : (
                 <p className="tt-reset-history-empty py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                  {available
+                  {feedUnavailable
+                    ? copy("reset_history.data_unavailable")
+                    : available
                     ? copy("reset_history.empty")
                     : copy("reset_history.loading_detail")}
                 </p>
