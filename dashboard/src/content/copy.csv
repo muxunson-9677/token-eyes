@@ -1704,6 +1704,7 @@ ticket04.request.page_jump_btn,dashboard,SpendPage,RequestUsageLog,page_jump_btn
 ticket04.request.sort_aria,dashboard,SpendPage,RequestUsageLog,sort_aria,"Sort by {{column}}",,active
 ticket04.request.status_success_aria,dashboard,SpendPage,RequestUsageLog,status_success_aria,"Success",,active
 ticket04.request.status_error_aria,dashboard,SpendPage,RequestUsageLog,status_error_aria,"Error",,active
+ticket04.request.status_unsampled,dashboard,SpendPage,RequestUsageLog,status_unsampled,"无采样",,active
 ticket04.request.empty,dashboard,SpendPage,RequestUsageLog,empty,"No request records in current range",,active
 ticket04.request.error,dashboard,SpendPage,RequestUsageLog,error,"Failed to load request records",,active
 ticket04.request.loading,dashboard,SpendPage,RequestUsageLog,loading,"Loading request records...",,active

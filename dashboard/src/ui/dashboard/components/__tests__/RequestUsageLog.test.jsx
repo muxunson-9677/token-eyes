@@ -66,6 +66,7 @@ vi.mock("../../../../lib/copy", () => ({
       "ticket04.request.sort_aria": `Sort by ${vars.column}`,
       "ticket04.request.status_error_aria": "Error status",
       "ticket04.request.status_success_aria": "Success status",
+      "ticket04.request.status_unsampled": "No sample",
       "usage.request_log.totals": "Total",
       "usage.request_log.metric.requests": "Requests",
       "usage.request_log.metric.success_rate": "Success rate",
@@ -126,10 +127,10 @@ const HOOK_DEFAULTS = {
 };
 
 describe("RequestUsageLog", () => {
-  it("states that pricing evidence is per-record instead of claiming every price is official", () => {
+  it("does not advertise pricing-provenance labels in the request-log header", () => {
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
 
-    expect(screen.getByText("Pricing source and freshness are shown per record")).toBeInTheDocument();
+    expect(screen.queryByText("Pricing source and freshness are shown per record")).not.toBeInTheDocument();
     expect(screen.queryByText("Billing statistics use official model list prices")).not.toBeInTheDocument();
   });
 
@@ -201,7 +202,21 @@ describe("RequestUsageLog", () => {
     expect(screen.getByText("Complete price")).toBeInTheDocument();
   });
 
-  it("renders row provenance, mixed composition, and null price without promoting it to official", () => {
+  it("uses compact rows without truncating provider or model facts", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [makeRecord({ model: "provider/model-with-a-long-exact-name" })],
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    const row = screen.getByTestId("request-log-row-0");
+    for (const cell of row.querySelectorAll("td")) expect(cell).toHaveClass("py-1.5");
+    expect(screen.getByText("provider/model-with-a-long-exact-name")).not.toHaveClass("truncate");
+    expect(within(row).getByText("Codex")).not.toHaveClass("truncate");
+  });
+
+  it("keeps pricing provenance in the data layer without rendering noisy provenance labels", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
       records: [
@@ -247,87 +262,18 @@ describe("RequestUsageLog", () => {
 
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
 
-    const curated = screen.getByTestId("request-pricing-provenance-0");
-    expect(curated).toHaveTextContent("Curated rate");
-    expect(curated).toHaveTextContent("Estimated");
-    expect(curated).toHaveAttribute("title", expect.stringContaining("gpt-5"));
-    expect(curated).toHaveAttribute("title", expect.stringContaining("https://example.test/curated"));
-    expect(curated).not.toHaveTextContent("Official price");
-
-    const inferred = screen.getByTestId("request-pricing-provenance-1");
-    expect(inferred).toHaveTextContent("Third-party catalog");
-    expect(inferred).toHaveTextContent("Inferred match");
-
-    const stale = screen.getByTestId("request-pricing-provenance-2");
-    expect(stale).toHaveTextContent("Unpriced");
-    expect(stale).toHaveTextContent("Stale price");
+    expect(screen.queryByTestId("request-pricing-provenance-0")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("request-pricing-provenance-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("request-pricing-provenance-2")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("request-pricing-provenance-total")).not.toBeInTheDocument();
+    expect(screen.queryByText("Curated rate")).not.toBeInTheDocument();
+    expect(screen.queryByText("Third-party catalog")).not.toBeInTheDocument();
+    expect(screen.queryByText("User configured")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mixed sources")).not.toBeInTheDocument();
+    expect(screen.queryByText("Estimated")).not.toBeInTheDocument();
+    expect(screen.queryByText("Inferred match")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale price")).not.toBeInTheDocument();
     expect(within(screen.getByTestId("request-log-row-2")).queryByText("$0")).not.toBeInTheDocument();
-
-    const mixed = screen.getByTestId("request-pricing-provenance-total");
-    expect(mixed).toHaveTextContent("Mixed sources");
-    expect(mixed).toHaveTextContent("Curated rate");
-    expect(mixed).toHaveTextContent("User configured");
-    expect(mixed).not.toHaveTextContent("Official price");
-  });
-
-  it("shows the official label only when the API explicitly reports official provenance", () => {
-    useRequestUsageRecords.mockReturnValue({
-      ...HOOK_DEFAULTS,
-      records: [makeRecord({
-        source_kind: "official_api",
-        pricing_source: "provider-billing",
-        match_kind: "exact",
-        matched_model: "provider-model",
-        estimated: false,
-      })],
-    });
-
-    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-
-    const official = screen.getByTestId("request-pricing-provenance-0");
-    expect(official).toHaveTextContent("Official price");
-    expect(official).not.toHaveTextContent("Estimated");
-  });
-
-  it("shows inferred, estimated, and stale evidence inside same-kind mixed totals without promoting official", () => {
-    useRequestUsageRecords.mockReturnValue({
-      ...HOOK_DEFAULTS,
-      records: [makeRecord()],
-      totals: {
-        request_count: 2,
-        cost_usd: 0.01,
-        pricing_coverage: "partial",
-        source_kind: "mixed",
-        match_kind: "mixed",
-        estimated: true,
-        is_stale: true,
-        pricing_components: [
-          {
-            source_kind: "third_party",
-            match_kind: "exact",
-            estimated: false,
-            is_stale: false,
-          },
-          {
-            source_kind: "third_party",
-            match_kind: "inferred",
-            estimated: true,
-            is_stale: true,
-          },
-        ],
-      },
-      total: 1,
-    });
-
-    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
-
-    const mixed = screen.getByTestId("request-pricing-provenance-total");
-    expect(mixed).toHaveTextContent("Mixed sources");
-    expect(mixed).toHaveTextContent("Third-party catalog");
-    expect(mixed).toHaveTextContent("Inferred match");
-    expect(mixed).toHaveTextContent("Estimated");
-    expect(mixed).toHaveTextContent("Stale price");
-    expect(mixed).not.toHaveTextContent("Official price");
   });
 
   it("does not render inert sort controls when request ordering is server-owned", () => {
@@ -392,6 +338,26 @@ describe("RequestUsageLog", () => {
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
     const statusEl = screen.getByText("200");
     expect(statusEl.className).toContain("text-emerald");
+  });
+
+  it("renders each sampled status verbatim and labels a missing status as unsampled", () => {
+    useRequestUsageRecords.mockReturnValue({
+      ...HOOK_DEFAULTS,
+      records: [
+        makeRecord({ id: "ok", status: 200 }),
+        makeRecord({ id: "limited", status: 429 }),
+        makeRecord({ id: "failed", status: 500 }),
+        makeRecord({ id: "unsampled", status: null }),
+      ],
+      total: 4,
+    });
+
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+
+    expect(within(screen.getByTestId("request-log-row-0")).getByText("200")).toBeInTheDocument();
+    expect(within(screen.getByTestId("request-log-row-1")).getByText("429")).toBeInTheDocument();
+    expect(within(screen.getByTestId("request-log-row-2")).getByText("500")).toBeInTheDocument();
+    expect(within(screen.getByTestId("request-log-row-3")).getByText("No sample")).toBeInTheDocument();
   });
 
   it("renders totals row when totals present", () => {
@@ -529,7 +495,7 @@ describe("RequestUsageLog", () => {
     expect(container.textContent).not.toContain("ticket06.metric.unavailable");
   });
 
-  it("shows exact zero values and leaves missing row fields empty", () => {
+  it("shows exact zero values and labels a missing row status as unsampled", () => {
     useRequestUsageRecords.mockReturnValue({
       ...HOOK_DEFAULTS,
       records: [makeRecord({
@@ -554,6 +520,7 @@ describe("RequestUsageLog", () => {
     expect(screen.getByTestId("request-log-metric-success-rate")).toHaveTextContent("0.0%");
     expect(screen.getByTestId("request-log-metric-avg-latency")).toHaveTextContent("0ms");
     expect(container.textContent).toContain("0ms / 0ms");
+    expect(container.textContent).toContain("No sample");
     expect(screen.queryByText("-")).not.toBeInTheDocument();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
     expect(container.textContent).not.toContain("ticket06.metric.unavailable");
