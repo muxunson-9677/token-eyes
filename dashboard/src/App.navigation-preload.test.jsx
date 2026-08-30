@@ -173,7 +173,7 @@ async function startPendingPreload(user) {
   await user.click(screen.getByRole("button", { name: TEXT.reveal }));
   await waitFor(() => {
     expect(preloadDashboardPageResources).toHaveBeenCalledTimes(1);
-    expect(preloadLeaderboardDefaultState).toHaveBeenCalledTimes(1);
+    expect(preloadLeaderboardDefaultState).not.toHaveBeenCalled();
   });
 }
 

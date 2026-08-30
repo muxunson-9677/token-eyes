@@ -394,6 +394,7 @@ module.exports = {
   createPlanMarketUpdateService,
   diffPlanMarketCatalogs: planMarketRefresh.diffPlanMarketCatalogs,
   hashPlanMarketCatalog: planMarketRefresh.hashPlanMarketCatalog,
+  normalizePlanMarketFeedUrl: planMarketRefresh.normalizePlanMarketFeedUrl,
   resolvePlanMarketSnapshotPath: planMarketRefresh.resolvePlanMarketSnapshotPath,
   PLAN_MARKET_FEED_SCHEMA: planMarketRefresh.PLAN_MARKET_FEED_SCHEMA,
   PLAN_MARKET_FEED_URL: planMarketRefresh.PLAN_MARKET_FEED_URL,

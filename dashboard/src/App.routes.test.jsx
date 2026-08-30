@@ -303,13 +303,13 @@ describe("App routes (v2.0 IA refactor)", () => {
     expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
   });
 
-  it("public leaderboard profiles remain reachable", async () => {
+  it("signed-out per-user profile URLs require login", async () => {
     insforgeMock.signedIn = false;
     insforgeMock.user = null;
     renderApp("/u/user-123");
     expect(window.location.hostname).toBe("app.tokeneyes.example");
-    expect(await screen.findByText(TEXT.leaderboardProfile)).toBeInTheDocument();
-    expect(screen.queryByText(TEXT.login)).not.toBeInTheDocument();
+    expect(await screen.findByText(TEXT.login)).toBeInTheDocument();
+    expect(screen.queryByText(TEXT.leaderboardProfile)).not.toBeInTheDocument();
     expect(screen.queryByText(TEXT.dashboard)).not.toBeInTheDocument();
   });
 });

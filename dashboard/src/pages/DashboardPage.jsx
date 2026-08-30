@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useAccountView } from "../contexts/AccountViewContext.jsx";
+import { shouldReportAutoRefreshError } from "../lib/background-refresh-error.js";
 import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
 import { useTrendData } from "../hooks/use-trend-data.js";
 import { useUsageData } from "../hooks/use-usage-data.js";
@@ -163,6 +164,7 @@ export function DashboardPage({
   const [intervalSettingsLoading, setIntervalSettingsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshInProgressRef = useRef(false);
+  const pageMountedRef = useRef(false);
   const lastBackgroundLocalSyncAtRef = useRef(0);
   const mainContentVisibleNotifiedRef = useRef(false);
   const mockEnabled = isMockEnabled();
@@ -195,6 +197,18 @@ export function DashboardPage({
   // wiped on the flip to cloud (the local鈫抍loud "double flash").
   const accountViewResolving = accountResolvingBase && !publicMode;
   const { state: usageFilterState } = useUsageFilters();
+
+  useEffect(() => {
+    const markPageInactive = () => {
+      pageMountedRef.current = false;
+    };
+    pageMountedRef.current = true;
+    window.addEventListener("pagehide", markPageInactive);
+    return () => {
+      markPageInactive();
+      window.removeEventListener("pagehide", markPageInactive);
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -878,7 +892,9 @@ export function DashboardPage({
       }
       await refreshAll({ background: true });
     } catch (error) {
-      console.error("[DashboardPage] Auto refresh failed:", error);
+      if (shouldReportAutoRefreshError(error, pageMountedRef.current)) {
+        console.error("[DashboardPage] Auto refresh failed:", error);
+      }
     } finally {
       refreshInProgressRef.current = false;
     }
@@ -1329,7 +1345,6 @@ export function DashboardPage({
   );
 
   const shareCardData = useShareCardData({
-    enabled: shareModalOpen,
     handle: identityDisplayName,
     startDate: identityStartDate,
     activeDays,
@@ -1339,8 +1354,6 @@ export function DashboardPage({
     periodFrom: from,
     periodTo: to,
     // heatmap 已移除
-    accessToken: typeof accessToken === "string" ? accessToken : null,
-    userId: auth?.userId || null,
     currency,
     exchangeRate: rate,
   });

@@ -20,10 +20,10 @@ import {
 const RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
 
 /**
- * Standalone, shareable per-user profile page at /u/:userId. Reuses the same
+ * Standalone authenticated self-profile page at /u/:userId. Reuses the same
  * content + data hook as the leaderboard modal; renders inside a centered
- * card with its own page chrome instead of a dialog. Public profiles are
- * visible to anonymous visitors (the edge function gates per target).
+ * card with its own page chrome instead of a dialog. The Edge function binds
+ * the requested id to the verified caller and rejects cross-user reads.
  */
 export function LeaderboardProfilePage({ auth, signedIn, sessionSoftExpired, userId }) {
   const { currency, rate } = useCurrency();

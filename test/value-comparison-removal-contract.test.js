@@ -12,6 +12,7 @@ test("VC-01 removes the value comparison page, view model, API, and navigation s
     "dashboard/src/pages/ValueComparisonPage.test.jsx",
     "src/lib/value-comparison-view-model.js",
     "test/value-comparison-view-model.test.js",
+    "design-qa.md",
   ]) {
     assert.equal(fs.existsSync(path.join(repoRoot, relativePath)), false, `${relativePath} must be deleted`);
   }

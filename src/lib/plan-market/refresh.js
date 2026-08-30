@@ -3,9 +3,10 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { verifySignedStaticFeed } = require("../signed-static-feed");
 
 const PLAN_MARKET_FEED_SCHEMA = "token-eyes.plan-market-feed/v1";
-const PLAN_MARKET_FEED_URL = "https://a62b9nf2.function2.insforge.app/tokentracker-plan-market-feed";
+const PLAN_MARKET_FEED_URL = "https://feeds.tokentracker.cc/v1/plan-market/feed.json";
 const PLAN_MARKET_SNAPSHOT_VERSION = 1;
 const PLAN_MARKET_SNAPSHOT_FILE = "plan-market-snapshot.json";
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
@@ -20,6 +21,7 @@ const PROVIDER_TAG_VALUES = new Set(["discount", "hot", "new"]);
 const PLAN_BADGE_VALUES = new Set(["entry", "hot", "premium", "recommended"]);
 const BUNDLED_CATALOG_PATH = path.join(__dirname, "..", "..", "..", "shared", "plan-market-catalog.json");
 const PROVIDER_LINKS_PATH = path.join(__dirname, "..", "..", "..", "shared", "provider-links.json");
+const STATIC_FEED_PUBLIC_KEY_PATH = path.join(__dirname, "..", "codex-reset-feed-public-key.pem");
 
 class PlanMarketRefreshError extends Error {
   constructor(code, message) {
@@ -27,6 +29,27 @@ class PlanMarketRefreshError extends Error {
     this.name = "PlanMarketRefreshError";
     this.code = code;
   }
+}
+
+function normalizePlanMarketFeedUrl(value = PLAN_MARKET_FEED_URL) {
+  let url;
+  try {
+    url = new URL(String(value || PLAN_MARKET_FEED_URL));
+  } catch {
+    throw new PlanMarketRefreshError("feed_source_rejected", "套餐目录来源不在允许列表中。");
+  }
+  if (
+    url.protocol !== "https:"
+    || url.username
+    || url.password
+    || url.port
+    || url.pathname !== "/v1/plan-market/feed.json"
+    || url.search
+    || url.hash
+  ) {
+    throw new PlanMarketRefreshError("feed_source_rejected", "套餐目录来源不在允许列表中。");
+  }
+  return url.toString();
 }
 
 function canonicalJson(value) {
@@ -275,7 +298,7 @@ function assertFeedEnvelope(payload, feedUrl) {
   if (payload.schema_version !== PLAN_MARKET_FEED_SCHEMA) {
     throw new PlanMarketRefreshError("feed_schema_unsupported", "套餐目录协议版本不受支持。");
   }
-  if (payload.source_url !== feedUrl || payload.source_url !== PLAN_MARKET_FEED_URL) {
+  if (payload.source_url !== feedUrl) {
     throw new PlanMarketRefreshError("feed_source_rejected", "套餐目录来源不在允许列表中。");
   }
   if (!/^\d{4}-\d{2}-\d{2}[^\s]{0,96}$/u.test(String(payload.catalog_version || ""))) {
@@ -377,16 +400,16 @@ function createPlanMarketUpdateService({
   fsImpl = fs,
   now = () => new Date(),
   feedUrl = PLAN_MARKET_FEED_URL,
+  publicKey,
   fetchTimeoutMs = FETCH_TIMEOUT_MS,
 } = {}) {
   if (typeof projectCatalog !== "function") throw new TypeError("projectCatalog is required");
   if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl is required");
-  if (feedUrl !== PLAN_MARKET_FEED_URL) {
-    throw new PlanMarketRefreshError("feed_source_rejected", "套餐目录来源不在允许列表中。");
-  }
+  const resolvedFeedUrl = normalizePlanMarketFeedUrl(feedUrl);
   const snapshotPath = resolvePlanMarketSnapshotPath(trackerDataDir);
   const bundledCatalog = readJson(BUNDLED_CATALOG_PATH, fsImpl);
   const providerLinks = readJson(PROVIDER_LINKS_PATH, fsImpl);
+  const feedPublicKey = publicKey || fsImpl.readFileSync(STATIC_FEED_PUBLIC_KEY_PATH, "utf8");
   if (!bundledCatalog || !providerLinks) throw new Error("Bundled plan market data is unavailable");
 
   let cache;
@@ -408,7 +431,7 @@ function createPlanMarketUpdateService({
     const parsed = readJson(snapshotPath, fsImpl);
     if (
       parsed?.version === PLAN_MARKET_SNAPSHOT_VERSION
-      && parsed.source_url === PLAN_MARKET_FEED_URL
+      && parsed.source_url === resolvedFeedUrl
       && parsed.catalog
       && typeof parsed.catalog === "object"
       && !Array.isArray(parsed.catalog)
@@ -439,7 +462,7 @@ function createPlanMarketUpdateService({
       ok: true,
       catalog: validateCatalog(currentRaw(), at),
       refresh: {
-        source_url: PLAN_MARKET_FEED_URL,
+        source_url: resolvedFeedUrl,
         source_status: lastErrorCode ? "unreachable" : "configured",
         last_checked_at: lastCheckedAt,
         last_successful_at: stored?.last_successful_at || null,
@@ -461,7 +484,7 @@ function createPlanMarketUpdateService({
     let response;
     let text;
     try {
-      response = await withAbort(fetchImpl(feedUrl, {
+      response = await withAbort(fetchImpl(resolvedFeedUrl, {
         method: "GET",
         headers: { Accept: "application/json" },
         cache: "no-store",
@@ -471,8 +494,8 @@ function createPlanMarketUpdateService({
       if (!response?.ok) {
         throw new PlanMarketRefreshError("feed_unavailable", "远程套餐目录暂不可用，已保留上次成功数据。");
       }
-      const responseUrl = String(response.url || feedUrl);
-      if (responseUrl !== feedUrl) {
+      const responseUrl = String(response.url || resolvedFeedUrl);
+      if (responseUrl !== resolvedFeedUrl) {
         throw new PlanMarketRefreshError("feed_source_rejected", "套餐目录来源不在允许列表中。");
       }
       const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
@@ -490,15 +513,26 @@ function createPlanMarketUpdateService({
     } finally {
       if (timeout) clearTimeout(timeout);
     }
-    let payload;
+    let envelope;
     try {
-      payload = JSON.parse(text);
+      envelope = JSON.parse(text);
     } catch {
       lastErrorCode = "feed_invalid";
       throw new PlanMarketRefreshError(lastErrorCode, "套餐目录响应格式无效。");
     }
+    let payload;
     try {
-      assertFeedEnvelope(payload, feedUrl);
+      payload = verifySignedStaticFeed(envelope, {
+        publicKey: feedPublicKey,
+        nowMs: now().getTime(),
+        maxPayloadBytes: MAX_FEED_BYTES,
+      });
+    } catch {
+      lastErrorCode = "feed_signature_invalid";
+      throw new PlanMarketRefreshError(lastErrorCode, "套餐目录签名校验失败，已保留上次成功数据。");
+    }
+    try {
+      assertFeedEnvelope(payload, resolvedFeedUrl);
       const generatedAtMs = Date.parse(payload.generated_at);
       const currentSnapshot = loadSnapshot();
       const previousGeneratedAtMs = Date.parse(String(currentSnapshot?.generated_at || ""));
@@ -520,7 +554,7 @@ function createPlanMarketUpdateService({
     const changes = diffPlanMarketCatalogs(currentRaw(), payload.catalog);
     const snapshot = {
       version: PLAN_MARKET_SNAPSHOT_VERSION,
-      source_url: PLAN_MARKET_FEED_URL,
+      source_url: resolvedFeedUrl,
       catalog_version: payload.catalog_version,
       catalog_sha256: payload.catalog_sha256,
       generated_at: payload.generated_at,
@@ -550,5 +584,6 @@ module.exports = {
   createPlanMarketUpdateService,
   diffPlanMarketCatalogs,
   hashPlanMarketCatalog,
+  normalizePlanMarketFeedUrl,
   resolvePlanMarketSnapshotPath,
 };

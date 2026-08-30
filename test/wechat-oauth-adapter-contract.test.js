@@ -79,7 +79,10 @@ test("UserInfo remains compatible while the leaderboard uses email login", () =>
   assert.match(source, /subject/);
   assert.doesNotMatch(source, /phone|password/i);
   assert.match(page, /useLoginModal|openLoginModal/);
-  assert.match(page, /openLoginModal\(\{\s*emailOnly:\s*true\s*\}\)/);
+  assert.match(
+    page,
+    /openLoginModal\(\{\s*emailOnly:\s*true,\s*leaderboardParticipation:\s*true\s*\}\)/,
+  );
   assert.doesNotMatch(page, /signInWithOAuth\("wechat",\s*redirectTo\)/);
 });
 

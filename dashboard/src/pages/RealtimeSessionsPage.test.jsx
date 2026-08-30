@@ -466,12 +466,14 @@ describe("RealtimeSessionsPage", () => {
       session_id: "cursor-session",
       source: "cursor",
       agent_label: "Cursor",
+      state: "idle",
       model: "cursor-model",
       task_label: "Cursor selected task",
       total_tokens: metric(222),
       input_tokens: metric(200),
       output_tokens: metric(22),
       request_count: metric(1),
+      api_equivalent_usd: { value: 0.4, unit: "USD", evidence_state: "estimated" },
       activity_points: [
         { observed_at: "2026-08-21T07:00:00.000Z", total_tokens: 10 },
         { observed_at: "2026-08-21T08:00:00.000Z", total_tokens: 222 },
@@ -490,11 +492,13 @@ describe("RealtimeSessionsPage", () => {
     render(<RealtimeSessionsPage />);
     const cursorCard = await screen.findByRole("button", { name: /Cursor/u });
     expect(document.querySelectorAll('.rt-session-mini[aria-pressed="true"]')).toHaveLength(1);
+    expect([...document.querySelectorAll(".rt-kpi-value")].map((node) => node.textContent)).toEqual(["1", "100", "$0.20"]);
     await act(async () => { await user.click(cursorCard); });
 
     expect(cursorCard).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelectorAll('.rt-session-mini[aria-pressed="true"]')).toHaveLength(1);
     expect(screen.getByText("Cursor selected task")).toBeInTheDocument();
+    expect([...document.querySelectorAll(".rt-kpi-value")].map((node) => node.textContent)).toEqual(["0", "222", "$0.40"]);
     expect(document.querySelector(".rt-focus")).toHaveTextContent("cursor-model");
     expect(screen.getByTestId("focus-sparkline")).toHaveAttribute("data-series-signature", "10,222");
     await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") })); });

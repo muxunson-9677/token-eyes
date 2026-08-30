@@ -40,8 +40,11 @@ function LoginModalHarness() {
 
   return (
     <>
-      <button type="button" onClick={() => openLoginModal({ emailOnly: true })}>
-        Open login
+      <button type="button" onClick={() => openLoginModal({ emailOnly: true, leaderboardParticipation: true })}>
+        {copy("leaderboard.signin_button")}
+      </button>
+      <button type="button" onClick={() => openLoginModal()}>
+        {copy("login.title")}
       </button>
       <LoginModal />
     </>
@@ -58,7 +61,7 @@ function renderLoginModal() {
 
 async function openLoginModal(user) {
   renderLoginModal();
-  const opener = screen.getByRole("button", { name: "Open login" });
+  const opener = screen.getByRole("button", { name: copy("leaderboard.signin_button") });
   await user.click(opener);
   const dialog = await screen.findByRole("dialog", { name: copy("login.title") });
   return { dialog, opener };
@@ -108,6 +111,17 @@ it("discloses automatic leaderboard participation and the upload boundary", asyn
   expect(screen.getByText(copy("login_modal.leaderboard_participation"))).toBeInTheDocument();
   expect(screen.getByText(copy("login_modal.upload_boundary"))).toBeInTheDocument();
   expect(screen.getByText(copy("login_modal.delete_participation"))).toBeInTheDocument();
+});
+
+it("does not claim leaderboard consent for a login opened outside the leaderboard", async () => {
+  const user = userEvent.setup();
+  renderLoginModal();
+  await user.click(screen.getByRole("button", { name: copy("login.title") }));
+
+  expect(await screen.findByRole("heading", { name: copy("login.title") })).toBeInTheDocument();
+  expect(screen.queryByText(copy("login_modal.leaderboard_participation"))).not.toBeInTheDocument();
+  expect(screen.queryByText(copy("login_modal.upload_boundary"))).not.toBeInTheDocument();
+  expect(screen.queryByText(copy("login_modal.delete_participation"))).not.toBeInTheDocument();
 });
 
 it("keeps the real email login controls inside the scoped keyboard loop and restores the opener", async () => {

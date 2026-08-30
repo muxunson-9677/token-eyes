@@ -22,6 +22,22 @@ interface UseProviderStatsParams {
 
 type ProviderStatsView = "range" | "recent_api_7d";
 
+export function resolveProviderStatsDayKey({
+  view,
+  timeZone,
+  offsetMinutes,
+  date = new Date(),
+}: {
+  view: ProviderStatsView;
+  timeZone?: string;
+  offsetMinutes?: number;
+  date?: Date;
+}): string {
+  return view === "recent_api_7d"
+    ? getLocalDayKey({ timeZone: "UTC", offsetMinutes: 0, date })
+    : getLocalDayKey({ timeZone, offsetMinutes, date });
+}
+
 interface ProviderStatsCacheEntry {
   providers: ProviderStatsResponse;
   fetchedAt: string;
@@ -179,18 +195,18 @@ function useProviderStatsView({
   const handledRefreshRevision = useRef(refreshRevision);
   const requestSequenceRef = useRef(0);
   const [currentLocalDayKey, setCurrentLocalDayKey] = useState(() => (
-    getLocalDayKey({ timeZone, offsetMinutes: tzOffsetMinutes })
+    resolveProviderStatsDayKey({ view, timeZone, offsetMinutes: tzOffsetMinutes })
   ));
 
   useEffect(() => {
     const updateLocalDay = () => {
-      const next = getLocalDayKey({ timeZone, offsetMinutes: tzOffsetMinutes });
+      const next = resolveProviderStatsDayKey({ view, timeZone, offsetMinutes: tzOffsetMinutes });
       setCurrentLocalDayKey((previous) => previous === next ? previous : next);
     };
     updateLocalDay();
     const intervalId = window.setInterval(updateLocalDay, 30_000);
     return () => window.clearInterval(intervalId);
-  }, [timeZone, tzOffsetMinutes]);
+  }, [view, timeZone, tzOffsetMinutes]);
 
   // Use serialized keys for deps so the memo keeps a stable reference when
   // the caller passes a new array literal with the same contents each render.

@@ -33,6 +33,7 @@ export function useAccountProfileSettings() {
   const [editingGithub, setEditingGithub] = useState(false);
   const [githubError, setGithubError] = useState(null);
   const [shareActualCost, setShareActualCost] = useState(false);
+  const [leaderboardParticipant, setLeaderboardParticipant] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -55,15 +56,15 @@ export function useAccountProfileSettings() {
         if (!accessToken || !active) return;
         const data = await getPublicVisibility({ accessToken });
         if (!active) return;
-        if (!data?.leaderboard_public) {
-          await setPublicVisibility({ accessToken, leaderboard_public: true });
-        }
+        const participant = data?.leaderboard_public === true;
+        setLeaderboardParticipant(participant);
         setCustomDisplayName(data?.display_name || null);
         setGithubUrl(data?.github_url || "");
         setShowGithubOn(Boolean(data?.show_github_url));
         setShareActualCost(Boolean(data?.share_actual_cost));
         setLeaderboardParticipationState({
           accountId: userId,
+          participant,
           shareActualCost: Boolean(data?.share_actual_cost),
         });
         setAvatarUrl(data?.avatar_url || null);
@@ -144,7 +145,7 @@ export function useAccountProfileSettings() {
   }, [githubUrl, mutate, showGithubOn, startEditingGithub]);
 
   const handleActualCostToggle = useCallback(async () => {
-    if (actualCostSaving) return;
+    if (actualCostSaving || !leaderboardParticipant) return;
     setActualCostSaving(true);
     try {
       const accessToken = await token();
@@ -153,6 +154,7 @@ export function useAccountProfileSettings() {
         await setLeaderboardActualCost({ accessToken, share: false });
         setLeaderboardParticipationState({
           accountId: userId,
+          participant: true,
           shareActualCost: false,
         });
         setShareActualCost(false);
@@ -165,6 +167,7 @@ export function useAccountProfileSettings() {
         });
         setLeaderboardParticipationState({
           accountId: userId,
+          participant: true,
           shareActualCost: true,
         });
         setShareActualCost(true);
@@ -174,7 +177,7 @@ export function useAccountProfileSettings() {
     } finally {
       setActualCostSaving(false);
     }
-  }, [actualCostSaving, shareActualCost, token, userId]);
+  }, [actualCostSaving, leaderboardParticipant, shareActualCost, token, userId]);
 
   const handleAvatarFile = useCallback(async (file) => {
     if (!file || uploading) return;
@@ -199,18 +202,25 @@ export function useAccountProfileSettings() {
       const accessToken = await token();
       if (!accessToken) return;
       await deleteLeaderboardParticipation({ accessToken });
+      setLeaderboardParticipationState({
+        accountId: userId,
+        participant: false,
+        shareActualCost: false,
+      });
+      setLeaderboardParticipant(false);
       await auth.signOut();
     } catch (error) {
       warn("delete leaderboard participation", error);
     } finally {
       setDeleting(false);
     }
-  }, [auth, deleting, token]);
+  }, [auth, deleting, token, userId]);
 
   return {
     ...auth,
     email,
     userId,
+    leaderboardParticipant,
     shareActualCost,
     actualCostSaving,
     handleActualCostToggle,

@@ -1,19 +1,7 @@
-/**
- * Production InsForge cloud — hardcoded fallback so deployments that don't
- * inject `VITE_INSFORGE_*` at build time (notably the Vercel build for
- * tokentracker.cc) still reach the cloud. Without this, `getInsforgeRemoteUrl`
- * returns "" and every cloud call (leaderboard list, profile modal, OAuth
- * login) silently fails on the public site.
- *
- * Both values are public by design: the anon key is a JWT (role=anon) meant to
- * ship in the browser bundle and also appears in `.github/workflows/*.yml`.
- * (Previously this mistakenly hardcoded the full-access `ik_*` API key, which
- * has admin access and must never reach the frontend.) Explicit env vars still win.
- */
-const PROD_INSFORGE_BASE_URL = "https://a62b9nf2.ap-southeast.insforge.app";
-const PROD_INSFORGE_FUNCTIONS_URL = "https://a62b9nf2.function2.insforge.app";
-const PROD_INSFORGE_ANON_KEY =
-  "anon_13e8a5d6400e9b50912a5c3612f3480ba06edbd2c331e84e5fbdf5fd16d3d381";
+/** Isolated 0.54.49 staging backend. Explicit environment values still win. */
+const DEFAULT_INSFORGE_BASE_URL = "https://wm59q8gm.ap-southeast.insforge.app";
+const DEFAULT_INSFORGE_FUNCTIONS_URL = DEFAULT_INSFORGE_BASE_URL;
+const DEFAULT_INSFORGE_ANON_KEY = "";
 
 /**
  * InsForge 云端（SDK OAuth/Session）。`getInsforgeBaseUrl()` 在 localhost 有 env 时同样指向云端。
@@ -25,7 +13,7 @@ export function getInsforgeRemoteUrl(): string {
   return (
     env?.VITE_INSFORGE_BASE_URL ||
     env?.VITE_TOKENTRACKER_BACKEND_BASE_URL ||
-    PROD_INSFORGE_BASE_URL
+    DEFAULT_INSFORGE_BASE_URL
   ).trim();
 }
 
@@ -34,7 +22,7 @@ export function getInsforgeFunctionsUrl(): string {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
   return (
     env?.VITE_INSFORGE_FUNCTIONS_BASE_URL ||
-    PROD_INSFORGE_FUNCTIONS_URL
+    DEFAULT_INSFORGE_FUNCTIONS_URL
   ).trim();
 }
 
@@ -43,16 +31,12 @@ export function getInsforgeFunctionsUrl(): string {
  * 部署后直接指向云端。
  */
 function getInsforgeBaseUrl(): string {
+  const remoteUrl = getInsforgeRemoteUrl();
   const isLocalhost =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  if (isLocalhost) return window.location.origin;
-  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
-  return (
-    env?.VITE_INSFORGE_BASE_URL ||
-    env?.VITE_TOKENTRACKER_BACKEND_BASE_URL ||
-    PROD_INSFORGE_BASE_URL
-  ).trim();
+  if (isLocalhost && remoteUrl) return window.location.origin;
+  return remoteUrl;
 }
 
 export function getInsforgeAnonKey(): string {
@@ -60,12 +44,12 @@ export function getInsforgeAnonKey(): string {
   return (
     env?.VITE_INSFORGE_ANON_KEY ||
     env?.VITE_TOKENTRACKER_BACKEND_ANON_KEY ||
-    PROD_INSFORGE_ANON_KEY
+    DEFAULT_INSFORGE_ANON_KEY
   ).trim();
 }
 
 export function isCloudInsforgeConfigured(): boolean {
-  return Boolean(getInsforgeBaseUrl());
+  return Boolean(getInsforgeRemoteUrl());
 }
 
 /**

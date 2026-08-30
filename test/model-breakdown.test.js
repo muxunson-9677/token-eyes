@@ -328,7 +328,7 @@ test("leaderboard refresh delegates pricing to the atomic database procedure", (
     path.resolve(__dirname, "../dashboard/edge-patches/tokentracker-leaderboard-refresh.ts"),
     "utf8",
   );
-  assert.match(edgeSrc, /refresh_leaderboard_snapshots/);
+  assert.match(edgeSrc, /refresh_leaderboard_snapshot_dimensions/);
   assert.doesNotMatch(edgeSrc, /MODEL_PRICING|getModelPricing|computeRowCost/);
 });
 

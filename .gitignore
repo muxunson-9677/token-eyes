@@ -150,3 +150,6 @@ skills-lock.json
 
 # parity check scratch space (scripts/parity-ccusage.mjs)
 .parity-tmp/
+
+# Local InsForge project link contains staging credentials.
+.insforge/

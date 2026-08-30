@@ -7,9 +7,9 @@ const {
   resolveRuntimeConfig,
 } = require("../src/lib/runtime-config");
 
-test("production defaults use the Token Eyes-owned InsForge project", () => {
-  assert.equal(DEFAULT_BASE_URL, "https://a62b9nf2.ap-southeast.insforge.app");
-  assert.match(DEFAULT_ANON_KEY, /^anon_[a-f0-9]{64}$/);
+test("runtime defaults use the isolated Token Eyes staging project without a legacy anon key", () => {
+  assert.equal(DEFAULT_BASE_URL, "https://wm59q8gm.ap-southeast.insforge.app");
+  assert.equal(DEFAULT_ANON_KEY, "");
 });
 
 test("resolveRuntimeConfig prefers CLI flags over config and env", () => {

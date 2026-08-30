@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": 1,
-    "updated_at": "2026-08-15 06:00",
+    "updated_at": "2026-08-30 10:40",
     "note": "Curated provider subscription plan market snapshot. Every provider entry must cite official sources and carry last_verified. Prices are marketing-page list prices, not user-billed amounts."
   },
   "providers": [
@@ -381,13 +381,13 @@
       "display_name": "阿里云百炼",
       "vendor": "Alibaba Cloud",
       "region": "CN",
-      "last_verified": "2026-08-15",
+      "last_verified": "2026-08-30",
       "is_recent": true,
       "tags": [
         "hot",
         "discount"
       ],
-      "announcement": "百炼控制台当前公开 TokenPlan 个人版三档：Lite ¥39/月、Standard ¥139/月、Pro ¥499/月；页面同时列出原价与相应的 5 小时、7 天额度。",
+      "announcement": "阿里云官方当前仅提供 Pro 套餐：¥200/月，新客首月 ¥39.90；Lite 已停止新购、续费与升级，已购用户可继续使用至到期。",
       "sources": [
         {
           "label": "百炼控制台 TokenPlan 个人版",
@@ -425,26 +425,16 @@
           "plan_id": "lite",
           "display_name": "Lite 套餐",
           "price": {
-            "amount": 39,
-            "currency": "CNY",
-            "cycle": "monthly"
+            "display": "已停止新购、续费与升级"
           },
-          "alt_prices": [
-            {
-              "amount": 60,
-              "currency": "CNY",
-              "cycle": "monthly",
-              "note": "页面标注原价"
-            }
-          ],
-          "quota_summary": "每 5 小时 700 Credits；每 7 天 2,500 Credits；适用于原型验证或轻度单任务。",
+          "quota_summary": "已购用户可继续使用至服务到期；2026-03-20 起停止新购，2026-04-13 起停止续费与升级。",
           "highlights": [
-            "文本、视觉等多模态模型",
-            "联网搜索等 Harness 工具",
-            "适配主流工具并持续扩展",
-            "支持 1–2 个 Agent 并发运行"
+            "已购买用户可继续使用至服务到期",
+            "2026-03-20 起停止新购",
+            "2026-04-13 起停止续费与升级",
+            "支持与 Pro 相同的套餐模型"
           ],
-          "status": "available",
+          "status": "discontinued",
           "evidence": {
             "claim_scope": "market_plan",
             "link_id": "market-aliyun-bailian-help",
@@ -455,54 +445,9 @@
               "eligibility"
             ],
             "verified": true,
-            "verified_at": "2026-08-15",
-            "fetched_at": "2026-08-15",
-            "content_sha256": "6af6099e421e45005da942f4a01a6a9b61b51d100629882d7c7c18bc58cc9d61",
-            "content_hash_kind": "normalized_extracted_fields_v1",
-            "valid_from": null,
-            "valid_until": null,
-            "stale_after_seconds": 2592000
-          }
-        },
-        {
-          "plan_id": "standard",
-          "display_name": "Standard 套餐",
-          "badges": [
-            "recommended"
-          ],
-          "price": {
-            "amount": 139,
-            "currency": "CNY",
-            "cycle": "monthly"
-          },
-          "alt_prices": [
-            {
-              "amount": 180,
-              "currency": "CNY",
-              "cycle": "monthly",
-              "note": "页面标注原价"
-            }
-          ],
-          "quota_summary": "每 5 小时 3,000 Credits；每 7 天 10,000 Credits；适用于高频调用与多 Agent 协作。",
-          "highlights": [
-            "包含 Lite 套餐全部权益",
-            "4 倍 Lite 套餐用量",
-            "支持 3–4 个 Agent 并发运行"
-          ],
-          "status": "available",
-          "evidence": {
-            "claim_scope": "market_plan",
-            "link_id": "market-aliyun-bailian-help",
-            "supports": [
-              "plan_identity",
-              "price",
-              "quota",
-              "eligibility"
-            ],
-            "verified": true,
-            "verified_at": "2026-08-15",
-            "fetched_at": "2026-08-15",
-            "content_sha256": "fcb8054fb78f1fa49dfbcbbbfa24397b6d58eec02e77e24292421cf81d6b6030",
+            "verified_at": "2026-08-30",
+            "fetched_at": "2026-08-30",
+            "content_sha256": "57808618b1b063b7548c50b59535efa2c4b5e9f4010ae0d84ff5a65cd6055884",
             "content_hash_kind": "normalized_extracted_fields_v1",
             "valid_from": null,
             "valid_until": null,
@@ -513,23 +458,24 @@
           "plan_id": "pro",
           "display_name": "Pro 套餐",
           "price": {
-            "amount": 499,
+            "amount": 200,
             "currency": "CNY",
             "cycle": "monthly"
           },
           "alt_prices": [
             {
-              "amount": 600,
+              "amount": 39.9,
               "currency": "CNY",
               "cycle": "monthly",
-              "note": "页面标注原价"
+              "note": "新客首月特惠；后续按 ¥200/月续费"
             }
           ],
-          "quota_summary": "每 5 小时 12,000 Credits；每 7 天 40,000 Credits；适用于高并发与海量调用。",
+          "quota_summary": "每 5 小时 6,000 次请求；每周 45,000 次请求；每月 90,000 次请求。",
           "highlights": [
-            "包含 Standard 套餐全部权益",
-            "16 倍 Lite 套餐用量",
-            "支持 6–8 个 Agent 并发运行"
+            "支持 qwen3.7-plus、qwen3.6-plus、kimi-k2.5、glm-5、MiniMax-M2.5 等模型",
+            "新客首月 ¥39.90，后续 ¥200/月",
+            "每 5 小时、每周和每月三层额度",
+            "使用 Coding Plan 专用 sk-sp- API Key 与专用 Base URL"
           ],
           "status": "available",
           "evidence": {
@@ -542,9 +488,9 @@
               "eligibility"
             ],
             "verified": true,
-            "verified_at": "2026-08-15",
-            "fetched_at": "2026-08-15",
-            "content_sha256": "98328023f1a38869a829c06bc0b267ac077a2b470a8d6f48b5c600ce94230112",
+            "verified_at": "2026-08-30",
+            "fetched_at": "2026-08-30",
+            "content_sha256": "5be2372c3d6bf8f8086f4a68c1ebab2e6b5c7cf7d03772a2e73e9fc0ff8d9487",
             "content_hash_kind": "normalized_extracted_fields_v1",
             "valid_from": null,
             "valid_until": null,
@@ -560,9 +506,9 @@
           "plan_inventory"
         ],
         "verified": true,
-        "verified_at": "2026-08-15",
-        "fetched_at": "2026-08-15",
-        "content_sha256": "fe390c576fc3e2e55b1f7f23d922413cb32cdb12d887a7393e958c2ac1f29860",
+        "verified_at": "2026-08-30",
+        "fetched_at": "2026-08-30",
+        "content_sha256": "9c31a2f99b1d34bd714b990f566feadaf5ca33cbbfb93aa31d921f0c806da768",
         "content_hash_kind": "normalized_extracted_fields_v1",
         "valid_from": null,
         "valid_until": null,

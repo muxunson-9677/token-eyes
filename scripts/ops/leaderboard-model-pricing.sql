@@ -11,6 +11,10 @@ create table if not exists public.tokentracker_model_pricing (
   pricing_version text not null
 );
 
+alter table public.tokentracker_model_pricing enable row level security;
+revoke all on table public.tokentracker_model_pricing from public, anon, authenticated;
+grant all on table public.tokentracker_model_pricing to project_admin;
+
 insert into public.tokentracker_model_pricing (
   pricing_key, input_usd_per_token, output_usd_per_token,
   cache_read_usd_per_token, cache_write_usd_per_token, pricing_version
@@ -3385,5 +3389,4 @@ on conflict (pricing_key) do update set
 
 delete from public.tokentracker_model_pricing
 where pricing_version <> '53a4f37e46eb78df6d7ef9c288812000c3d161e187eb3fbc42085ba464db9045';
-
 commit;

@@ -7,7 +7,7 @@ import { useLocale } from "./hooks/useLocale.js";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
 import { useInsforgeAuth } from "./contexts/InsforgeAuthContext.jsx";
 import { LoginModalProvider } from "./contexts/LoginModalContext.jsx";
-import { getBackendBaseUrl, getLeaderboardBaseUrl } from "./lib/config";
+import { getBackendBaseUrl } from "./lib/config";
 import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { clearDashboardMockUsageCaches } from "./lib/usage-cache";
@@ -19,10 +19,8 @@ import { ToastProvider } from "./ui/components/Toast.jsx";
 import { UsageFiltersProvider } from "./hooks/use-usage-filters";
 import { isTauriApp } from "./lib/native-bridge.js";
 import {
-  getLeaderboardPreloadContextKey,
   markDashboardMainContentVisible,
   preloadDashboardPageResources,
-  preloadLeaderboardDefaultState,
 } from "./lib/dashboard-preload.js";
 // NativeAuthCallbackPage must be eager-imported: its module-level code
 // captures the OAuth `insforge_code` query param synchronously at app
@@ -123,7 +121,6 @@ export default function App() {
   useLeaderboardParticipationSync();
   const dashboardMainContentVisibleRef = useRef(false);
   const dashboardResourcePreloadStartedRef = useRef(false);
-  const leaderboardStatePreloadContextKeysRef = useRef(new Set());
   const mockEnabled = isMockEnabled();
   const screenshotMode = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -156,7 +153,8 @@ export default function App() {
   const isLeaderboardPath = normalizedPath === "/leaderboard";
   const isLeaderboardRulesPath = normalizedPath === "/leaderboard/rules";
   const isPublicLeaderboardPath = isLeaderboardPath || isLeaderboardRulesPath;
-  // Standalone shareable profile page: /u/:userId (public, anonymous-visible).
+  // Standalone authenticated self-profile page. Public per-user reads were
+  // retired when the leaderboard moved to fixed signed Top 50 snapshots.
   const profileMatch = normalizedPath.match(/^\/u\/([^/]+)$/i);
   const profileUserId = profileMatch ? profileMatch[1] : null;
 
@@ -165,41 +163,6 @@ export default function App() {
   const sessionSoftExpired = false;
   const baseUrl = getBackendBaseUrl();
   const isAuthGateTriggered = !signedIn && !mockEnabled && !isLocalMode;
-  const leaderboardAccessMode = mockEnabled
-    ? "mock"
-    : insforge.loading
-      ? "unavailable"
-      : cloudAuthSignedIn
-        ? "cloud"
-        : signedIn
-          ? "public"
-          : "unavailable";
-
-  const tryPreloadLeaderboardDefaultState = useCallback(() => {
-    if (!dashboardMainContentVisibleRef.current) return;
-    if (!mockEnabled && insforge.loading) return;
-    if (!mockEnabled && !signedIn) return;
-    const preloadOptions = {
-      accessMode: leaderboardAccessMode,
-      baseUrl: getLeaderboardBaseUrl(),
-      mockEnabled,
-      signedIn,
-      authLoading: Boolean(insforge.loading),
-      userId: cloudAuthSignedIn ? insforge.user?.id || null : null,
-    };
-    const contextKey = getLeaderboardPreloadContextKey(preloadOptions);
-    if (leaderboardStatePreloadContextKeysRef.current.has(contextKey)) return;
-    leaderboardStatePreloadContextKeysRef.current.add(contextKey);
-    void preloadLeaderboardDefaultState(preloadOptions);
-  }, [
-    cloudAuthSignedIn,
-    insforge.loading,
-    insforge.user?.id,
-    leaderboardAccessMode,
-    mockEnabled,
-    signedIn,
-  ]);
-
   const handleDashboardMainContentVisible = useCallback(() => {
     if (!isDashboardDefaultPath) return;
     if (!dashboardMainContentVisibleRef.current) {
@@ -210,15 +173,9 @@ export default function App() {
       dashboardResourcePreloadStartedRef.current = true;
       void preloadDashboardPageResources();
     }
-    tryPreloadLeaderboardDefaultState();
   }, [
     isDashboardDefaultPath,
-    tryPreloadLeaderboardDefaultState,
   ]);
-
-  useEffect(() => {
-    tryPreloadLeaderboardDefaultState();
-  }, [tryPreloadLeaderboardDefaultState]);
 
   useEffect(() => {
     if (!isLocalMode || mockEnabled) return;
@@ -369,12 +326,8 @@ export default function App() {
     !publicMode &&
     !insforge.loading &&
     gate === "dashboard" &&
-    // Public-readable routes must stay reachable for signed-out visitors:
-    // /leaderboard, /leaderboard/rules and /u/:userId profiles are deliberate no-auth reads
-    // (see api.ts getLeaderboard + LeaderboardProfilePage). Without these
-    // exclusions the gate would bounce anonymous share-link traffic to /login.
+    // Only fixed leaderboard snapshots and rules remain public reads.
     !isPublicLeaderboardPath &&
-    !profileUserId &&
     normalizedPath !== "/login" &&
     normalizedPath !== "/reset-password" &&
     normalizedPath !== "/landing" &&

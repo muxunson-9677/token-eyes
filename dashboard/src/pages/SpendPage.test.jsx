@@ -31,6 +31,11 @@ import {
 import { useCurrency } from "../hooks/useCurrency.js";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { __resetCostAccumulationCoreCacheForTests } from "../hooks/use-cost-accumulation.js";
+import {
+  getBrowserTimeZone,
+  getBrowserTimeZoneOffsetMinutes,
+  getLocalDayKey,
+} from "../lib/timezone";
 
 const navigateMock = vi.fn();
 
@@ -260,7 +265,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(await screen.findByText("真实消耗 Tokens")).toBeInTheDocument();
     expect(document.querySelector(".tt-spend-usage-detail-scope")).toBeInTheDocument();
     await waitFor(() => expect(getSpendRecords).toHaveBeenCalledTimes(2));
-    expect(screen.getByTestId("usage-cost-summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("usage-cost-summary")).toBeInTheDocument();
     expect(screen.getAllByTestId("usage-cost-card")).toHaveLength(4);
     expect(screen.getByText("USD 8.25")).toBeInTheDocument();
     expect(screen.getByText("USD 138.40")).toBeInTheDocument();
@@ -656,11 +661,20 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
   });
 
   it("switches the same Token service panel between subscription and API content without stacking", async () => {
+    const timeZone = getBrowserTimeZone() || "UTC";
+    const offsetMinutes = getBrowserTimeZoneOffsetMinutes();
+    const currentDayKey = getLocalDayKey({ timeZone, offsetMinutes });
+    const currentBillingDayKey = getLocalDayKey({ timeZone: "UTC", offsetMinutes: 0 });
+    const recentDates = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(`${currentBillingDayKey}T00:00:00.000Z`);
+      date.setUTCDate(date.getUTCDate() - 6 + index);
+      return date.toISOString().slice(0, 10);
+    });
     getSpendTimeseries.mockResolvedValue({
       sources: ["codex"],
       series: [{
-        bucket_start: "2026-08-27",
-        label: "08-27",
+        bucket_start: currentDayKey,
+        label: currentDayKey.slice(5),
         source: "codex",
         input_tokens: 100,
         output_tokens: 50,
@@ -671,17 +685,17 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       totals: { api_cost_usd: 0.01, api_cost_cny: 0.07, subscription_cost_usd: 0, subscription_cost_cny: 0, combined_usd: 0.01, combined_cny: 0.07 },
       by_source: [],
       bucket: "day",
-      from: "2026-08-27",
-      to: "2026-08-27",
+      from: currentDayKey,
+      to: currentDayKey,
       timezone: { tz: "UTC", tz_offset_minutes: 0 },
       currency: { base: "USD", usd_to_cny: 7.2 },
     });
     getRecentApiProviderStats.mockResolvedValue({
       ok: true,
       view: "recent_api_7d",
-      from: "2026-08-21",
-      to: "2026-08-27",
-      period: { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "UTC" },
+      from: recentDates[0],
+      to: currentBillingDayKey,
+      period: { from: recentDates[0], to: currentBillingDayKey, days: 7, time_zone: "UTC" },
       totals_scope: "api_key_attributed_official_billed_cost_positive",
       providers: [{
         provider_id: "deepseek",
@@ -689,9 +703,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
         account_label: "finance@company.com",
         agents: [{ id: "hermes", display_name: "Hermes", tokens: 100, request_count: 1, cost_usd: 1 }],
         models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 100, request_count: 1, cost_usd: 1 }],
-        period: { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "UTC" },
-        daily: Array.from({ length: 7 }, (_, index) => ({
-          date: `2026-08-${21 + index}`,
+        period: { from: recentDates[0], to: currentBillingDayKey, days: 7, time_zone: "UTC" },
+        daily: recentDates.map((date) => ({
+          date,
           agents: [{ id: "hermes", display_name: "Hermes", tokens: 100, request_count: 1, cost_usd: 1 }],
           models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 100, request_count: 1, cost_usd: 1 }],
           tokens: 100,

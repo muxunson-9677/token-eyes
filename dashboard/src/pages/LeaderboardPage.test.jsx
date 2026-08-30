@@ -5,7 +5,6 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getLeaderboardPreloadContextKey,
-  preloadLeaderboardDefaultState,
   publishLeaderboardPreloadState,
   readLeaderboardPreloadState,
   resetDashboardPreload,
@@ -17,10 +16,13 @@ import {
   getMyLeaderboardRank,
   getUsageSummary,
 } from "../lib/api";
-import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
+import { getLocalLeaderboardState, syncLeaderboardState } from "../lib/leaderboard-state-client";
 import { runCloudUsageSyncNow } from "../lib/cloud-sync";
 import { copy } from "../lib/copy";
-import { setLeaderboardParticipationState } from "../lib/leaderboard-sync-state";
+import {
+  consumeLeaderboardLoginIntent,
+  setLeaderboardParticipationState,
+} from "../lib/leaderboard-sync-state";
 import { LeaderboardPage } from "./LeaderboardPage.jsx";
 
 const openLoginModalMock = vi.hoisted(() => vi.fn());
@@ -49,6 +51,7 @@ vi.mock("../lib/api", () => ({
 
 vi.mock("../lib/leaderboard-state-client", () => ({
   getLocalLeaderboardState: vi.fn(),
+  syncLeaderboardState: vi.fn(),
 }));
 
 vi.mock("../lib/cloud-sync", () => ({
@@ -167,6 +170,8 @@ describe("LeaderboardPage window-session cache reuse", () => {
     getLeaderboardProfile.mockResolvedValue(null);
     getLocalLeaderboardState.mockReset();
     getLocalLeaderboardState.mockResolvedValue(localLeaderboardState());
+    syncLeaderboardState.mockReset();
+    syncLeaderboardState.mockResolvedValue({ status: "unchanged" });
     getUsageSummary.mockReset();
     getUsageSummary.mockResolvedValue({ totals: { cost_usd: 4.25 } });
     getLocalLeaderboardActualCost.mockReset();
@@ -190,6 +195,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     developerPreviewGate.enabled = false;
     delete window.webkit;
     window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("activates leaderboard-only route styles while the page is mounted", () => {
@@ -202,6 +208,83 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     unmount();
     expect(document.documentElement).not.toHaveClass(routeClass);
+  });
+
+  it("does not schedule background polling or focus refreshes", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const addEventSpy = vi.spyOn(window, "addEventListener");
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard();
+    await screen.findByText("排行榜");
+
+    expect(intervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 60_000);
+    expect(addEventSpy).not.toHaveBeenCalledWith("focus", expect.any(Function));
+  });
+
+  it("requests one fixed Top 50 and exposes no pagination controls", async () => {
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard();
+
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledWith(expect.objectContaining({
+      limit: 50,
+      offset: 0,
+    })));
+    expect(getLeaderboard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("leaderboard-pagination")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(copy("dashboard.daily.page_size_aria"))).not.toBeInTheDocument();
+  });
+
+  it("reads again only for an explicit manual refresh, not when participation sync completes", async () => {
+    const user = userEvent.setup();
+    getLeaderboard.mockResolvedValue({
+      ...preloadedData,
+      period: "today",
+      aggregate_total_tokens: 1234,
+      aggregate_total_cost_usd: 1.23,
+      summary_details: { tokens: "", cost: "" },
+    });
+
+    renderLeaderboard("/leaderboard?period=today");
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("token-eyes:leaderboard-sync", {
+        detail: { status: "ready" },
+      }));
+    });
+    await act(async () => Promise.resolve());
+    expect(getLeaderboard).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: copy("usage.button.refresh") }));
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(2));
+    expect(getLeaderboard).toHaveBeenLastCalledWith(expect.objectContaining({
+      limit: 50,
+      offset: 0,
+    }));
+  });
+
+  it("manual refresh also checks an existing participant's compact hash without polling", async () => {
+    const user = userEvent.setup();
+    setLeaderboardParticipationState({
+      accountId: "user-1",
+      participant: true,
+      shareActualCost: false,
+    });
+    getLeaderboard.mockResolvedValue({ ...preloadedData, period: "today" });
+    renderLeaderboard("/leaderboard?period=today", {
+      auth: () => Promise.resolve("test-token"),
+    });
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: copy("usage.button.refresh") }));
+    await waitFor(() => expect(syncLeaderboardState).toHaveBeenCalledWith({
+      getAccessToken: expect.any(Function),
+      reason: "manual-list-refresh",
+      accountId: "user-1",
+    }));
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(2));
   });
 
   it("renders a matching cache immediately and starts a background refresh", () => {
@@ -244,7 +327,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       metric: "tokens",
       period: "total",
       source: "all",
-      limit: 20,
+      limit: 50,
       offset: 0,
     });
   });
@@ -334,7 +417,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       .toHaveClass("tt-leaderboard-action-button");
   });
 
-  it("keeps all three header actions visible when the viewer is signed out", async () => {
+  it("keeps account and sign-out actions hidden from a signed-out public viewer", async () => {
     getLeaderboard.mockResolvedValue(preloadedData);
     insforgeAuthMock.signedIn = false;
 
@@ -343,9 +426,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
       signedIn: false,
     });
 
-    expect(await screen.findByRole("button", { name: copy("settings.section.account") })).toBeVisible();
-    expect(screen.getByRole("button", { name: copy("settings.account.signOut") })).toBeVisible();
-    expect(screen.getByRole("link", { name: copy("leaderboard.rules_link") })).toBeVisible();
+    expect(await screen.findByRole("link", { name: copy("leaderboard.rules_link") })).toBeVisible();
+    expect(screen.queryByRole("button", { name: copy("settings.section.account") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: copy("settings.account.signOut") })).not.toBeInTheDocument();
   });
 
   it("keeps my displayed usage local while reusing only the cloud rank", async () => {
@@ -493,7 +576,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("clears cached cloud rows and totals when the signed-in refresh fails", async () => {
+  it("keeps the last valid signed snapshot visible when refresh fails", async () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
       baseUrl: "https://edge.example",
@@ -508,9 +591,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByText(copy("leaderboard.error.network"))).toBeInTheDocument();
-      expect(screen.queryAllByText("Preloaded User")).toHaveLength(0);
-      expect(screen.queryByTestId("leaderboard-summary")).not.toBeInTheDocument();
-      expect(readLeaderboardPreloadState(contextKey)).toBeNull();
+      expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("leaderboard-summary")).toBeInTheDocument();
+      expect(readLeaderboardPreloadState(contextKey)).toMatchObject({ data: preloadedData });
     });
     expect(screen.queryByTestId("leaderboard-skeleton")).not.toBeInTheDocument();
   });
@@ -555,7 +638,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("reuses a matching in-flight preload instead of starting a duplicate request", async () => {
+  it("starts exactly one public snapshot request when the page opens", async () => {
     insforgeAuthMock.signedIn = false;
     insforgeAuthMock.user = null;
     let resolveLeaderboard;
@@ -563,19 +646,11 @@ describe("LeaderboardPage window-session cache reuse", () => {
       resolveLeaderboard = resolve;
     }));
 
-    const preload = preloadLeaderboardDefaultState({
-      accessMode: "public",
-      baseUrl: "https://edge.example",
-      signedIn: false,
-    });
-    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
-
     renderLeaderboard("/leaderboard", { signedIn: false });
-    expect(getLeaderboard).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
 
     await act(async () => {
       resolveLeaderboard(preloadedData);
-      await preload;
     });
     await waitFor(() => {
       expect(screen.getAllByText("Preloaded User").length).toBeGreaterThan(0);
@@ -588,7 +663,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       accessMode: "cloud",
       baseUrl: "https://edge.example",
       mockEnabled: false,
-      pageSize: 50,
+      period: "week",
       userId: "user-1",
     });
     publishLeaderboardPreloadState(preloadedData, { contextKey: staleContextKey });
@@ -603,7 +678,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
       metric: "tokens",
       period: "total",
       source: "all",
-      limit: 20,
+      limit: 50,
       offset: 0,
     });
   });
@@ -666,7 +741,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
         metric: "tokens",
         period: "total",
         source: "all",
-        limit: 20,
+        limit: 50,
         offset: 0,
       });
       expect(screen.getAllByText("Public User").length).toBeGreaterThan(0);
@@ -696,7 +771,11 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
     await user.click(button);
 
-    expect(openLoginModalMock).toHaveBeenCalledWith({ emailOnly: true });
+    expect(openLoginModalMock).toHaveBeenCalledWith({
+      emailOnly: true,
+      leaderboardParticipation: true,
+    });
+    expect(consumeLeaderboardLoginIntent()).toBe(true);
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
 
@@ -778,7 +857,10 @@ describe("LeaderboardPage window-session cache reuse", () => {
     renderLeaderboard("/leaderboard", { signedIn: false });
     await user.click(await screen.findByRole("button", { name: "邮箱登录并参与排行榜" }));
 
-    expect(openLoginModalMock).toHaveBeenCalledWith({ emailOnly: true });
+    expect(openLoginModalMock).toHaveBeenCalledWith({
+      emailOnly: true,
+      leaderboardParticipation: true,
+    });
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
 
@@ -803,8 +885,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(readLeaderboardPreloadState(contextKey)).toMatchObject({ data: preloadedData });
   });
 
-  it("uses the matching cache for pageSize-specific contexts", () => {
-    window.localStorage.setItem("tokentracker:leaderboard:pageSize", "50");
+  it("uses the matching cache for the fixed Top 50 context", () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "cloud",
       baseUrl: "https://edge.example",
@@ -920,6 +1001,11 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(screen.getByRole("tab", { name: "估算花销" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "实际成本" })).toBeInTheDocument();
 
+    await user.click(screen.getByRole("combobox", { name: copy("leaderboard.source.label") }));
+    expect(await screen.findByRole("option", { name: "Trae" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "DeepSeek Harness" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
     await user.click(screen.getByRole("tab", { name: "今日" }));
     await waitFor(() => expect(screen.getByRole("tab", { name: "估算花销" })).not.toBeDisabled());
     await user.click(screen.getByRole("tab", { name: "估算花销" }));
@@ -930,7 +1016,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
         period: "today",
         source: "all",
         metric: "estimated_spend",
-        limit: 20,
+        limit: 50,
         offset: 0,
       });
     });

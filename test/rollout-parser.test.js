@@ -8151,6 +8151,32 @@ test("collectRolloutRequestUsageRecords filters by time range", async () => {
   }
 });
 
+test("collectRolloutRequestUsageRecords skips rollout files last modified before the requested range", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-request-usage-mtime-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: "2026-08-15T00:00:00.000Z", last: usage, total: usage })}\n`,
+      "utf8",
+    );
+    const oldMtime = new Date("2026-07-01T00:00:00.000Z");
+    await fs.utimes(rolloutPath, oldMtime, oldMtime);
+
+    const result = await collectRolloutRequestUsageRecords({
+      rolloutFiles: [rolloutPath],
+      source: "codex",
+      from: "2026-08-01T00:00:00.000Z",
+    });
+
+    assert.equal(result.records.length, 0);
+    assert.equal(result.totals.total_tokens, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("collectRolloutRequestUsageRecords limits results", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-request-usage-limit-"));
   try {

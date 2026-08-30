@@ -207,14 +207,7 @@ describe("App deferred dashboard preload", () => {
     await waitFor(() => {
       expect(markDashboardMainContentVisible).toHaveBeenCalledTimes(1);
       expect(preloadDashboardPageResources).toHaveBeenCalledTimes(1);
-      expect(preloadLeaderboardDefaultState).toHaveBeenCalledWith({
-        accessMode: "cloud",
-        baseUrl: "https://edge.example",
-        mockEnabled: false,
-        signedIn: true,
-        authLoading: false,
-        userId: "user-1",
-      });
+      expect(preloadLeaderboardDefaultState).not.toHaveBeenCalled();
     });
   });
 
@@ -232,7 +225,7 @@ describe("App deferred dashboard preload", () => {
     });
   });
 
-  it("preloads the public leaderboard context from the local dashboard", async () => {
+  it("does not read the public leaderboard from the local dashboard", async () => {
     const user = userEvent.setup();
     insforgeMock.signedIn = false;
     insforgeMock.user = null;
@@ -244,14 +237,7 @@ describe("App deferred dashboard preload", () => {
 
     await waitFor(() => {
       expect(preloadDashboardPageResources).toHaveBeenCalledTimes(1);
-      expect(preloadLeaderboardDefaultState).toHaveBeenCalledWith({
-        accessMode: "public",
-        baseUrl: "https://edge.example",
-        mockEnabled: false,
-        signedIn: true,
-        authLoading: false,
-        userId: null,
-      });
+      expect(preloadLeaderboardDefaultState).not.toHaveBeenCalled();
     });
   });
 
@@ -266,7 +252,7 @@ describe("App deferred dashboard preload", () => {
     expect(screen.queryByText(TEXT.landing)).not.toBeInTheDocument();
   });
 
-  it("preloads again when the leaderboard auth context changes", async () => {
+  it("does not start a public leaderboard read when the auth context changes", async () => {
     const user = userEvent.setup();
     insforgeMock.signedIn = false;
     insforgeMock.user = null;
@@ -275,17 +261,7 @@ describe("App deferred dashboard preload", () => {
     expect(await screen.findByText(TEXT.dashboard)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: TEXT.reveal }));
 
-    await waitFor(() => {
-      expect(preloadLeaderboardDefaultState).toHaveBeenCalledTimes(1);
-      expect(preloadLeaderboardDefaultState).toHaveBeenLastCalledWith({
-        accessMode: "public",
-        baseUrl: "https://edge.example",
-        mockEnabled: false,
-        signedIn: true,
-        authLoading: false,
-        userId: null,
-      });
-    });
+    expect(preloadLeaderboardDefaultState).not.toHaveBeenCalled();
 
     insforgeMock.signedIn = true;
     insforgeMock.user = { id: "user-cloud" };
@@ -295,20 +271,11 @@ describe("App deferred dashboard preload", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => {
-      expect(preloadLeaderboardDefaultState).toHaveBeenCalledTimes(2);
-      expect(preloadLeaderboardDefaultState).toHaveBeenLastCalledWith({
-        accessMode: "cloud",
-        baseUrl: "https://edge.example",
-        mockEnabled: false,
-        signedIn: true,
-        authLoading: false,
-        userId: "user-cloud",
-      });
-    });
+    await waitFor(() => expect(preloadDashboardPageResources).toHaveBeenCalledTimes(1));
+    expect(preloadLeaderboardDefaultState).not.toHaveBeenCalled();
   });
 
-  it("waits for cloud auth to settle before preloading leaderboard default state", async () => {
+  it("never ties public leaderboard reads to cloud auth settling", async () => {
     const user = userEvent.setup();
     insforgeMock.loading = true;
     insforgeMock.signedIn = false;
@@ -332,16 +299,7 @@ describe("App deferred dashboard preload", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => {
-      expect(preloadLeaderboardDefaultState).toHaveBeenCalledTimes(1);
-      expect(preloadLeaderboardDefaultState).toHaveBeenCalledWith({
-        accessMode: "cloud",
-        baseUrl: "https://edge.example",
-        mockEnabled: false,
-        signedIn: true,
-        authLoading: false,
-        userId: "user-late",
-      });
-    });
+    await waitFor(() => expect(preloadDashboardPageResources).toHaveBeenCalledTimes(1));
+    expect(preloadLeaderboardDefaultState).not.toHaveBeenCalled();
   });
 });

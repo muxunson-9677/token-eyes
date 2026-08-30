@@ -5,6 +5,7 @@ import {
   createProviderStatsCacheEntry,
   isProviderStatsCachePayload,
   parseProviderStatsCacheEntry,
+  resolveProviderStatsDayKey,
 } from "../use-provider-stats";
 
 function response(view: "range" | "recent_api_7d") {
@@ -33,6 +34,23 @@ function response(view: "range" | "recent_api_7d") {
 }
 
 describe("Provider stats cache contract", () => {
+  it("keys the recent official-billing view by the current UTC day", () => {
+    const instant = new Date("2026-08-27T17:22:00.000Z");
+
+    expect(resolveProviderStatsDayKey({
+      view: "recent_api_7d",
+      timeZone: "Asia/Shanghai",
+      offsetMinutes: 480,
+      date: instant,
+    })).toBe("2026-08-27");
+    expect(resolveProviderStatsDayKey({
+      view: "range",
+      timeZone: "Asia/Shanghai",
+      offsetMinutes: 480,
+      date: instant,
+    })).toBe("2026-08-28");
+  });
+
   it("accepts only the current true-Provider DTO for the requested view", () => {
     expect(isProviderStatsCachePayload(response("range"), "range")).toBe(true);
     expect(isProviderStatsCachePayload(response("recent_api_7d"), "recent_api_7d")).toBe(true);

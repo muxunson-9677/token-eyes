@@ -400,6 +400,7 @@ function parseOpenAiCostsPage(page, period, seenBuckets) {
   }
 
   let totalUsd = 0;
+  const dailyCosts = [];
   for (const bucket of page.data) {
     if (!bucket || bucket.object !== "bucket" || !Array.isArray(bucket.results)) return null;
     if (!Number.isInteger(bucket.start_time) || !Number.isInteger(bucket.end_time)) return null;
@@ -412,35 +413,42 @@ function parseOpenAiCostsPage(page, period, seenBuckets) {
     if (seenBuckets.has(bucketKey)) return null;
     seenBuckets.add(bucketKey);
 
+    let bucketUsd = 0;
     for (const result of bucket.results) {
       if (!result || result.object !== "organization.costs.result") return null;
       if (!result.amount || result.amount.currency !== "usd") return null;
       if (typeof result.amount.value !== "number" || !Number.isFinite(result.amount.value) || result.amount.value < 0) return null;
       totalUsd += result.amount.value;
+      bucketUsd += result.amount.value;
     }
+    dailyCosts.push({
+      date: new Date(bucket.start_time * 1000).toISOString().slice(0, 10),
+      costUsd: Math.round(bucketUsd * 1e6) / 1e6,
+    });
   }
 
   return {
     totalUsd,
+    dailyCosts,
     hasMore: page.has_more,
     nextPage: page.next_page,
   };
 }
 
-async function fetchOpenAiCostsInvoice({
+async function fetchOpenAiCostsRange({
   config,
   secret,
-  monthKey,
+  period,
   allowTestEndpoint = false,
   executeRequest = executeFinancialRequest,
 } = {}) {
-  const period = getUtcMonthPeriod(monthKey);
   if (!period || !secret || !isOpenAiCostsConfig(config, { allowTestEndpoint })) {
     return { ok: false, errorCode: "official_invoice_unavailable" };
   }
 
   const seenPages = new Set();
   const seenBuckets = new Set();
+  const dailyCosts = [];
   let cursor = null;
   let totalUsd = 0;
   for (;;) {
@@ -468,24 +476,103 @@ async function fetchOpenAiCostsInvoice({
     const parsed = parseOpenAiCostsPage(response.data, period, seenBuckets);
     if (!parsed) return { ok: false, errorCode: "official_invoice_invalid" };
     totalUsd += parsed.totalUsd;
+    dailyCosts.push(...parsed.dailyCosts);
     if (!parsed.hasMore) break;
     if (seenPages.has(parsed.nextPage)) return { ok: false, errorCode: "official_invoice_invalid" };
     seenPages.add(parsed.nextPage);
     cursor = parsed.nextPage;
   }
 
+  dailyCosts.sort((left, right) => left.date.localeCompare(right.date));
+  const bucketIntervals = Array.from(seenBuckets, (key) => key.split(":").map(Number))
+    .sort((left, right) => left[0] - right[0]);
+  return {
+    ok: true,
+    totalUsd: Math.round(totalUsd * 1e6) / 1e6,
+    dailyCosts,
+    bucketIntervals,
+  };
+}
+
+async function fetchOpenAiCostsInvoice({
+  config,
+  secret,
+  monthKey,
+  allowTestEndpoint = false,
+  executeRequest = executeFinancialRequest,
+} = {}) {
+  const period = getUtcMonthPeriod(monthKey);
+  const result = await fetchOpenAiCostsRange({
+    config,
+    secret,
+    period,
+    allowTestEndpoint,
+    executeRequest,
+  });
+  if (!result.ok) return result;
+
   return {
     ok: true,
     invoice: {
       billingSource: BILLING_SOURCES.API,
       spendAuthority: SPEND_AUTHORITIES.OFFICIAL_INVOICE,
-      monthCostUsd: Math.round(totalUsd * 1e6) / 1e6,
+      monthCostUsd: result.totalUsd,
       lifetimeCostUsd: null,
       monthKey: period.monthKey,
       billingPeriodStart: period.billingPeriodStart,
       billingPeriodEnd: period.billingPeriodEnd,
+      dailyCosts: result.dailyCosts,
       lastSyncedAt: new Date().toISOString(),
     },
+  };
+}
+
+async function fetchOpenAiCostsPeriod({
+  config,
+  secret,
+  fromKey,
+  toKey,
+  allowTestEndpoint = false,
+  executeRequest = executeFinancialRequest,
+} = {}) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(String(fromKey || ""))
+    || !/^\d{4}-\d{2}-\d{2}$/u.test(String(toKey || ""))) {
+    return { ok: false, errorCode: "official_invoice_unavailable" };
+  }
+  const startSeconds = Date.parse(`${fromKey}T00:00:00.000Z`) / 1000;
+  const endSeconds = (Date.parse(`${toKey}T00:00:00.000Z`) + 86_400_000) / 1000;
+  if (!Number.isInteger(startSeconds) || !Number.isInteger(endSeconds) || endSeconds <= startSeconds) {
+    return { ok: false, errorCode: "official_invoice_unavailable" };
+  }
+  const result = await fetchOpenAiCostsRange({
+    config,
+    secret,
+    period: { startSeconds, endSeconds },
+    allowTestEndpoint,
+    executeRequest,
+  });
+  if (!result.ok) return result;
+  const expectedDays = Math.round((endSeconds - startSeconds) / 86400);
+  const exactCoverage = result.bucketIntervals.length === expectedDays
+    && result.bucketIntervals[0]?.[0] === startSeconds
+    && result.bucketIntervals.at(-1)?.[1] === endSeconds
+    && result.bucketIntervals.every((interval, index) => (
+      index === 0 || interval[0] === result.bucketIntervals[index - 1][1]
+    ));
+  if (result.dailyCosts.length !== expectedDays || !exactCoverage) {
+    return { ok: false, errorCode: "official_invoice_invalid" };
+  }
+  return {
+    ok: true,
+    period: {
+      from: fromKey,
+      to: toKey,
+      days: expectedDays,
+      time_zone: "UTC",
+    },
+    costUsd: result.totalUsd,
+    dailyCosts: result.dailyCosts,
+    lastSyncedAt: new Date().toISOString(),
   };
 }
 
@@ -635,6 +722,7 @@ module.exports = {
   detectCredentialsFromAuthFiles,
   detectCredentialsFromKeychain,
   fetchOpenAiCostsInvoice,
+  fetchOpenAiCostsPeriod,
   getUtcMonthPeriod,
   isOpenAiCostsConfig,
   mergeBillingAccounts,

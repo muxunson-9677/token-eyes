@@ -480,6 +480,7 @@ export function PlanMarketPage() {
   const [refreshCadence, setRefreshCadence] = useState(storedRefreshCadence);
   const refreshPromiseRef = useRef(null);
   const lastAttemptAtRef = useRef(null);
+  const remoteStateRevisionRef = useRef(0);
   const applyRemoteState = useCallback((state) => {
     if (!state?.catalog || !Array.isArray(state.catalog.providers)) {
       throw new TypeError("Invalid plan market state");
@@ -496,6 +497,7 @@ export function PlanMarketPage() {
   }, []);
   const runRefresh = useCallback(() => {
     if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    remoteStateRevisionRef.current += 1;
     setRefreshState("loading");
     lastAttemptAtRef.current = Date.now();
     const request = refreshPlanMarketCatalog()
@@ -523,10 +525,13 @@ export function PlanMarketPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestRevision = remoteStateRevisionRef.current;
     getPlanMarketState({ signal: controller.signal })
-      .then(applyRemoteState)
+      .then((state) => {
+        if (remoteStateRevisionRef.current === requestRevision) applyRemoteState(state);
+      })
       .catch((error) => {
-        if (error?.name !== "AbortError") {
+        if (error?.name !== "AbortError" && remoteStateRevisionRef.current === requestRevision) {
           setRefreshMeta((current) => ({ ...current, source_status: "unreachable" }));
         }
       })

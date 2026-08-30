@@ -57,6 +57,7 @@ describe("LoginCard email-only signup verification", () => {
   it("shows email immediately and hides OAuth in focused mode", async () => {
     render(<LoginCard emailOnly />);
 
+    expect(screen.getByRole("heading", { name: copy("login.title") })).toBeInTheDocument();
     expect(await screen.findByLabelText(copy("login.field.email"))).toBeInTheDocument();
     expect(screen.queryByText(copy("login.oauth.continue", { provider: "GitHub" }))).not.toBeInTheDocument();
   });

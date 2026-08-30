@@ -1,19 +1,23 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { Readable } = require("node:stream");
 const { after, afterEach, test } = require("node:test");
+const { createSignedStaticFeedEnvelope } = require("../src/lib/signed-static-feed");
 
 const trackerDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tt-leaderboard-public-"));
+const keys = crypto.generateKeyPairSync("ed25519");
+const feedBaseUrl = "https://feeds.example.test/v1";
+const generatedAt = "2026-08-30T08:00:00.000Z";
+const originalFetch = global.fetch;
+
 after(() => fs.rmSync(trackerDataDir, { recursive: true, force: true }));
-
-const previousFetch = global.fetch;
-
 afterEach(() => {
-  global.fetch = previousFetch;
+  global.fetch = originalFetch;
   delete require.cache[require.resolve("../src/lib/local-api")];
 });
 
@@ -54,99 +58,89 @@ async function call(handler, search = "") {
   return res;
 }
 
-test("preserves the rolling 30-day public leaderboard period without credentials", async () => {
+function signedPayload(overrides = {}) {
+  const payload = {
+    schema_version: "token-eyes.leaderboard-snapshot/v1",
+    snapshot_key: "30d/tokens/all",
+    generated_at: generatedAt,
+    entries: [{ rank: 1, display_name: "Public User", total_tokens: "4321" }],
+    participant_count: 2,
+    ranked_entry_count: 2,
+    aggregate_total_tokens: 5000,
+    aggregate_total_cost_usd: 5,
+    ...overrides,
+  };
+  return createSignedStaticFeedEnvelope(payload, keys.privateKey, {
+    keyId: "token-eyes-static-2026-01",
+  });
+}
+
+function createHandler() {
+  const { createLocalApiHandler } = require("../src/lib/local-api");
+  return createLocalApiHandler({
+    queuePath: "",
+    trackerDataDir,
+    leaderboardPublicFeedBaseUrl: feedBaseUrl,
+    leaderboardPublicKey: keys.publicKey,
+    now: () => new Date("2026-08-30T08:01:00.000Z"),
+  });
+}
+
+test("reads one signed fixed Top 50 object without credentials or InsForge fallback", async () => {
   const calls = [];
   global.fetch = async (url, options) => {
-    calls.push([url, options]);
-    return new Response(JSON.stringify({ entries: [{ rank: 1, display_name: "Public User" }] }), {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify(signedPayload()), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ETag: "\"snapshot-v1\"" },
     });
   };
-  const { createLocalApiHandler } = require("../src/lib/local-api");
-  const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
-
-  const res = await call(handler, "?period=30d&metric=tokens&source=all&limit=20&offset=0");
+  const res = await call(
+    createHandler(),
+    "?period=30d&metric=tokens&source=all&limit=50&offset=0",
+  );
 
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(JSON.parse(res.body()), {
-    entries: [{ rank: 1, display_name: "Public User" }],
-  });
+  assert.equal(res.headers["x-leaderboard-cache"], "MISS");
+  assert.equal(JSON.parse(res.body()).entries[0].display_name, "Public User");
   assert.equal(calls.length, 1);
-  const upstream = new URL(calls[0][0]);
-  assert.equal(upstream.hostname, "a62b9nf2.function2.insforge.app");
-  assert.equal(upstream.searchParams.get("period"), "30d");
-  assert.equal(upstream.searchParams.get("metric"), "tokens");
-  assert.equal(upstream.searchParams.get("source"), "all");
-  assert.deepEqual(calls[0][1].headers, { Accept: "application/json" });
+  assert.equal(calls[0].url, `${feedBaseUrl}/leaderboard/30d/tokens/all.json`);
+  assert.deepEqual(calls[0].options.headers, { Accept: "application/json" });
+  assert.doesNotMatch(calls[0].url, /insforge/u);
 });
 
-test("serves a repeated public leaderboard request from the local cache", async () => {
+test("a fresh handler serves the disk LKG when the static object is unavailable", async () => {
+  global.fetch = async () => new Response(JSON.stringify(signedPayload()), { status: 200 });
+  const seeded = await call(createHandler(), "?period=30d&metric=tokens&source=all");
+  assert.equal(seeded.statusCode, 200);
+
+  global.fetch = async () => {
+    throw new Error("offline private detail");
+  };
+  delete require.cache[require.resolve("../src/lib/local-api")];
+  const stale = await call(createHandler(), "?period=30d&metric=tokens&source=all");
+
+  assert.equal(stale.statusCode, 200);
+  assert.equal(stale.headers["x-leaderboard-cache"], "STALE");
+  assert.equal(JSON.parse(stale.body()).stale, true);
+  assert.equal(JSON.parse(stale.body()).entries[0].display_name, "Public User");
+  assert.doesNotMatch(stale.body(), /offline|private detail/u);
+});
+
+test("rejects pagination and non-whitelisted snapshot keys before any network read", async () => {
   let calls = 0;
   global.fetch = async () => {
     calls += 1;
-    return new Response(JSON.stringify({
-      entries: [],
-      participant_count: 0,
-      aggregate_total_tokens: 0,
-      aggregate_total_cost_usd: 0,
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify(signedPayload()), { status: 200 });
   };
-  const { createLocalApiHandler } = require("../src/lib/local-api");
-  const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
+  const handler = createHandler();
 
-  const first = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
-  const second = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
+  const paged = await call(handler, "?period=30d&metric=tokens&source=all&limit=20&offset=0");
+  const offset = await call(handler, "?period=30d&metric=tokens&source=all&limit=50&offset=1");
+  const unknown = await call(handler, "?period=30d&metric=tokens&source=secret-agent");
 
-  assert.equal(first.statusCode, 200);
-  assert.equal(second.statusCode, 200);
-  assert.equal(calls, 1);
-  assert.equal(second.headers["x-leaderboard-cache"], "HIT");
-});
-
-test("falls back to the public snapshot table when the edge function is slow or unavailable", async () => {
-  const calls = [];
-  global.fetch = async (url) => {
-    calls.push(String(url));
-    if (String(url).includes("function2.insforge.app")) {
-      return new Response("unavailable", { status: 503 });
-    }
-    if (String(url).includes("select=total_tokens%2Cestimated_cost_usd")) {
-      return new Response(JSON.stringify([
-        { total_tokens: "4321", estimated_cost_usd: "4.32" },
-        { total_tokens: "679", estimated_cost_usd: "0.68" },
-      ]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return new Response(JSON.stringify([{
-      rank: 1,
-      total_tokens: "4321",
-      estimated_cost_usd: "4.32",
-      actual_cost_usd: null,
-      source_breakdown: [],
-      display_name: "Snapshot User",
-      generated_at: "2026-07-22T08:00:00.000Z",
-    }]), {
-      status: 200,
-      headers: { "Content-Type": "application/json", "Content-Range": "0-0/2" },
-    });
-  };
-  const { createLocalApiHandler } = require("../src/lib/local-api");
-  const handler = createLocalApiHandler({ queuePath: "", trackerDataDir });
-
-  const res = await call(handler, "?period=total&metric=tokens&source=all&limit=20&offset=0");
-
-  assert.equal(res.statusCode, 200);
-  assert.equal(JSON.parse(res.body()).entries[0].display_name, "Snapshot User");
-  assert.equal(JSON.parse(res.body()).total_entries, 2);
-  assert.equal(JSON.parse(res.body()).participant_count, 2);
-  assert.equal(JSON.parse(res.body()).aggregate_total_tokens, 5000);
-  assert.equal(JSON.parse(res.body()).aggregate_total_cost_usd, 5);
-  assert.equal(calls.length, 3);
-  assert.match(calls[1], /leaderboard_snapshots_v2/);
+  assert.equal(paged.statusCode, 400);
+  assert.equal(offset.statusCode, 400);
+  assert.equal(unknown.statusCode, 400);
+  assert.equal(calls, 0);
 });

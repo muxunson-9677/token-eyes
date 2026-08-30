@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const os = require("node:os");
@@ -15,11 +16,60 @@ const {
   hashPlanMarketCatalog,
   resolvePlanMarketSnapshotPath,
 } = require("../src/lib/plan-market");
+const { createSignedStaticFeedEnvelope } = require("../src/lib/signed-static-feed");
+
+const feedKeys = crypto.generateKeyPairSync("ed25519");
 
 const bundledCatalog = JSON.parse(fs.readFileSync(
   path.join(__dirname, "..", "shared", "plan-market-catalog.json"),
   "utf8",
 ));
+
+test("plan market uses the signed public static feed URL", () => {
+  assert.equal(PLAN_MARKET_FEED_URL, "https://feeds.tokentracker.cc/v1/plan-market/feed.json");
+});
+
+test("plan market accepts an exact HTTPS staging feed URL and binds the signed source to it", async () => {
+  const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-staging-"));
+  const feedUrl = "https://token-eyes-leaderboard-cache-staging.example.workers.dev/v1/plan-market/feed.json";
+  const calls = [];
+  const service = createPlanMarketUpdateService({
+    trackerDataDir,
+    feedUrl,
+    publicKey: feedKeys.publicKey,
+    now: () => new Date("2026-08-30T08:05:00.000Z"),
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(signedFeed(bundledCatalog, {
+        source_url: feedUrl,
+        generated_at: "2026-08-30T08:00:00.000Z",
+      }));
+    },
+  });
+
+  try {
+    const refreshed = await service.refresh();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, feedUrl);
+    assert.equal(refreshed.refresh.source_url, feedUrl);
+    assert.equal(refreshed.refresh.last_successful_at, "2026-08-30T08:05:00.000Z");
+  } finally {
+    await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
+
+test("plan market rejects an unsigned catalog payload", async () => {
+  const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-unsigned-"));
+  const service = createPlanMarketUpdateService({
+    trackerDataDir,
+    fetchImpl: async () => response(feed()),
+  });
+  try {
+    await assert.rejects(service.refresh(), (error) => error?.code === "feed_signature_invalid");
+  } finally {
+    await fsp.rm(trackerDataDir, { recursive: true, force: true });
+  }
+});
 
 function response(body, { status = 200 } = {}) {
   return {
@@ -40,6 +90,12 @@ function feed(catalog = bundledCatalog, overrides = {}) {
     catalog,
     ...overrides,
   };
+}
+
+function signedFeed(catalog = bundledCatalog, overrides = {}) {
+  return createSignedStaticFeedEnvelope(feed(catalog, overrides), feedKeys.privateKey, {
+    keyId: "token-eyes-static-test",
+  });
 }
 
 function syntheticCatalog(plans, provider = {}) {
@@ -128,10 +184,11 @@ test("plan market refresh validates the public feed and atomically persists its 
   const calls = [];
   const service = createPlanMarketUpdateService({
     trackerDataDir,
+    publicKey: feedKeys.publicKey,
     now: () => new Date("2026-08-27T08:05:00.000Z"),
     fetchImpl: async (url, init) => {
       calls.push({ url, init });
-      return response(feed());
+      return response(signedFeed());
     },
   });
 
@@ -162,14 +219,15 @@ test("plan market refresh validates the public feed and atomically persists its 
 test("plan market refresh rejects unallowlisted, unhashed, and incompatible payloads while retaining last-known-good data", async () => {
   const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-reject-"));
   const payloads = [
-    feed(),
-    feed(bundledCatalog, { source_url: "https://raw.githubusercontent.com/private/catalog.json" }),
-    feed(bundledCatalog, { catalog_sha256: "0".repeat(64) }),
-    feed(bundledCatalog, { schema_version: "token-eyes.plan-market-feed/v2" }),
+    signedFeed(),
+    signedFeed(bundledCatalog, { source_url: "https://raw.githubusercontent.com/private/catalog.json" }),
+    signedFeed(bundledCatalog, { catalog_sha256: "0".repeat(64) }),
+    signedFeed(bundledCatalog, { schema_version: "token-eyes.plan-market-feed/v2" }),
   ];
   let nowMs = Date.parse("2026-08-27T08:05:00.000Z");
   const service = createPlanMarketUpdateService({
     trackerDataDir,
+    publicKey: feedKeys.publicKey,
     now: () => new Date(nowMs),
     fetchImpl: async () => response(payloads.shift()),
   });
@@ -196,17 +254,18 @@ test("plan market refresh rejects unallowlisted, unhashed, and incompatible payl
 test("plan market refresh rejects a redirect outside the exact public feed and an older replay", async () => {
   const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "tokentracker-plan-market-replay-"));
   const redirected = {
-    ...response(feed()),
+    ...response(signedFeed()),
     redirected: true,
     url: "https://raw.githubusercontent.com/private/catalog.json",
   };
-  const older = feed(bundledCatalog, {
+  const older = signedFeed(bundledCatalog, {
     catalog_version: "2026-08-26.1",
     generated_at: "2026-08-26T08:00:00.000Z",
   });
-  const responses = [response(feed()), redirected, response(older)];
+  const responses = [response(signedFeed()), redirected, response(older)];
   const service = createPlanMarketUpdateService({
     trackerDataDir,
+    publicKey: feedKeys.publicKey,
     now: () => new Date("2026-08-27T08:05:00.000Z"),
     fetchImpl: async () => responses.shift(),
   });
@@ -227,6 +286,7 @@ test("plan market refresh is single-flight", async () => {
   let fetchCount = 0;
   const service = createPlanMarketUpdateService({
     trackerDataDir,
+    publicKey: feedKeys.publicKey,
     fetchImpl: async () => {
       fetchCount += 1;
       return new Promise((resolve) => { resolveFetch = resolve; });
@@ -237,7 +297,7 @@ test("plan market refresh is single-flight", async () => {
     const first = service.refresh();
     const second = service.refresh();
     assert.equal(fetchCount, 1);
-    resolveFetch(response(feed()));
+    resolveFetch(response(signedFeed()));
     const [left, right] = await Promise.all([first, second]);
     assert.deepEqual(left, right);
     assert.equal(fetchCount, 1);
@@ -357,7 +417,8 @@ test("plan market refresh rejects duplicate provider identities before replacing
   duplicateCatalog.providers.push(structuredClone(bundledCatalog.providers[0]));
   const service = createPlanMarketUpdateService({
     trackerDataDir,
-    fetchImpl: async () => response(feed(duplicateCatalog)),
+    publicKey: feedKeys.publicKey,
+    fetchImpl: async () => response(signedFeed(duplicateCatalog)),
   });
 
   try {
@@ -404,7 +465,8 @@ test("plan market refresh rejects duplicate plans and invalid status or price va
     const trackerDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), `tokentracker-plan-market-invalid-${index}-`));
     const service = createPlanMarketUpdateService({
       trackerDataDir,
-      fetchImpl: async () => response(feed(catalog)),
+      publicKey: feedKeys.publicKey,
+      fetchImpl: async () => response(signedFeed(catalog)),
     });
     try {
       await assert.rejects(

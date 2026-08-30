@@ -9963,9 +9963,24 @@ async function collectRolloutRequestUsageRecords(options) {
     };
   }
 
+  const candidateFiles = [];
   for (const filePath of files) {
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    if (fromTs != null && st.mtimeMs < fromTs) continue;
+    candidateFiles.push({ filePath, mtimeMs: st.mtimeMs });
+  }
+  candidateFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  let oldestKeptTimestamp = null;
+  for (const { filePath, mtimeMs } of candidateFiles) {
+    if (
+      records.length >= maxLimit &&
+      oldestKeptTimestamp != null &&
+      mtimeMs < oldestKeptTimestamp
+    ) {
+      break;
+    }
 
     const sessionId = codexSessionIdFromPath(filePath) || path.basename(filePath);
     const forkTracker = createForkReplayTracker({
@@ -10176,6 +10191,13 @@ async function collectRolloutRequestUsageRecords(options) {
     } finally {
       rl.close();
       stream.close?.();
+    }
+
+    if (records.length >= maxLimit) {
+      records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      records.length = maxLimit;
+      const candidateTimestamp = new Date(records[records.length - 1]?.timestamp || "").getTime();
+      oldestKeptTimestamp = Number.isFinite(candidateTimestamp) ? candidateTimestamp : null;
     }
   }
 

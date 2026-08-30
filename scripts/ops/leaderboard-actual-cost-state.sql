@@ -4,7 +4,7 @@
 begin;
 
 create table if not exists public.tokentracker_actual_cost_state (
-  user_id uuid primary key,
+  user_id uuid primary key references auth.users(id) on delete cascade,
   share_actual_cost boolean not null default false,
   today_usd numeric(20,6),
   week_usd numeric(20,6),
@@ -60,12 +60,14 @@ create policy leaderboard_actual_cost_delete_own
 
 revoke all on table public.tokentracker_actual_cost_state from public;
 revoke all on table public.tokentracker_actual_cost_state from anon;
-revoke insert, update
+revoke insert, update, delete
   on table public.tokentracker_actual_cost_state
   from authenticated;
-grant select, delete
-  on table public.tokentracker_actual_cost_state
-  to authenticated;
+grant select on table public.tokentracker_actual_cost_state to authenticated;
+
+drop function if exists public.set_my_leaderboard_actual_cost(
+  boolean, numeric, numeric, numeric, numeric, numeric, timestamptz
+);
 
 create or replace function public.set_my_leaderboard_actual_cost(
   p_share boolean,
@@ -75,13 +77,14 @@ create or replace function public.set_my_leaderboard_actual_cost(
   p_month_usd numeric,
   p_total_usd numeric,
   p_captured_at timestamptz
-) returns void
+) returns boolean
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = pg_catalog, public, pg_temp
 as $function$
 declare
   v_user_id uuid := auth.uid();
+  v_changed boolean;
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
@@ -131,7 +134,28 @@ begin
       month_usd = excluded.month_usd,
       total_usd = excluded.total_usd,
       captured_at = excluded.captured_at,
-      updated_at = now();
+      updated_at = now()
+  where (
+    tokentracker_actual_cost_state.share_actual_cost,
+    tokentracker_actual_cost_state.today_usd,
+    tokentracker_actual_cost_state.week_usd,
+    tokentracker_actual_cost_state."30d_usd",
+    tokentracker_actual_cost_state.month_usd,
+    tokentracker_actual_cost_state.total_usd
+  ) is distinct from (
+    excluded.share_actual_cost,
+    excluded.today_usd,
+    excluded.week_usd,
+    excluded."30d_usd",
+    excluded.month_usd,
+    excluded.total_usd
+  );
+
+  v_changed := found;
+  if v_changed then
+    perform public.mark_leaderboard_dimensions_dirty(v_user_id, true);
+  end if;
+  return v_changed;
 end;
 $function$;
 
@@ -145,6 +169,10 @@ grant execute on function public.set_my_leaderboard_actual_cost(
   boolean, numeric, numeric, numeric, numeric, numeric, timestamptz
 ) to authenticated;
 
+drop function if exists public.refresh_my_leaderboard_actual_cost(
+  numeric, numeric, numeric, numeric, numeric, timestamptz
+);
+
 create or replace function public.refresh_my_leaderboard_actual_cost(
   p_today_usd numeric,
   p_week_usd numeric,
@@ -152,13 +180,15 @@ create or replace function public.refresh_my_leaderboard_actual_cost(
   p_month_usd numeric,
   p_total_usd numeric,
   p_captured_at timestamptz
-) returns boolean
+) returns jsonb
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = pg_catalog, public, pg_temp
 as $function$
 declare
   v_user_id uuid := auth.uid();
+  v_changed boolean;
+  v_enabled boolean;
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
@@ -182,9 +212,34 @@ begin
       captured_at = p_captured_at,
       updated_at = now()
   where user_id = v_user_id
-    and share_actual_cost = true;
+    and share_actual_cost = true
+    and (
+      today_usd,
+      week_usd,
+      "30d_usd",
+      month_usd,
+      total_usd
+    ) is distinct from (
+      p_today_usd,
+      p_week_usd,
+      p_30d_usd,
+      p_month_usd,
+      p_total_usd
+    );
 
-  return found;
+  v_changed := found;
+  if v_changed then
+    perform public.mark_leaderboard_dimensions_dirty(v_user_id, true);
+  end if;
+
+  select exists (
+    select 1
+    from public.tokentracker_actual_cost_state
+    where user_id = v_user_id
+      and share_actual_cost = true
+  ) into v_enabled;
+
+  return jsonb_build_object('enabled', v_enabled, 'changed', v_changed);
 end;
 $function$;
 
@@ -202,7 +257,7 @@ create or replace function public.delete_my_leaderboard_data()
 returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = pg_catalog, public, pg_temp
 as $function$
 declare
   v_user_id uuid := auth.uid();
@@ -210,6 +265,8 @@ begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
   end if;
+
+  perform public.mark_leaderboard_dimensions_dirty(v_user_id, true);
 
   delete from public.tokentracker_leaderboard_device_state
   where user_id = v_user_id;
@@ -230,17 +287,6 @@ begin
   end if;
 
   if to_regclass('public.tokentracker_leaderboard_avatar_metadata') is not null then
-    if to_regclass('storage.objects') is not null then
-      execute
-        'delete from storage.objects
-         where bucket = ''tokentracker-leaderboard-avatars''
-           and key in (
-             select object_key
-             from public.tokentracker_leaderboard_avatar_metadata
-             where user_id = $1
-           )'
-        using v_user_id;
-    end if;
     execute
       'delete from public.tokentracker_leaderboard_avatar_metadata where user_id = $1'
       using v_user_id;
@@ -254,5 +300,4 @@ $function$;
 revoke all on function public.delete_my_leaderboard_data() from public;
 revoke all on function public.delete_my_leaderboard_data() from anon;
 grant execute on function public.delete_my_leaderboard_data() to authenticated;
-
 commit;

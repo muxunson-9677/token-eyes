@@ -118,6 +118,146 @@ function startBalanceServer() {
   });
 }
 
+function startOfficialCostsServer() {
+  const requests = [];
+  const costs = [1, 0, 2, 0, 0, 0, 3];
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const requestUrl = new URL(req.url, "http://127.0.0.1");
+      requests.push({
+        pathname: requestUrl.pathname,
+        search: Object.fromEntries(requestUrl.searchParams),
+        authorization: req.headers.authorization,
+      });
+      const start = Number(requestUrl.searchParams.get("start_time"));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        object: "page",
+        data: costs.map((cost, index) => ({
+          object: "bucket",
+          start_time: start + index * 86400,
+          end_time: start + (index + 1) * 86400,
+          results: [{
+            object: "organization.costs.result",
+            amount: { value: cost, currency: "usd" },
+          }],
+        })),
+        has_more: false,
+        next_page: null,
+      }));
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      resolve({ server, url: `http://127.0.0.1:${address.port}`, requests });
+    });
+  });
+}
+
+test("provider-stats joins exact official Provider/day costs without inventing Agent or model cash attribution", async () => {
+  const { server, url, requests } = await startOfficialCostsServer();
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-provider-api-official-daily-"));
+  const secrets = new Map();
+  const secret = "sk-official-daily-private";
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    await fs.promises.writeFile(queuePath, [
+      apiRow({
+        provider_id: "openai",
+        actual_cost_usd: undefined,
+        spend_authority: undefined,
+      }),
+      apiRow({
+        source: "claude",
+        model: "claude-model",
+        provider_id: "openai",
+        hour_start: "2026-05-05T00:00:00.000Z",
+        actual_cost_usd: undefined,
+        spend_authority: undefined,
+      }),
+      apiRow({
+        provider_id: "deepseek",
+        actual_cost_usd: undefined,
+        spend_authority: undefined,
+      }),
+    ].map(JSON.stringify).join("\n") + "\n", "utf8");
+    await fs.promises.writeFile(path.join(tmp, "config.json"), "{}\n", "utf8");
+    const handler = createLocalApiHandler({
+      queuePath,
+      trackerDataDir: tmp,
+      providerApiTestMode: true,
+      credentialStore: {
+        isAvailable: () => true,
+        saveSecret(ref, value) { secrets.set(ref, String(value)); return { ok: true, masked: "••••vate" }; },
+        readSecret(ref) { return secrets.get(ref) || null; },
+        deleteSecret(ref) { return secrets.delete(ref); },
+        listRefs() { return Array.from(secrets.keys()); },
+      },
+      now: () => new Date("2026-05-09T12:00:00.000Z"),
+    });
+    const auth = await callWithOptions(handler, "/api/local-auth");
+    const authHeaders = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": auth.body.token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const created = await callWithOptions(handler, "/functions/tokentracker-provider-api-configs", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        providerId: "openai",
+        label: "OpenAI official costs",
+        requestUrl: `${url}/v1/organization/costs`,
+        requestMethod: "GET",
+        authType: "bearer",
+        balancePath: "data",
+        refreshIntervalSeconds: 300,
+        enabled: true,
+      }),
+    });
+    assert.equal(created.statusCode, 200, JSON.stringify(created.body));
+    await callWithOptions(handler, "/functions/tokentracker-provider-api-secrets", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ configId: created.body.config.id, secret }),
+    });
+
+    const body = await callEndpoint(
+      handler,
+      "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=Asia%2FShanghai",
+    );
+    assert.deepEqual(body.period, {
+      from: "2026-05-03",
+      to: "2026-05-09",
+      days: 7,
+      time_zone: "UTC",
+    });
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai"]);
+    const openai = body.providers[0];
+    assert.equal(openai.cost_usd, 6);
+    assert.deepEqual(openai.daily.map((day) => day.cost_usd), [1, 0, 2, 0, 0, 0, 3]);
+    assert.ok(openai.agents.every((agent) => agent.cost_usd === null));
+    assert.ok(openai.models.every((model) => model.cost_usd === null));
+    assert.ok(openai.daily.every((day) => (
+      day.agents.every((agent) => agent.cost_usd === null)
+      && day.models.every((model) => model.cost_usd === null)
+    )));
+    assert.equal(body.totals.cost_usd, 6);
+    assert.equal(requests.length, 1);
+    assert.deepEqual(requests[0].search, {
+      start_time: String(Date.parse("2026-05-03T00:00:00.000Z") / 1000),
+      end_time: String(Date.parse("2026-05-10T00:00:00.000Z") / 1000),
+      bucket_width: "1d",
+      limit: "180",
+    });
+    assert.equal(requests[0].authorization, `Bearer ${secret}`);
+    assert.equal(JSON.stringify(body).includes(secret), false);
+    assert.equal(JSON.stringify(body).includes(url), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("provider-stats merges agents by true Provider and splits one agent across Providers", async () => {
   const secret = "sk-provider-stats-must-not-leak";
   await withProviderFixture([
@@ -555,7 +695,7 @@ test("provider-stats exposes only a freshly synced reliable balance and invalida
   }
 });
 
-test("provider-stats uses seven Shanghai natural days at the UTC boundaries", async () => {
+test("provider-stats uses the explicit seven UTC billing days while preserving the requested Shanghai zone", async () => {
   await withProviderFixture([
     apiRow({ hour_start: "2026-05-02T15:59:59.999Z" }),
     apiRow({ hour_start: "2026-05-02T16:00:00.000Z", input_tokens: 2_000_000, total_tokens: 2_000_000 }),
@@ -565,27 +705,29 @@ test("provider-stats uses seven Shanghai natural days at the UTC boundaries", as
     const body = await call(
       "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=Asia%2FShanghai",
     );
-    assert.deepEqual(body.period, { from: "2026-05-03", to: "2026-05-09", days: 7, time_zone: "Asia/Shanghai" });
-    assert.equal(body.providers[0].tokens, 5_000_000);
-    assert.equal(body.providers[0].daily[0].tokens, 2_000_000);
-    assert.equal(body.providers[0].daily[6].tokens, 3_000_000);
+    assert.deepEqual(body.period, { from: "2026-05-03", to: "2026-05-09", days: 7, time_zone: "UTC" });
+    assert.equal(body.requested_time_zone, "Asia/Shanghai");
+    assert.equal(body.providers[0].tokens, 7_000_000);
+    assert.equal(body.providers[0].daily[0].tokens, 0);
+    assert.equal(body.providers[0].daily[6].tokens, 7_000_000);
   });
 });
 
 test("provider-stats reports an explicit UTC offset without exposing raw minutes", async () => {
   await withProviderFixture([
-    apiRow({ hour_start: "2026-05-02T16:00:00.000Z" }),
+    apiRow({ hour_start: "2026-05-03T00:00:00.000Z" }),
   ], async (call) => {
     const body = await call(
       "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz_offset_minutes=480",
     );
-    assert.equal(body.period.time_zone, "UTC+08:00");
-    assert.equal(body.providers[0].period.time_zone, "UTC+08:00");
+    assert.equal(body.period.time_zone, "UTC");
+    assert.equal(body.providers[0].period.time_zone, "UTC");
+    assert.equal(body.requested_time_zone, "UTC+08:00");
     assert.equal(body.providers[0].daily[0].date, "2026-05-03");
   });
 });
 
-test("provider-stats keeps the seven-day New York range correct across DST", async () => {
+test("provider-stats keeps official billing days in UTC across a requested New York DST boundary", async () => {
   await withProviderFixture([
     apiRow({ hour_start: "2026-03-03T04:59:59.999Z" }),
     apiRow({ hour_start: "2026-03-03T05:00:00.000Z", input_tokens: 2_000_000, total_tokens: 2_000_000 }),
@@ -596,13 +738,14 @@ test("provider-stats keeps the seven-day New York range correct across DST", asy
     const body = await call(
       "/functions/tokentracker-provider-api-stats?from=2026-03-03&to=2026-03-09&tz=America%2FNew_York",
     );
-    assert.equal(body.providers[0].tokens, 9_000_000);
+    assert.equal(body.requested_time_zone, "America/New_York");
+    assert.equal(body.providers[0].tokens, 6_000_000);
     assert.deepEqual(body.providers[0].daily.map((day) => day.date), [
       "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06",
       "2026-03-07", "2026-03-08", "2026-03-09",
     ]);
-    assert.equal(body.providers[0].daily[0].tokens, 2_000_000);
+    assert.equal(body.providers[0].daily[0].tokens, 3_000_000);
     assert.equal(body.providers[0].daily[5].tokens, 3_000_000);
-    assert.equal(body.providers[0].daily[6].tokens, 4_000_000);
+    assert.equal(body.providers[0].daily[6].tokens, 0);
   }, { nowIso: "2026-03-09T12:00:00.000Z" });
 });

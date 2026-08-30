@@ -20,6 +20,7 @@ function signedInSettings() {
   return {
     enabled: true,
     signedIn: true,
+    leaderboardParticipant: true,
     email: "user@example.com",
     userId: "user-1",
     signOut: vi.fn(),
@@ -66,11 +67,11 @@ describe("AccountSection leaderboard participation", () => {
     mocks.settings = { enabled: true, signedIn: false };
   });
 
-  it("offers optional login participation while signed out", () => {
+  it("does not expose a login entry outside the leaderboard while signed out", () => {
     render(<AccountSection />);
-    expect(screen.getByText("登录 · 参与排行榜")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
-    expect(mocks.openLogin).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("登录 · 参与排行榜")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
+    expect(mocks.openLogin).not.toHaveBeenCalled();
   });
 
   it("shows profile, actual-cost consent, sign out, and destructive exit only", () => {

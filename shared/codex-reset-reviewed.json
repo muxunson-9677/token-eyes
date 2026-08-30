@@ -1,0 +1,114 @@
+{
+  "announcements": [
+    {
+      "id": "x:2083395449814229287",
+      "type": "official_reset_announcement",
+      "title": "Codex 官方额外重置",
+      "summary": "To celebrate a week of efficiency and let you run 100'000 Luna threads this weekend... that's right... wait for it... I have reset usage limits for Codex and ChatGPT Work.\n\nEnjoy.",
+      "body": "To celebrate a week of efficiency and let you run 100'000 Luna threads this weekend... that's right... wait for it... I have reset usage limits for Codex and ChatGPT Work.\n\nEnjoy.",
+      "announcement_state": "confirmed",
+      "source_url": "https://x.com/thsottiaux/status/2083395449814229287",
+      "official_url": "https://chatgpt.com/codex",
+      "published_at": "2026-08-01T03:32:37.508Z",
+      "expires_at": "2026-08-31T03:32:37.508Z",
+      "source_author": "thsottiaux",
+      "source_post_id": "2083395449814229287",
+      "reset_kind": "hard",
+      "reset_scope": "all_codex_work_users",
+      "review": {
+        "status": "approved",
+        "source_verified": true,
+        "reviewed_by": "Codex 0.54.49 acceptance",
+        "reviewed_at": "2026-08-30T02:29:12.921Z"
+      }
+    },
+    {
+      "id": "x:2086188036493344823",
+      "type": "official_reset_announcement",
+      "title": "Codex 官方额外重置",
+      "summary": "That's right, GPT-5.6 Sol is awesome and can be used pretty much anywhere, including in the CC harness.\n\nTo celebrate this, together with the fact that I'm not going anywhere... I have reset usage limits for all paid users of ChatGPT Work a",
+      "body": "That's right, GPT-5.6 Sol is awesome and can be used pretty much anywhere, including in the CC harness.\n\nTo celebrate this, together with the fact that I'm not going anywhere... I have reset usage limits for all paid users of ChatGPT Work and Codex.\n\nHave fun out there!",
+      "announcement_state": "confirmed",
+      "source_url": "https://x.com/thsottiaux/status/2086188036493344823",
+      "official_url": "https://chatgpt.com/codex",
+      "published_at": "2026-08-08T20:29:22.056Z",
+      "expires_at": "2026-09-07T20:29:22.056Z",
+      "source_author": "thsottiaux",
+      "source_post_id": "2086188036493344823",
+      "reset_kind": "hard",
+      "reset_scope": "all_paid_users",
+      "review": {
+        "status": "approved",
+        "source_verified": true,
+        "reviewed_by": "Codex 0.54.49 acceptance",
+        "reviewed_at": "2026-08-30T02:29:12.921Z"
+      }
+    },
+    {
+      "id": "x:2086972933566857393",
+      "type": "official_reset_announcement",
+      "title": "Codex 官方额外重置",
+      "summary": "Usage limits have been reset for all paid ChatGPT Work and Codex users. Happy Monday you all. Hope it is a fantastic week.",
+      "body": "Usage limits have been reset for all paid ChatGPT Work and Codex users. Happy Monday you all. Hope it is a fantastic week.",
+      "announcement_state": "confirmed",
+      "source_url": "https://x.com/thsottiaux/status/2086972933566857393",
+      "official_url": "https://chatgpt.com/codex",
+      "published_at": "2026-08-11T00:28:16.101Z",
+      "expires_at": "2026-09-10T00:28:16.101Z",
+      "source_author": "thsottiaux",
+      "source_post_id": "2086972933566857393",
+      "reset_kind": "hard",
+      "reset_scope": "unknown",
+      "review": {
+        "status": "approved",
+        "source_verified": true,
+        "reviewed_by": "Codex 0.54.49 acceptance",
+        "reviewed_at": "2026-08-30T02:29:12.921Z"
+      }
+    },
+    {
+      "id": "x:2090964822422949999",
+      "type": "official_reset_announcement",
+      "title": "Codex 官方额外重置",
+      "summary": "The banked reset has landed, I repeat, the banked reset has landed. Have an amazing weekend.",
+      "body": "The banked reset has landed, I repeat, the banked reset has landed. Have an amazing weekend.",
+      "announcement_state": "confirmed",
+      "source_url": "https://x.com/thsottiaux/status/2090964822422949999",
+      "official_url": "https://chatgpt.com/codex",
+      "published_at": "2026-08-22T00:50:36.570Z",
+      "expires_at": "2026-09-21T00:50:36.570Z",
+      "source_author": "thsottiaux",
+      "source_post_id": "2090964822422949999",
+      "reset_kind": "banked",
+      "reset_scope": "all_paid_users",
+      "review": {
+        "status": "approved",
+        "source_verified": true,
+        "reviewed_by": "Codex 0.54.49 acceptance",
+        "reviewed_at": "2026-08-30T02:29:12.921Z"
+      }
+    },
+    {
+      "id": "x:2091688655828246890",
+      "type": "official_reset_announcement",
+      "title": "Codex 官方额外重置",
+      "summary": "Good Sunday. Reset has been propagated to accounts and we landed some fixes to usage for things mentioned yesterday as issues we found. You should feel a positive difference. More to come tomorrow and will keep communicating.",
+      "body": "Good Sunday. Reset has been propagated to accounts and we landed some fixes to usage for things mentioned yesterday as issues we found. You should feel a positive difference. More to come tomorrow and will keep communicating.",
+      "announcement_state": "confirmed",
+      "source_url": "https://x.com/thsottiaux/status/2091688655828246890",
+      "official_url": "https://chatgpt.com/codex",
+      "published_at": "2026-08-24T00:46:51.902Z",
+      "expires_at": "2026-09-23T00:46:51.902Z",
+      "source_author": "thsottiaux",
+      "source_post_id": "2091688655828246890",
+      "reset_kind": "hard",
+      "reset_scope": "all_paid_users",
+      "review": {
+        "status": "approved",
+        "source_verified": true,
+        "reviewed_by": "Codex 0.54.49 acceptance",
+        "reviewed_at": "2026-08-30T02:29:12.921Z"
+      }
+    }
+  ]
+}

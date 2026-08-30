@@ -16,7 +16,7 @@ test("bootstrap creates only the public profile primitives needed by compact lea
 
   assert.match(source, /create table if not exists public\.tokentracker_user_settings/);
   assert.match(source, /user_id uuid primary key references auth\.users\(id\) on delete cascade/);
-  assert.match(source, /leaderboard_public boolean not null default true/);
+  assert.match(source, /leaderboard_public boolean not null default false/);
   assert.match(source, /create or replace view public\.tokentracker_user_profiles/);
   assert.match(source, /left join public\.tokentracker_user_settings/);
   assert.match(source, /enable row level security/);
@@ -34,6 +34,7 @@ test("bootstrap keeps anonymous readers away from writable profile settings", ()
   const source = sql();
 
   assert.match(source, /revoke all on table public\.tokentracker_user_settings from anon/);
-  assert.match(source, /grant select, insert, update, delete on table public\.tokentracker_user_settings to authenticated/);
+  assert.match(source, /grant select on table public\.tokentracker_user_settings to authenticated/);
+  assert.match(source, /revoke insert, update, delete on table public\.tokentracker_user_settings from authenticated/);
   assert.doesNotMatch(source, /grant (insert|update|delete|all)[^;]+ to anon/);
 });

@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
-import { BadgeCheck, CircleDollarSign, Coins, Info, MoreVertical, ShieldCheck, Users } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, Coins, Info, MoreVertical, RefreshCw, ShieldCheck, Users } from "lucide-react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext.jsx";
 import { useLoginModal } from "../contexts/LoginModalContext.jsx";
 import { ProviderIcon } from "../ui/dashboard/components/ProviderIcon.jsx";
@@ -12,13 +12,10 @@ import { cn } from "../lib/cn";
 import { useCurrency } from "../hooks/useCurrency.js";
 import { CURRENCY_USD, getCurrencySymbol } from "../lib/currency";
 import {
-  buildPageItems,
-  clampInt,
-  getPaginationFlags,
-  pageContainingRank,
   prependMeRowToPage,
 } from "../lib/leaderboard-ui";
 import {
+  LEADERBOARD_AGENTS,
   LEADERBOARD_DEFAULT_AGENT,
   LEADERBOARD_DEFAULT_METRIC,
   LEADERBOARD_DEFAULT_PERIOD,
@@ -27,13 +24,15 @@ import {
   normalizeLeaderboardPeriod,
 } from "../lib/leaderboard-query.js";
 import { normalizeAgentMetrics } from "../lib/leaderboard-agent-metrics.js";
-import { getCumulativeYesterdayComparison } from "../lib/leaderboard-summary-details.js";
 import {
   buildLocalLeaderboardRow,
   getLeaderboardPeriodDateRange,
 } from "../lib/leaderboard-local-row";
-import { getLocalLeaderboardState } from "../lib/leaderboard-state-client";
-import { getLeaderboardSyncState } from "../lib/leaderboard-sync-state";
+import { getLocalLeaderboardState, syncLeaderboardState } from "../lib/leaderboard-state-client";
+import {
+  getLeaderboardSyncState,
+  markLeaderboardLoginIntent,
+} from "../lib/leaderboard-sync-state";
 import { getLeaderboardBaseUrl } from "../lib/config";
 import { getDashboardEntryPath } from "../lib/host-mode";
 import { isMockEnabled } from "../lib/mock-data";
@@ -46,7 +45,6 @@ import {
   getUsageSummary,
 } from "../lib/api";
 import {
-  clearLeaderboardPreloadState,
   getLeaderboardPreloadContextKey,
   publishLeaderboardPreloadState,
   readLeaderboardPreloadState,
@@ -62,9 +60,7 @@ const LeaderboardProfileModal = lazy(() =>
 import { LeaderboardSkeleton } from "../components/LeaderboardSkeleton.jsx";
 import { LeaderboardMeChip } from "../components/LeaderboardSummaryCard.jsx";
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
-const DEFAULT_PAGE_SIZE = 20;
-const PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
+const PUBLIC_TOP_LIMIT = 50;
 const PERIOD_OPTIONS = [
   { value: "today", copyKey: "leaderboard.period.today" },
   { value: "week", copyKey: "leaderboard.period.week" },
@@ -79,25 +75,8 @@ const METRIC_OPTIONS = [
 ];
 const SOURCE_OPTIONS = [
   { value: "all", copyKey: "leaderboard.source.all" },
-  { value: "codex", copyKey: "leaderboard.source.codex" },
-  { value: "claude", copyKey: "leaderboard.source.claude" },
-  { value: "cursor", copyKey: "leaderboard.source.cursor" },
-  { value: "gemini", copyKey: "leaderboard.source.gemini" },
-  { value: "opencode", copyKey: "leaderboard.source.opencode" },
-  { value: "other", copyKey: "leaderboard.source.other" },
+  ...LEADERBOARD_AGENTS,
 ];
-
-function readStoredPageSize() {
-  if (typeof window === "undefined") return DEFAULT_PAGE_SIZE;
-  try {
-    const raw = window.localStorage.getItem(PAGE_SIZE_STORAGE_KEY);
-    const n = Number(raw);
-    if (PAGE_SIZE_OPTIONS.includes(n)) return n;
-  } catch {
-    // ignore storage errors (private mode, disabled, etc.)
-  }
-  return DEFAULT_PAGE_SIZE;
-}
 
 function formatCost(value, currency, rate) {
   if (value === null || value === undefined || value === "") return null;
@@ -108,27 +87,6 @@ function formatCost(value, currency, rate) {
   if (converted >= 1000) return `${symbol}${Math.round(converted).toLocaleString()}`;
   if (converted >= 10) return `${symbol}${Math.round(converted)}`;
   return `${symbol}${converted.toFixed(2)}`;
-}
-
-function formatSummaryCostChange(value, currency, rate) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) return null;
-  const converted = currency === CURRENCY_USD ? numeric : numeric * rate;
-  if (Math.sign(converted) === 1 && converted < 0.01) return `${getCurrencySymbol(currency)}${converted.toFixed(4)}`;
-  return formatCost(numeric, currency, rate);
-}
-
-function formatYesterdayDetail(comparison, formatter) {
-  if (!comparison) return null;
-  const amount = formatter(comparison.change);
-  if (!amount) return null;
-  const percentDigits = Math.sign(comparison.percent) === 1 && comparison.percent < 0.01
-    ? Math.min(8, Math.max(4, Math.ceil(-Math.log10(comparison.percent)) + 1))
-    : 2;
-  return copy("leaderboard.summary.yesterday_change", {
-    amount: `+${amount}`,
-    percent: `+${comparison.percent.toFixed(percentDigits)}%`,
-  });
 }
 
 function formatLeaderboardGeneratedAt(value) {
@@ -519,28 +477,14 @@ export function LeaderboardPage({
   }, [auth, authTokenAllowed]);
   const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
 
-  const [listPage, setListPage] = useState(1);
-  const [pageInput, setPageInput] = useState("");
-  const [todaySummary, setTodaySummary] = useState(null);
   const [syncRevision, setSyncRevision] = useState(0);
   const [participationSync, setParticipationSync] = useState("idle");
-  const [pageSize, setPageSizeState] = useState(readStoredPageSize);
   const [modalUserId, setModalUserId] = useState(null);
   const openProfileModal = useCallback((userId) => {
     if (typeof userId === "string" && userId.trim()) setModalUserId(userId.trim());
   }, []);
   const closeProfileModal = useCallback(() => setModalUserId(null), []);
 
-  const setPageSize = useCallback((next) => {
-    const normalized = PAGE_SIZE_OPTIONS.includes(next) ? next : DEFAULT_PAGE_SIZE;
-    setPageSizeState(normalized);
-    setListPage(1);
-    try {
-      window.localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(normalized));
-    } catch {
-      // ignore
-    }
-  }, []);
   const period = useMemo(() => {
     const params = new URLSearchParams(location?.search || "");
     return normalizeLeaderboardPeriod(params.get("period") || LEADERBOARD_DEFAULT_PERIOD);
@@ -560,13 +504,13 @@ export function LeaderboardPage({
     if (value === current) return;
     const params = new URLSearchParams(location?.search || "");
     params.set(key, value);
-    setListPage(1);
     navigate(`${location?.pathname || "/leaderboard"}?${params.toString()}`, { replace: true });
   };
 
   const handleEmailSignIn = useCallback(() => {
     if (!cloudAuthEnabled) return;
-    openLoginModal({ emailOnly: true });
+    markLeaderboardLoginIntent();
+    openLoginModal({ emailOnly: true, leaderboardParticipation: true });
   }, [cloudAuthEnabled, openLoginModal]);
 
   const handleDeveloperSignIn = useCallback(() => {
@@ -588,24 +532,28 @@ export function LeaderboardPage({
     void cloudSignOut?.();
   }, [cloudSignOut]);
 
-  useEffect(() => {
-    setListPage(1);
-  }, [metric, period, source]);
+  const handleManualRefresh = useCallback(() => {
+    setSyncRevision((value) => value + 1);
+    const accountId = typeof cloudUser?.id === "string" ? cloudUser.id.trim() : "";
+    if (!cloudSignedIn || !accountId || getLeaderboardSyncState(accountId).participant !== true) return;
+    void syncLeaderboardState({
+      getAccessToken: async () => resolveAuthAccessTokenWithRetry(effectiveAuthToken),
+      reason: "manual-list-refresh",
+      accountId,
+    });
+  }, [cloudSignedIn, cloudUser?.id, effectiveAuthToken]);
 
   useEffect(() => {
     const onSync = (event) => {
       const status = event?.detail?.status || "idle";
       setParticipationSync(status);
-      if (status === "ready") setSyncRevision((value) => value + 1);
     };
     window.addEventListener("token-eyes:leaderboard-sync", onSync);
     return () => window.removeEventListener("token-eyes:leaderboard-sync", onSync);
   }, []);
 
-  const listOffset = useMemo(() => {
-    const safePage = clampInt(listPage, { min: 1, max: 1_000_000, fallback: 1 });
-    return (safePage - 1) * pageSize;
-  }, [listPage, pageSize]);
+  const pageSize = PUBLIC_TOP_LIMIT;
+  const listOffset = 0;
   const leaderboardAccessMode = useMemo(() => {
     if (leaderboardMockEnabled) return "mock";
     if (cloudSignedIn) return "cloud";
@@ -647,7 +595,7 @@ export function LeaderboardPage({
   });
 
   useEffect(() => {
-    // Mock leaderboard uses local getMockLeaderboard(); real data needs InsForge URL from getLeaderboardBaseUrl().
+    // Mock leaderboard uses local getMockLeaderboard(); real data uses the signed static feed base URL.
     if ((!leaderboardBaseUrl && !leaderboardMockEnabled) || (!leaderboardMockEnabled && leaderboardAccessMode === "unavailable")) {
       setListState({ loading: false, error: null, data: null, contextKey: null });
       return;
@@ -700,12 +648,16 @@ export function LeaderboardPage({
     })().catch((err) => {
       if (!active) return;
       const error = normalizeLeaderboardError(err);
-      clearLeaderboardPreloadState(leaderboardPreloadContextKey);
-      setListState({
-        loading: false,
-        error,
-        data: null,
-        contextKey: leaderboardPreloadContextKey,
+      setListState((previous) => {
+        const lastValidData = previous.contextKey === leaderboardPreloadContextKey
+          ? previous.data
+          : cachedState?.data || null;
+        return {
+          loading: false,
+          error,
+          data: lastValidData,
+          contextKey: leaderboardPreloadContextKey,
+        };
       });
     });
     return () => {
@@ -758,17 +710,6 @@ export function LeaderboardPage({
   const listData = currentListState.data;
   const [me, setMe] = useState(null);
   const [localMe, setLocalMe] = useState(null);
-  const [localRefreshRevision, bumpLocalRefreshRevision] = useState(0);
-
-  useEffect(() => {
-    const refreshLocal = () => bumpLocalRefreshRevision((revision) => revision + 1);
-    const interval = window.setInterval(refreshLocal, 60_000);
-    window.addEventListener("focus", refreshLocal);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshLocal);
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -900,11 +841,9 @@ export function LeaderboardPage({
     me?.user_id,
     metric,
     period,
-    localRefreshRevision,
     syncRevision,
   ]);
 
-  const totalPages = listData?.total_pages ?? null;
   const totalEntries = listData?.ranked_entry_count ?? listData?.total_entries ?? 0;
   const rawParticipantCount = listData?.participant_count
     ?? listData?.ranked_entry_count
@@ -918,10 +857,6 @@ export function LeaderboardPage({
   const cloudAggregateTotalCost = isProvidedNumber(listData?.aggregate_total_cost_usd)
     ? Math.max(0, Number(listData.aggregate_total_cost_usd))
     : null;
-  const currentPage = listData?.page ?? listPage;
-  const pageItems = useMemo(() => {
-    return buildPageItems(currentPage, totalPages);
-  }, [currentPage, totalPages]);
 
   const from = listData?.from || null;
   const to = listData?.to || null;
@@ -1059,77 +994,12 @@ export function LeaderboardPage({
     return null;
   }, [displayEntries, localMe, me, participantCount]);
 
-  useEffect(() => {
-    const hasServerSummaryDetails = Boolean(
-      listData?.summary_details?.tokens || listData?.summary_details?.cost,
-    );
-    if (
-      period !== "total"
-      || hasServerSummaryDetails
-      || !isProvidedNumber(aggregateTotalTokens)
-      || !isProvidedNumber(aggregateTotalCost)
-    ) {
-      setTodaySummary(null);
-      return undefined;
-    }
-
-    let active = true;
-    getLeaderboard({
-      baseUrl: leaderboardBaseUrl,
-      metric: "tokens",
-      period: "today",
-      source: effectiveSource,
-      limit: 1,
-      offset: 0,
-      ...(developerPreviewActive ? { mock: true } : {}),
-    }).then((data) => {
-      if (!active) return;
-      setTodaySummary({
-        tokens: isProvidedNumber(data?.aggregate_total_tokens) ? Number(data.aggregate_total_tokens) : null,
-        cost: isProvidedNumber(data?.aggregate_total_cost_usd) ? Number(data.aggregate_total_cost_usd) : null,
-      });
-    }).catch(() => {
-      if (active) setTodaySummary(null);
-    });
-    return () => {
-      active = false;
-    };
-  }, [
-    aggregateTotalCost,
-    aggregateTotalTokens,
-    developerPreviewActive,
-    effectiveSource,
-    leaderboardBaseUrl,
-    listData?.summary_details?.cost,
-    listData?.summary_details?.tokens,
-    period,
-  ]);
-
   const participantSummaryDetail = listData?.summary_details?.participants
     || (isProvidedNumber(participantCount)
       ? copy("leaderboard.summary.active_today", { count: Number(participantCount).toLocaleString() })
       : null);
-  const tokenSummaryDetail = listData?.summary_details?.tokens
-    || formatYesterdayDetail(
-      getCumulativeYesterdayComparison(aggregateTotalTokens, todaySummary?.tokens),
-      formatChineseTokenCount,
-    );
-  const costSummaryDetail = listData?.summary_details?.cost
-    || formatYesterdayDetail(
-      getCumulativeYesterdayComparison(aggregateTotalCost, todaySummary?.cost),
-      (value) => formatSummaryCostChange(value, currency, rate),
-    );
-
-  const myPage = useMemo(
-    () => pageContainingRank(me?.rank, pageSize),
-    [me?.rank, pageSize],
-  );
-  const onMyPage = myPage != null && myPage === currentPage;
-  const handleJumpToMe = useCallback(() => {
-    if (myPage != null) setListPage(myPage);
-  }, [myPage]);
-
-  const { canPrev, canNext } = getPaginationFlags({ page: currentPage, totalPages });
+  const tokenSummaryDetail = listData?.summary_details?.tokens || null;
+  const costSummaryDetail = listData?.summary_details?.cost || null;
 
   const hasEntries = Array.isArray(displayEntries) && displayEntries.length !== 0;
   let listBody = null;
@@ -1198,46 +1068,6 @@ export function LeaderboardPage({
     );
   }
 
-  const jumpToListPage = () => {
-    const parsed = Number.parseInt(String(pageInput).trim(), 10);
-    if (!Number.isFinite(parsed) || parsed < 1) return;
-    const max = typeof totalPages === "number" && totalPages > 0 ? totalPages : parsed;
-    setListPage(Math.min(parsed, max));
-  };
-
-  let pageButtons = null;
-  if (typeof totalPages === "number") {
-    pageButtons = pageItems.map((p, idx) => {
-      if (p == null) {
-        return (
-          <span
-            key={`ellipsis-${idx}`}
-            className="px-2 text-oai-gray-400 dark:text-oai-gray-500"
-          >
-            {copy("leaderboard.pagination.ellipsis")}
-          </span>
-        );
-      }
-      return (
-        <button
-          key={`page-${p}`}
-          type="button"
-          aria-current={p === currentPage ? "page" : undefined}
-          onClick={() => setListPage(p)}
-          disabled={currentListState.loading}
-        >
-          {String(p)}
-        </button>
-      );
-    });
-  } else {
-    pageButtons = (
-      <span className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
-        {copy("leaderboard.pagination.page_unknown", { page: String(currentPage) })}
-      </span>
-    );
-  }
-
   return (
     <div className="tt-leaderboard-page flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
@@ -1249,20 +1079,22 @@ export function LeaderboardPage({
                 {copy("leaderboard.title")}
               </h1>
               <div className="tt-leaderboard-action-group flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate("/settings/basic")}
-                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
-                >
-                  {copy("settings.section.account")}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAccountSignOut}
-                  className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
-                >
-                  {copy("settings.account.signOut")}
-                </button>
+                {cloudSignedIn ? <>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/settings/basic")}
+                    className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
+                  >
+                    {copy("settings.section.account")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAccountSignOut}
+                    className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors"
+                  >
+                    {copy("settings.account.signOut")}
+                  </button>
+                </> : null}
                 <Link
                   to="/leaderboard/rules"
                   className="tt-leaderboard-action-button tt-product-focusable tt-pressable inline-flex h-9 items-center justify-center rounded-lg border px-3 text-sm font-medium no-underline transition-colors"
@@ -1280,7 +1112,7 @@ export function LeaderboardPage({
                     : copy("leaderboard.range_loading", { period: periodLabel })}
               </span>
               {generatedAtLabel && (
-                <span className="ml-2 pl-2 border-l border-oai-gray-200 dark:border-oai-gray-800 hidden sm:inline-block text-oai-gray-400 dark:text-oai-gray-500 text-xs">
+                <span data-testid="leaderboard-generated-at" className="ml-2 pl-2 border-l border-oai-gray-200 dark:border-oai-gray-800 hidden sm:inline-block text-oai-gray-400 dark:text-oai-gray-500 text-xs">
                   {copy("leaderboard.generated_at", { ts: generatedAtLabel })}
                 </span>
               )}
@@ -1439,30 +1271,43 @@ export function LeaderboardPage({
                 })}
               </div>
               <Select
+                id="leaderboard-source-control"
                 value={effectiveSource}
                 onValueChange={(value) => handleDimensionChange("source", value)}
                 disabled={currentListState.loading || metric === "actual_cost"}
                 ariaLabel={copy("leaderboard.source.label")}
                 options={SOURCE_OPTIONS.map((option) => ({
                   value: option.value,
-                  label: copy(option.copyKey),
+                  label: option.label || copy(option.copyKey),
                 }))}
               />
             </div>
 
-            <LeaderboardMeChip
-              me={statusMe || {
-                rank: 1,
-                display_name: meLabel,
-                user_id: "leaderboard-current-user",
-              }}
-              totalEntries={Math.max(1, Number(totalEntries) || 0)}
-              meLabel={meLabel}
-              onOpenProfile={statusMe?.user_id ? () => openProfileModal(statusMe.user_id) : undefined}
-              onJumpToMe={handleJumpToMe}
-              canJump={myPage != null && !onMyPage && !currentListState.loading}
-              className="shrink-0"
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                data-testid="leaderboard-manual-refresh"
+                onClick={handleManualRefresh}
+                disabled={currentListState.loading}
+                aria-label={copy("usage.button.refresh")}
+                className="tt-pressable tt-product-focusable inline-flex h-9 items-center gap-1.5 rounded-[var(--tt-control-radius)] border border-oai-gray-200 bg-white px-3 text-xs font-medium text-oai-gray-600 transition-colors hover:text-oai-black disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:text-white"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", currentListState.loading && "animate-spin")} aria-hidden="true" />
+                {copy("usage.button.refresh")}
+              </button>
+              <LeaderboardMeChip
+                me={statusMe || {
+                  rank: 1,
+                  display_name: meLabel,
+                  user_id: "leaderboard-current-user",
+                }}
+                totalEntries={Math.max(1, Number(totalEntries) || 0)}
+                meLabel={meLabel}
+                onOpenProfile={statusMe?.user_id ? () => openProfileModal(statusMe.user_id) : undefined}
+                onJumpToMe={undefined}
+                canJump={false}
+              />
+            </div>
           </div>
 
           {developerPreviewActive && (
@@ -1526,7 +1371,7 @@ export function LeaderboardPage({
           >
             {currentListState.error && hasEntries ? (
               <div className="border-b border-oai-gray-200 dark:border-oai-gray-800 px-6 py-3">
-                <p className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
+                <p data-testid="leaderboard-list-error" className="text-sm text-red-500 dark:text-red-400">{currentListState.error}</p>
               </div>
             ) : null}
             <div className="tt-leaderboard-table-head tt-leaderboard-table-head--expanded" data-testid="leaderboard-table-head">
@@ -1536,56 +1381,6 @@ export function LeaderboardPage({
             </div>
             {listBody}
 
-            <div
-              className="tt-overview-pagination tt-leaderboard-pagination"
-              data-testid="leaderboard-pagination"
-            >
-              <div>
-                <label className="tt-overview-page-size">
-                  {copy("dashboard.daily.page_size_label")}
-                  <select
-                    id="leaderboard-page-size"
-                    aria-label={copy("dashboard.daily.page_size_aria")}
-                    value={pageSize}
-                    disabled={currentListState.loading}
-                    onChange={(event) => setPageSize(Number(event.target.value))}
-                  >
-                    {PAGE_SIZE_OPTIONS.map((size) => (
-                      <option key={size} value={size}>
-                        {copy("dashboard.daily.page_size_value", { count: size })}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  disabled={!canPrev || currentListState.loading}
-                  onClick={() => setListPage((p) => Math.max(1, p - 1))}
-                >
-                  {copy("details.pagination.prev")}
-                </button>
-                {pageButtons}
-                <button
-                  type="button"
-                  disabled={!canNext || currentListState.loading}
-                  onClick={() => setListPage((p) => p + 1)}
-                >
-                  {copy("details.pagination.next")}
-                </button>
-                <input
-                  aria-label={copy("dashboard.projects.page_number")}
-                  value={pageInput}
-                  inputMode="numeric"
-                  onChange={(event) => setPageInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") jumpToListPage();
-                  }}
-                />
-                <button type="button" onClick={jumpToListPage}>
-                  {copy("dashboard.projects.page_jump")}
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </main>

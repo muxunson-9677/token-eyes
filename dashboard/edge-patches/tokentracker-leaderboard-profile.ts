@@ -286,8 +286,11 @@ function computeRowCost(row: HourlyRow): number {
 
 /** Map raw `source` to the canonical bucket used by the modal's by_provider list. */
 const KNOWN_SOURCES = new Set([
-  "codex", "claude", "gemini", "cursor", "opencode", "openclaw",
-  "hermes", "kiro", "copilot", "kimi", "droid",
+  "claude", "codex", "every-code", "cursor", "trae", "gemini",
+  "opencode", "openclaw", "kilo-cli", "kilocode", "roocode", "kiro",
+  "hermes", "kimi", "kimi-code", "codebuddy", "workbuddy", "omp", "pi",
+  "craft", "grok", "copilot", "zed", "goose", "droid", "antigravity",
+  "deepseek-harness",
 ]);
 function canonicalSource(s: string) {
   return KNOWN_SOURCES.has(s) ? s : "other";
@@ -464,26 +467,9 @@ export default async function (req: Request): Promise<Response> {
   if (BLOCKED_LEADERBOARD_USER_IDS.has(userId)) return json({ error: "Not found" }, 404);
 
   const callerUserId = await verifyCallerUserId(req);
-  const isSelf = Boolean(callerUserId && callerUserId === userId);
+  if (!callerUserId) return json({ error: "Unauthorized" }, 401);
+  if (callerUserId !== userId) return json({ error: "Forbidden" }, 403);
   const client = getClient();
-
-  // Privacy gate. Mirror the leaderboard list's exposure policy: if the user
-  // already appears in the public snapshot table, their aggregate numbers are
-  // visible to anyone scrolling the leaderboard — so the modal should not
-  // gate them behind `leaderboard_public`. The `leaderboard_anonymous` flag
-  // is enforced separately below by hiding display_name/avatar/github_url.
-  // (A `leaderboard_public=true` check would 404 ~60% of listed rows here.)
-  if (!isSelf) {
-    const { data: snap } = await client.database
-      .from("tokentracker_leaderboard_snapshots_v2")
-      .select("user_id")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
-    if (!snap) {
-      return json({ error: "Not found" }, 404);
-    }
-  }
 
   // Hero/identity row: pull display_name + avatar from profile, and
   // anonymous/github flags + url from settings.
@@ -519,7 +505,7 @@ export default async function (req: Request): Promise<Response> {
   let snapToDay = periodBounds.to_day;
   if (period === "total") {
     // total snapshots are keyed (1970-01-01, <refresh day>) — mirror the
-    // reader (tokentracker-leaderboard.ts) and resolve the latest pair.
+    // signed static publisher and resolve the latest pair.
     const { data: latestTotal } = await client.database
       .from("tokentracker_leaderboard_snapshots_v2")
       .select("from_day, to_day")
@@ -651,7 +637,7 @@ export default async function (req: Request): Promise<Response> {
   // only, derive the token total and provider breakdown directly from those
   // compact rows so the leaderboard can show "me" immediately. No project,
   // prompt, or file data exists in this payload.
-  if (bucketMap.size === 0 && !snap && isSelf) {
+  if (bucketMap.size === 0 && !snap) {
     const { data: compactStates } = await client.database
       .from("tokentracker_leaderboard_device_state")
       .select("payload")

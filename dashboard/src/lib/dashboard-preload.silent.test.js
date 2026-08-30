@@ -25,7 +25,7 @@ describe("dashboard preload silent side effects", () => {
     runCloudUsageSyncNow.mockReset();
   });
 
-  it("preloads leaderboard data directly without mounting the page or triggering visible side effects", async () => {
+  it("preloads only the leaderboard route module and leaves data reads to the mounted page", async () => {
     const pageLoader = vi.fn(() => Promise.resolve({ LeaderboardPage: () => null }));
     const openLoginModal = vi.fn();
     const navigate = vi.fn();
@@ -33,7 +33,7 @@ describe("dashboard preload silent side effects", () => {
     getLeaderboard.mockResolvedValue({ entries: [], page: 1, total_entries: 0 });
 
     await preloadDashboardPageResource("leaderboard", { loader: pageLoader });
-    await preloadLeaderboardDefaultState({
+    const state = await preloadLeaderboardDefaultState({
       baseUrl: "https://edge.example",
       mockEnabled: false,
       signedIn: true,
@@ -45,7 +45,8 @@ describe("dashboard preload silent side effects", () => {
     });
 
     expect(pageLoader).toHaveBeenCalledTimes(1);
-    expect(getLeaderboard).toHaveBeenCalledTimes(1);
+    expect(state).toMatchObject({ status: "skipped", error: "page-only-read" });
+    expect(getLeaderboard).not.toHaveBeenCalled();
     expect(openLoginModal).not.toHaveBeenCalled();
     expect(runCloudUsageSyncNow).not.toHaveBeenCalled();
     expect(refreshLeaderboard).not.toHaveBeenCalled();

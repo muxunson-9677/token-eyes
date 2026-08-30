@@ -15,6 +15,7 @@
     "verify:share-clipboard": "node scripts/verify-share-clipboard.mjs",
     "verify:spend-local": "node scripts/verify-spend-local.mjs",
     "verify:usage-layout": "node scripts/verify-usage-layout.mjs",
+    "verify:leaderboard-static-ui": "node scripts/verify-leaderboard-static-ui.mjs",
     "verify:dashboard-cost-styles": "node scripts/verify-dashboard-cost-styles.mjs",
     "verify:data-display-policy": "node scripts/verify-data-display-policy.mjs",
     "test": "vitest run",

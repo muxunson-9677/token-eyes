@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext";
 import {
@@ -9,11 +9,11 @@ import {
 } from "../lib/api";
 import { syncLeaderboardState } from "../lib/leaderboard-state-client";
 import {
+  consumeLeaderboardLoginIntent,
   getLeaderboardSyncState,
   setLeaderboardParticipationState,
 } from "../lib/leaderboard-sync-state";
 
-const DAILY_CATCHUP_MS = 24 * 60 * 60 * 1000;
 export const LEADERBOARD_SYNC_EVENT = "token-eyes:leaderboard-sync";
 
 function publishSyncStatus(status: "syncing" | "ready" | "deferred", error?: unknown): void {
@@ -31,21 +31,16 @@ function isLeaderboardPath(pathname: string): boolean {
   return normalized === "/leaderboard" || normalized.startsWith("/leaderboard/");
 }
 
-function dailyCatchupDue(
-  state: ReturnType<typeof getLeaderboardSyncState>,
-  nowMs = Date.now(),
-): boolean {
-  if (state.pending) return true;
-  const lastSuccessMs = Date.parse(state.lastSuccessAt || "");
-  return !Number.isFinite(lastSuccessMs) || nowMs - lastSuccessMs >= DAILY_CATCHUP_MS;
-}
-
 export function useLeaderboardParticipationSync(): void {
   const location = useLocation();
   const auth = useInsforgeAuth();
   const previousSignedIn = useRef<boolean | null>(null);
   const previousLeaderboardPath = useRef(false);
   const inFlight = useRef(false);
+  const [participationRevision, refreshParticipationState] = useReducer(
+    (revision: number) => revision + 1,
+    0,
+  );
 
   useEffect(() => {
     if (!auth.enabled || auth.loading) return;
@@ -64,21 +59,14 @@ export function useLeaderboardParticipationSync(): void {
     }
     if (inFlight.current) return;
     const syncState = getLeaderboardSyncState(accountId);
-
-    let reason:
-      | "first-login"
-      | "leaderboard-open"
-      | "daily-catchup"
-      | null = null;
-    if (priorSignedIn === false) {
-      reason = "first-login";
-    } else if (enteredLeaderboard) {
-      reason = "leaderboard-open";
-    } else if (priorSignedIn === null && dailyCatchupDue(syncState)) {
-      reason = "daily-catchup";
-    }
-    const refreshProfile = syncState.participationReady !== true;
-    if (!reason && !refreshProfile) return;
+    const signedInTransition = priorSignedIn !== true;
+    const canConsumeConsent = onLeaderboard && (signedInTransition || enteredLeaderboard);
+    const refreshProfile = syncState.participationReady !== true
+      || (canConsumeConsent && syncState.participant !== true);
+    const syncExistingParticipant = enteredLeaderboard
+      && syncState.participationReady === true
+      && syncState.participant === true;
+    if (!refreshProfile && !syncExistingParticipant) return;
 
     inFlight.current = true;
     publishSyncStatus("syncing");
@@ -86,17 +74,29 @@ export function useLeaderboardParticipationSync(): void {
       const accessToken = await auth.getAccessToken();
       if (!accessToken) throw new Error("Leaderboard session token unavailable");
 
+      let participant = syncState.participant === true;
       let shareActualCost = syncState.shareActualCost === true;
+      let reason: "leaderboard-consent" | "leaderboard-open" | null =
+        syncExistingParticipant ? "leaderboard-open" : null;
       if (refreshProfile) {
         const profile = await getPublicVisibility({ accessToken });
-        if (!profile?.leaderboard_public) {
+        participant = profile?.leaderboard_public === true;
+        const explicitConsent = canConsumeConsent
+          ? consumeLeaderboardLoginIntent()
+          : false;
+        if (!participant && explicitConsent) {
           await setPublicVisibility({ accessToken, leaderboard_public: true });
+          participant = true;
+          reason = "leaderboard-consent";
+        } else if (participant && enteredLeaderboard) {
+          reason = "leaderboard-open";
         }
         shareActualCost = profile?.share_actual_cost === true;
-        setLeaderboardParticipationState({ accountId, shareActualCost });
+        setLeaderboardParticipationState({ accountId, participant, shareActualCost });
+        refreshParticipationState();
       }
 
-      if (shareActualCost && reason) {
+      if (participant && shareActualCost && reason) {
         try {
           const periodCosts = await getLocalLeaderboardActualCost();
           const stillEnabled = await refreshLeaderboardActualCost({
@@ -106,15 +106,17 @@ export function useLeaderboardParticipationSync(): void {
           if (!stillEnabled) {
             setLeaderboardParticipationState({
               accountId,
+              participant: true,
               shareActualCost: false,
             });
+            refreshParticipationState();
           }
         } catch (error) {
           console.warn("[tokentracker] leaderboard actual-cost refresh:", error);
         }
       }
 
-      if (reason) {
+      if (participant && reason) {
         const result = await syncLeaderboardState({
           getAccessToken: async () => accessToken,
           reason,
@@ -140,5 +142,41 @@ export function useLeaderboardParticipationSync(): void {
     auth.signedIn,
     auth.user?.id,
     location.pathname,
+  ]);
+
+  useEffect(() => {
+    if (!auth.enabled || auth.loading || !auth.signedIn) return;
+    const accountId =
+      typeof auth.user?.id === "string" ? auth.user.id.trim().slice(0, 128) : "";
+    if (!accountId) return;
+    const syncState = getLeaderboardSyncState(accountId);
+    if (syncState.participationReady !== true || syncState.participant !== true) return;
+
+    let periodicSyncInFlight = false;
+    const timer = window.setInterval(() => {
+      if (periodicSyncInFlight) return;
+      periodicSyncInFlight = true;
+      void syncLeaderboardState({
+        getAccessToken: auth.getAccessToken,
+        reason: "meaningful-change",
+        accountId,
+      }).then((result) => {
+        if (result.status === "uploaded") publishSyncStatus("ready");
+        if (result.status === "deferred") publishSyncStatus("deferred");
+      }).catch((error) => {
+        console.warn("[tokentracker] leaderboard meaningful-change sync:", error);
+        publishSyncStatus("deferred", error);
+      }).finally(() => {
+        periodicSyncInFlight = false;
+      });
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [
+    auth.enabled,
+    auth.getAccessToken,
+    auth.loading,
+    auth.signedIn,
+    auth.user?.id,
+    participationRevision,
   ]);
 }

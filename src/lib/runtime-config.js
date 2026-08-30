@@ -1,14 +1,9 @@
-const DEFAULT_BASE_URL = "https://a62b9nf2.ap-southeast.insforge.app";
+const DEFAULT_BASE_URL = "https://wm59q8gm.ap-southeast.insforge.app";
 const DEFAULT_DASHBOARD_URL = "https://www.tokentracker.cc";
 const DEFAULT_HTTP_TIMEOUT_MS = 20_000;
-// Public InsForge anon key (JWT, role=anon). Mirrors dashboard/src/lib/insforge-config.ts
-// (PROD_INSFORGE_ANON_KEY) — public by design (ships in the browser bundle and
-// appears in .github/workflows/*.yml). The local server needs it to call the
-// cross-device `tokentracker-account-*` edge functions on the popover's behalf.
-// (Previously this mistakenly used the full-access `ik_*` API key, which has
-// admin access and must never be shipped to clients.)
-const DEFAULT_ANON_KEY =
-  "anon_13e8a5d6400e9b50912a5c3612f3480ba06edbd2c331e84e5fbdf5fd16d3d381";
+// The isolated staging backend accepts the public auth/function flows without
+// shipping a project key. Explicit environment/config values still win.
+const DEFAULT_ANON_KEY = "";
 
 function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaults = {} } = {}) {
   const baseUrl = pickString(

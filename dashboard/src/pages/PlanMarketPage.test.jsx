@@ -82,7 +82,7 @@ function remoteState({
       now: new Date("2026-08-27T08:05:00.000Z"),
     }),
     refresh: {
-      source_url: "https://a62b9nf2.function2.insforge.app/tokentracker-plan-market-feed",
+      source_url: "https://feeds.tokentracker.cc/v1/plan-market/feed.json",
       source_status: "configured",
       last_checked_at: lastSuccessfulAt,
       last_successful_at: lastSuccessfulAt,
@@ -134,6 +134,32 @@ it("runs manual catalog refresh once with native button loading and exact change
   expect(screen.getByTestId("plan-market-last-success")).toHaveAttribute(
     "dateTime",
     "2026-08-27T08:05:00.000Z",
+  );
+});
+
+it("does not let a stale initial read overwrite a newer manual refresh", async () => {
+  let resolveInitial;
+  planMarketApi.getPlanMarketState.mockReturnValue(new Promise((resolve) => {
+    resolveInitial = resolve;
+  }));
+  planMarketApi.refreshPlanMarketCatalog.mockResolvedValue(remoteState({
+    lastSuccessfulAt: "2026-08-27T09:00:00.000Z",
+  }));
+  renderPage();
+
+  fireEvent.click(screen.getByRole("button", { name: "copy:plan_market.refresh.button" }));
+  await waitFor(() => expect(screen.getByTestId("plan-market-last-success")).toHaveAttribute(
+    "dateTime",
+    "2026-08-27T09:00:00.000Z",
+  ));
+
+  await act(async () => {
+    resolveInitial(remoteState({ lastSuccessfulAt: "2026-08-27T08:00:00.000Z" }));
+  });
+
+  expect(screen.getByTestId("plan-market-last-success")).toHaveAttribute(
+    "dateTime",
+    "2026-08-27T09:00:00.000Z",
   );
 });
 
@@ -354,7 +380,7 @@ it("renders the reference providers plus the researched Volcano Engine, Xiaomi M
     0, 10, 30, 100, 300, 30,
   ]);
   expect(planMarketCatalog.providers.find((provider) => provider.id === "aliyun-bailian").plans.map((plan) => plan.display_name)).toEqual([
-    "Lite 套餐", "Standard 套餐", "Pro 套餐",
+    "Lite 套餐", "Pro 套餐",
   ]);
   expect(planMarketCatalog.providers.find((provider) => provider.id === "cursor").plans.map((plan) => plan.display_name)).toEqual([
     "Hobby", "Pro", "Pro+", "Ultra", "Teams Standard", "Teams Premium", "Enterprise",

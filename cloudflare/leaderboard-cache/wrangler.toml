@@ -3,10 +3,39 @@ main = "src/index.ts"
 compatibility_date = "2026-07-20"
 
 [vars]
-INSFORGE_PUBLIC_ORIGIN = "https://replace-with-staging.insforge.app"
+PUBLIC_FEED_ORIGIN = "https://replace-with-production-feeds.example"
+LEADERBOARD_SIGNING_KEY_ID = "token-eyes-static-2026-01"
+LEADERBOARD_PUBLISHING_PAUSED = "true"
+LEADERBOARD_DO_DAILY_REQUEST_WARNING_LIMIT = "70000"
+LEADERBOARD_DO_DAILY_REQUEST_STOP_LIMIT = "90000"
+LEADERBOARD_DO_DAILY_WRITE_WARNING_LIMIT = "70000"
+LEADERBOARD_DO_DAILY_WRITE_STOP_LIMIT = "90000"
+LEADERBOARD_REFRESH_URL = "https://replace-with-production.insforge.app/functions/tokentracker-leaderboard-refresh"
+
+[triggers]
+crons = ["5 16 * * *"]
+
+[[durable_objects.bindings]]
+name = "LEADERBOARD_REFRESH_COORDINATOR"
+class_name = "LeaderboardRefreshCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LeaderboardRefreshCoordinator"]
 
 [env.staging]
 name = "token-eyes-leaderboard-cache-staging"
 
 [env.staging.vars]
-INSFORGE_PUBLIC_ORIGIN = "https://replace-with-staging.insforge.app"
+PUBLIC_FEED_ORIGIN = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev"
+LEADERBOARD_SIGNING_KEY_ID = "token-eyes-static-staging-01"
+LEADERBOARD_PUBLISHING_PAUSED = "false"
+LEADERBOARD_DO_DAILY_REQUEST_WARNING_LIMIT = "70000"
+LEADERBOARD_DO_DAILY_REQUEST_STOP_LIMIT = "90000"
+LEADERBOARD_DO_DAILY_WRITE_WARNING_LIMIT = "70000"
+LEADERBOARD_DO_DAILY_WRITE_STOP_LIMIT = "90000"
+LEADERBOARD_REFRESH_URL = "https://wm59q8gm.ap-southeast.insforge.app/functions/tokentracker-leaderboard-refresh"
+
+[[env.staging.durable_objects.bindings]]
+name = "LEADERBOARD_REFRESH_COORDINATOR"
+class_name = "LeaderboardRefreshCoordinator"

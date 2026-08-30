@@ -34,6 +34,12 @@ test("generated SQL creates the pricing table and keeps regression-prone mapping
   assert.match(sql, /cache_read_usd_per_token numeric\(24,12\) not null/i);
   assert.match(sql, /cache_write_usd_per_token numeric\(24,12\) not null/i);
   assert.match(sql, /pricing_version text not null/i);
+  assert.match(sql, /alter table public\.tokentracker_model_pricing enable row level security/i);
+  assert.match(
+    sql,
+    /revoke all on table public\.tokentracker_model_pricing from public, anon, authenticated/i,
+  );
+  assert.match(sql, /grant all on table public\.tokentracker_model_pricing to project_admin/i);
   assert.match(sql, /on conflict \(pricing_key\) do update/i);
   assert.match(
     sql,

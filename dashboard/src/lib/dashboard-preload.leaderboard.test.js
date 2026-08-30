@@ -14,16 +14,6 @@ vi.mock("./api", () => ({
   getLeaderboard: vi.fn(),
 }));
 
-function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 describe("leaderboard default state preload", () => {
   beforeEach(() => {
     resetDashboardPreload();
@@ -31,16 +21,8 @@ describe("leaderboard default state preload", () => {
     window.localStorage.clear();
   });
 
-  it("builds the public leaderboard context without private user identity", async () => {
+  it("builds the public leaderboard context without reading before the page opens", async () => {
     window.localStorage.setItem("tokentracker:leaderboard:pageSize", "50");
-    const data = {
-      entries: [{ rank: 1, display_name: "Ada", total_tokens: 1200 }],
-      page: 1,
-      total_pages: 1,
-      total_entries: 1,
-    };
-    getLeaderboard.mockResolvedValue(data);
-
     const contextKey = getLeaderboardPreloadContextKey({
       baseUrl: "https://edge.example",
       mockEnabled: false,
@@ -65,26 +47,18 @@ describe("leaderboard default state preload", () => {
         source: "codex",
       }),
     ).resolves.toMatchObject({
-      status: "fulfilled",
-      data,
+      status: "skipped",
       contextKey,
     });
-
-      expect(getLeaderboard).toHaveBeenCalledWith({
-        baseUrl: "https://edge.example",
-        period: "total",
-      metric: "estimated_spend",
-      source: "codex",
-      limit: 50,
-      offset: 0,
-      timeoutMs: 10_000,
+    expect(getLeaderboard).not.toHaveBeenCalled();
+    expect(getDashboardPreloadSnapshot().targets.leaderboard).toMatchObject({
+      stateStatus: "skipped",
+      error: "page-only-read",
     });
-    expect(getLeaderboard.mock.calls[0][0]).not.toHaveProperty("accessToken");
-    expect(getLeaderboard.mock.calls[0][0]).not.toHaveProperty("Authorization");
-    expect(readLeaderboardPreloadState(contextKey)).toMatchObject({ data });
+    expect(readLeaderboardPreloadState(contextKey)).toBeNull();
   });
 
-  it("separates readable leaderboard cache by every data access context dimension", () => {
+  it("separates cache by fixed public dimensions and ignores pagination overrides", () => {
     const baseOptions = {
       accessMode: "cloud",
       baseUrl: "https://edge.example",
@@ -107,8 +81,6 @@ describe("leaderboard default state preload", () => {
 
     for (const variant of [
       { period: "week" },
-      { pageSize: 50 },
-      { offset: 20 },
       { metric: "estimated_spend" },
       { source: "codex" },
       { baseUrl: "https://other.example" },
@@ -123,6 +95,9 @@ describe("leaderboard default state preload", () => {
       expect(variantKey).not.toBe(contextKey);
       expect(readLeaderboardPreloadState(variantKey)).toBeNull();
     }
+
+    expect(getLeaderboardPreloadContextKey({ ...baseOptions, pageSize: 50 })).toBe(contextKey);
+    expect(getLeaderboardPreloadContextKey({ ...baseOptions, offset: 20 })).toBe(contextKey);
   });
 
   it("restores the last public leaderboard from localStorage after a new app session", () => {
@@ -153,12 +128,12 @@ describe("leaderboard default state preload", () => {
     expect(getLeaderboard).not.toHaveBeenCalled();
     expect(getDashboardPreloadSnapshot().targets.leaderboard).toMatchObject({
       stateStatus: "skipped",
-      error: "missing-base-url",
+      error: "page-only-read",
     });
     expect(readLeaderboardPreloadState(getLeaderboardPreloadContextKey({ baseUrl: "", mockEnabled: false }))).toBeNull();
   });
 
-  it("allows mock leaderboard preload while cloud auth is still loading", async () => {
+  it("does not let mock mode bypass the page-only read boundary", async () => {
     getLeaderboard.mockResolvedValue({ entries: [], page: 1, total_entries: 0 });
 
     await expect(
@@ -169,29 +144,18 @@ describe("leaderboard default state preload", () => {
         authLoading: true,
         userId: null,
       }),
-    ).resolves.toMatchObject({ status: "fulfilled" });
+    ).resolves.toMatchObject({ status: "skipped", error: "page-only-read" });
 
-      expect(getLeaderboard).toHaveBeenCalledWith({
-        baseUrl: "",
-        period: "total",
-      metric: "tokens",
-      source: "all",
-      limit: 20,
-      offset: 0,
-      timeoutMs: 10_000,
-    });
+    expect(getLeaderboard).not.toHaveBeenCalled();
   });
 
-  it("allows signed-out public leaderboard preload when a base URL is configured", async () => {
-    const data = { entries: [{ rank: 1, display_name: "Public User" }], page: 1, total_entries: 1 };
+  it("does not let signed-out public route preloading issue a snapshot request", async () => {
     const contextKey = getLeaderboardPreloadContextKey({
       accessMode: "public",
       baseUrl: "https://edge.example",
       mockEnabled: false,
       userId: null,
     });
-    getLeaderboard.mockResolvedValue(data);
-
     await expect(
       preloadLeaderboardDefaultState({
         accessMode: "public",
@@ -202,23 +166,14 @@ describe("leaderboard default state preload", () => {
         userId: null,
       }),
     ).resolves.toMatchObject({
-      status: "fulfilled",
-      data,
+      status: "skipped",
+      error: "page-only-read",
       contextKey,
     });
-
-      expect(getLeaderboard).toHaveBeenCalledWith({
-        baseUrl: "https://edge.example",
-        period: "total",
-      metric: "tokens",
-      source: "all",
-      limit: 20,
-      offset: 0,
-      timeoutMs: 10_000,
-    });
+    expect(getLeaderboard).not.toHaveBeenCalled();
   });
 
-  it("records fetch failures without throwing to callers or readable page state", async () => {
+  it("never starts a route-preload fetch even when the API mock would fail", async () => {
     getLeaderboard.mockRejectedValue(new Error("network down"));
 
     await expect(
@@ -229,12 +184,13 @@ describe("leaderboard default state preload", () => {
         authLoading: false,
         userId: "user-1",
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ status: "skipped", error: "page-only-read" });
 
     expect(getDashboardPreloadSnapshot().targets.leaderboard).toMatchObject({
-      stateStatus: "rejected",
-      error: "network down",
+      stateStatus: "skipped",
+      error: "page-only-read",
     });
+    expect(getLeaderboard).not.toHaveBeenCalled();
     expect(
       readLeaderboardPreloadState(
         getLeaderboardPreloadContextKey({
@@ -246,16 +202,12 @@ describe("leaderboard default state preload", () => {
     ).toBeNull();
   });
 
-  it("does not let an in-flight preload repopulate cache after reset", async () => {
-    const pending = deferred();
-    const data = { entries: [{ rank: 1, display_name: "Ada" }], page: 1 };
+  it("does not persist a skipped route preload across a new app session", async () => {
     const contextKey = getLeaderboardPreloadContextKey({
       baseUrl: "https://edge.example",
       mockEnabled: false,
       userId: "user-1",
     });
-    getLeaderboard.mockReturnValue(pending.promise);
-
     const preload = preloadLeaderboardDefaultState({
       baseUrl: "https://edge.example",
       mockEnabled: false,
@@ -263,13 +215,9 @@ describe("leaderboard default state preload", () => {
       authLoading: false,
       userId: "user-1",
     });
-    await Promise.resolve();
-    expect(getDashboardPreloadSnapshot().targets.leaderboard.stateStatus).toBe("pending");
+    await expect(preload).resolves.toMatchObject({ status: "skipped", error: "page-only-read" });
 
     resetDashboardPreload();
-    pending.resolve(data);
-
-    await expect(preload).resolves.toBeNull();
     expect(readLeaderboardPreloadState(contextKey)).toBeNull();
     expect(getDashboardPreloadSnapshot().targets.leaderboard).toMatchObject({
       stateStatus: "idle",

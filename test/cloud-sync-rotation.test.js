@@ -3,23 +3,26 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 
-test("retired cloud sync source retains recovery code but exports network-free no-ops", () => {
+test("retired cloud sync source is a network-free compatibility surface", () => {
   const src = fs.readFileSync(
     path.join(process.cwd(), "dashboard/src/lib/cloud-sync.ts"),
     "utf8",
   );
 
-  assert.match(src, /DEVICE_TOKEN_ROTATE_AFTER_MS\s*=\s*12 \* 60 \* 60 \* 1000/);
-  assert.match(src, /function shouldRotateStoredDeviceSession/);
-  assert.match(src, /issuedAtMs \+ DEVICE_TOKEN_ROTATE_AFTER_MS <= nowMs/);
-  assert.match(src, /clearCloudDeviceSession\(\)/);
-  assert.match(src, /await postLocalUsageSync/);
   assert.match(src, /runCloudUsageSyncIfDue[\s\S]*void getAccessToken/);
   assert.match(src, /runCloudUsageSyncNow[\s\S]*void getAccessToken/);
-  assert.doesNotMatch(
-    src,
-    /export async function runCloudUsageSyncNow[\s\S]*syncCloudUsageWithRecovery\(getAccessToken,\s*\{\s*drain:\s*true\s*\}\)/,
-  );
+  for (const retiredCapability of [
+    "DEVICE_TOKEN_ROTATE_AFTER_MS",
+    "shouldRotateStoredDeviceSession",
+    "clearCloudDeviceSession",
+    "postLocalUsageSync",
+    "syncCloudUsageWithRecovery",
+    "tokentracker-device-token-issue",
+    "tokentracker-leaderboard-refresh",
+  ]) {
+    assert.doesNotMatch(src, new RegExp(retiredCapability));
+  }
+  assert.doesNotMatch(src, /\bfetch\s*\(/);
 });
 
 test("local auth helper caches the per-process token in memory", async () => {

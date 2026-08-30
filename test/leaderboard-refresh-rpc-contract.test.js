@@ -14,12 +14,14 @@ function readSql() {
   return fs.readFileSync(SQL_PATH, "utf8");
 }
 
-test("refresh RPC has bounded periods, server pricing, and public-only ranking", () => {
+test("incremental refresh RPC accepts only bounded fixed dimensions and public-only ranking", () => {
   const sql = readSql();
   assert.match(
     sql,
-    /function public\.refresh_leaderboard_snapshots\(\s*p_refresh_month boolean,\s*p_refresh_total boolean\s*\)/i,
+    /function public\.refresh_leaderboard_snapshot_dimensions\(\s*p_dimensions jsonb\s*\)/i,
   );
+  assert.match(sql, /jsonb_array_length\(p_dimensions\)[^;]+285/is);
+  assert.match(sql, /p_dimensions[^;]+period[^;]+metric[^;]+source/is);
   assert.match(sql, /array\['today',\s*'week',\s*'30d',\s*'month',\s*'total'\]/i);
   assert.match(sql, /jsonb_array_elements\([^;]+payload\s*->\s*'periods'/is);
   assert.match(sql, /group by\s+[^;]*user_id[^;]*source[^;]*model/is);
@@ -29,7 +31,7 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
   assert.match(sql, /unpriced_tokens/i);
   assert.doesNotMatch(sql, /client_(?:cost|amount|spend)/i);
   assert.match(sql, /leaderboard_public\s*=\s*true/i);
-  assert.match(sql, /dense_rank\(\)\s*over/i);
+  assert.match(sql, /row_number\(\)\s*over/i);
   assert.match(sql, /at time zone\s+'Asia\/Shanghai'/i);
   assert.match(
     sql,
@@ -37,6 +39,10 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
   );
   assert.match(sql, /selected\.period\s*=\s*'total'/i);
   assert.match(sql, /selected\.period\s*=\s*'30d'/i);
+  assert.match(
+    sql,
+    /selected\.period\s*=\s*'30d'[^;]+captured_at[^;]+>=\s*v_shanghai_day\s*-\s*29/is,
+  );
   assert.match(sql, /when\s+'30d'\s+then\s+actual\."30d_usd"/i);
   assert.match(sql, /when\s+'30d'\s+then\s+v_shanghai_day\s*-\s*29/i);
   assert.match(sql, /extract\(isodow from v_shanghai_day\)/i);
@@ -52,12 +58,26 @@ test("refresh RPC has bounded periods, server pricing, and public-only ranking",
 test("snapshot schema supports all metrics, exact tokens, and atomic run replacement", () => {
   const sql = readSql();
   assert.match(sql, /create table if not exists public\.tokentracker_leaderboard_snapshots_v2/i);
+  assert.match(sql, /alter table public\.tokentracker_leaderboard_snapshots_v2 enable row level security/i);
+  assert.match(
+    sql,
+    /revoke all on table public\.tokentracker_leaderboard_snapshots_v2 from public, anon, authenticated/i,
+  );
+  assert.match(
+    sql,
+    /grant all on table public\.tokentracker_leaderboard_snapshots_v2 to project_admin/i,
+  );
   assert.doesNotMatch(sql, /alter table public\.tokentracker_leaderboard_snapshots\b/i);
   assert.match(sql, /total_tokens numeric\(30,0\)/i);
   assert.match(sql, /from_day date not null/i);
   assert.match(sql, /to_day date not null/i);
   assert.match(sql, /metric text[^;]+tokens[^;]+estimated_spend[^;]+actual_cost/is);
   assert.match(sql, /actual_cost_usd numeric/i);
+  assert.match(sql, /public_entry_id text not null/i);
+  assert.match(sql, /encode\(digest\(ranked\.user_id::text,\s*'sha256'\),\s*'hex'\)/i);
+  assert.match(sql, /'static_dimensions',\s*v_static_dimensions/i);
+  assert.match(sql, /'public_entry_id',\s*snapshot\.public_entry_id/i);
+  assert.doesNotMatch(sql, /'user_id',\s*snapshot\.user_id/i);
   assert.match(sql, /source_breakdown jsonb/i);
   assert.match(sql, /snapshot_run_id uuid/i);
   assert.match(
@@ -74,17 +94,21 @@ test("snapshot schema supports all metrics, exact tokens, and atomic run replace
   assert.ok(insertAt >= 0, "must insert a complete new run");
   assert.ok(deleteAt > insertAt, "old rows may only be deleted after the insert succeeds");
   assert.match(sql, /actual_cost_usd\s+is\s+not\s+null/i);
+  assert.match(sql, /rank\s*<=\s*50/i);
+  assert.match(sql, /row_number\(\)\s+over[\s\S]+sort_value desc[\s\S]+user_id asc/i);
+  assert.match(sql, /count\(\*\)\s+over[\s\S]+participant_count/i);
+  assert.match(sql, /dimension[^;]+period[^;]+metric[^;]+source/is);
 });
 
 test("refresh RPC is executable only by the scheduler service role", () => {
   const sql = readSql();
   assert.match(
     sql,
-    /revoke all on function public\.refresh_leaderboard_snapshots\(boolean,\s*boolean\)\s+from public/i,
+    /revoke all on function public\.refresh_leaderboard_snapshot_dimensions\(jsonb\)\s+from public/i,
   );
   assert.match(
     sql,
-    /grant execute on function public\.refresh_leaderboard_snapshots\(boolean,\s*boolean\)\s+to project_admin/i,
+    /grant execute on function public\.refresh_leaderboard_snapshot_dimensions\(jsonb\)\s+to project_admin/i,
   );
 });
 

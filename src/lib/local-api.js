@@ -4,6 +4,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const readline = require("node:readline");
+const agentRegistry = require("../../shared/agent-registry.json");
+const { verifySignedStaticFeed } = require("./signed-static-feed");
 const { DEFAULT_BASE_URL, resolveRuntimeConfig } = require("./runtime-config");
 const {
   DATA_DIRECTORY_KEYS,
@@ -98,12 +100,55 @@ const AVATAR_PROXY_MAX_BYTES = 512 * 1024; // 512 KiB per image
 const AVATAR_PROXY_MAX_ENTRIES = 64;
 const avatarProxyCache = new Map();
 
-const LEADERBOARD_PUBLIC_UPSTREAM = "https://a62b9nf2.function2.insforge.app/tokentracker-leaderboard";
-const LEADERBOARD_PUBLIC_DATABASE = "https://a62b9nf2.ap-southeast.insforge.app";
-const LEADERBOARD_PUBLIC_ANON_KEY =
-  "anon_13e8a5d6400e9b50912a5c3612f3480ba06edbd2c331e84e5fbdf5fd16d3d381";
-const LEADERBOARD_PUBLIC_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const leaderboardPublicCache = new Map();
+const LEADERBOARD_PUBLIC_FEED_BASE_URL = "https://feeds.tokentracker.cc/v1";
+const LEADERBOARD_PUBLIC_SCHEMA = "token-eyes.leaderboard-snapshot/v1";
+const LEADERBOARD_PUBLIC_PERIODS = new Set(["today", "week", "30d", "month", "total"]);
+const LEADERBOARD_PUBLIC_METRICS = new Set(["tokens", "estimated_spend", "actual_cost"]);
+const LEADERBOARD_PUBLIC_SOURCES = new Set([
+  "all",
+  ...agentRegistry.adapters.map((adapter) => adapter.queue_source),
+]);
+
+function normalizeLeaderboardFeedBaseUrl(value) {
+  const url = new URL(String(value || LEADERBOARD_PUBLIC_FEED_BASE_URL));
+  if (
+    url.protocol !== "https:"
+    || url.username
+    || url.password
+    || url.port
+    || url.search
+    || url.hash
+  ) {
+    throw new TypeError("leaderboard public feed base URL must be a safe HTTPS URL");
+  }
+  return url.toString().replace(/\/$/u, "");
+}
+
+function readSignedLeaderboardSnapshot(filePath, verification) {
+  try {
+    const envelope = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const payload = verifySignedStaticFeed(envelope, verification);
+    return { envelope, payload };
+  } catch {
+    return null;
+  }
+}
+
+function writeSignedLeaderboardSnapshot(filePath, envelope) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, `${JSON.stringify(envelope)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    fs.renameSync(temporaryPath, filePath);
+  } finally {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch {}
+  }
+}
 
 // Request-usage-records list cache: avoids rebuilding/sorting the full capped
 // record set on every page request. Keyed by filters + queue mtime; TTL-bound.
@@ -112,6 +157,12 @@ const REQUEST_USAGE_RECORDS_CACHE_MAX_ENTRIES = 16;
 const requestUsageRecordsListCache = new Map();
 const QUEUE_DATA_CACHE_MAX_ENTRIES = 8;
 const queueDataCache = new Map();
+const leaderboardCacheDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 function normalizeDataDirectoryOrder(value) {
   const seen = new Set();
@@ -375,6 +426,7 @@ const {
   SPEND_AUTHORITIES,
   collectApiBillingAccounts,
   fetchOpenAiCostsInvoice,
+  fetchOpenAiCostsPeriod,
   getProviderName,
   getUtcMonthPeriod,
   isOpenAiCostsConfig,
@@ -1414,7 +1466,8 @@ function addProviderBreakdown(map, id, displayName, row, rowCost, requestCount) 
   entry.tokens += Math.max(0, Number(row.total_tokens || 0));
   if (requestCount === null) entry.requestCountUnavailable = true;
   else entry.request_count = Number(entry.request_count || 0) + requestCount;
-  entry.cost_usd += rowCost;
+  if (rowCost === null) entry.cost_usd = null;
+  else if (entry.cost_usd !== null) entry.cost_usd += rowCost;
 }
 
 function roundProviderMoney(value) {
@@ -1449,7 +1502,7 @@ function finalizeProviderBreakdown(map) {
       return {
         ...result,
         request_count: requestCountUnavailable ? null : entry.request_count,
-        cost_usd: roundProviderMoney(entry.cost_usd),
+        cost_usd: entry.cost_usd === null ? null : roundProviderMoney(entry.cost_usd),
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -1536,6 +1589,7 @@ function aggregateByProvider(rows, options = {}) {
     requireApiKey = true,
     requirePositiveCost = true,
     costMode = "estimated",
+    officialDailyCosts = new Map(),
   } = options;
   const dayKeys = includeDaily ? providerDayKeys(fromKey, toKey) : [];
   const period = {
@@ -1557,8 +1611,10 @@ function aggregateByProvider(rows, options = {}) {
     const providerId = attribution.provider_id || "";
     if (!providerId || providerId === "unknown") continue;
     if (requireApiKey && attribution.billing_mode !== "api_key") continue;
+    const providerOfficialDailyCosts = officialDailyCosts.get(providerId) || null;
+    const hasProviderOfficialDailyCosts = providerOfficialDailyCosts instanceof Map;
     const actualCostUsd = costMode === "actual" ? providerActualCostUsd(row) : null;
-    if (costMode === "actual" && actualCostUsd === null) continue;
+    if (costMode === "actual" && actualCostUsd === null && !hasProviderOfficialDailyCosts) continue;
     if (!map.has(providerId)) {
       map.set(providerId, {
         provider_id: providerId,
@@ -1596,6 +1652,7 @@ function aggregateByProvider(rows, options = {}) {
         interrupted_count: 0,
         latencySum: 0,
         rawCostUsd: 0,
+        officialDailyCosts: hasProviderOfficialDailyCosts ? providerOfficialDailyCosts : null,
       });
     }
     const acc = map.get(providerId);
@@ -1610,9 +1667,11 @@ function aggregateByProvider(rows, options = {}) {
     const rowCost = costMode === "actual"
       ? { cost_usd: actualCostUsd, priced_tokens: 0, unpriced_tokens: 0 }
       : computeRowCostDetailed(row, pricingOptions);
-    const costUsd = Number.isFinite(Number(rowCost.cost_usd)) ? Number(rowCost.cost_usd) : 0;
-    acc.rawCostUsd += costUsd;
-    acc.cost_usd += costUsd;
+    const costUsd = hasProviderOfficialDailyCosts
+      ? null
+      : Number.isFinite(Number(rowCost.cost_usd)) ? Number(rowCost.cost_usd) : 0;
+    acc.rawCostUsd += costUsd || 0;
+    acc.cost_usd += costUsd || 0;
     acc.input_tokens += Number(row.input_tokens || 0);
     acc.output_tokens += Number(row.output_tokens || 0);
     acc.cached_input_tokens += Number(row.cached_input_tokens || 0);
@@ -1627,7 +1686,7 @@ function aggregateByProvider(rows, options = {}) {
     const day = acc.dailyMap.get(dayKey);
     if (day) {
       day.tokens += Number(row.total_tokens || 0);
-      day.cost_usd += costUsd;
+      day.cost_usd += costUsd || 0;
       if (requestFact.count !== null) {
         day.request_count = Number(day.request_count || 0) + requestFact.count;
         day.requestBases.add(requestFact.basis);
@@ -1650,6 +1709,17 @@ function aggregateByProvider(rows, options = {}) {
         acc.latency_sample_count += 1;
         acc.latencySum += latency;
       }
+    }
+  }
+  for (const provider of map.values()) {
+    if (!(provider.officialDailyCosts instanceof Map)) continue;
+    provider.cost_usd = 0;
+    provider.rawCostUsd = 0;
+    for (const [date, day] of provider.dailyMap) {
+      const costUsd = roundProviderMoney(provider.officialDailyCosts.get(date) || 0);
+      day.cost_usd = costUsd;
+      provider.cost_usd += costUsd;
+      provider.rawCostUsd += costUsd;
     }
   }
   const providers = Array.from(map.values())
@@ -2748,6 +2818,8 @@ function createLocalApiHandler({
   tokenOnlyDirectoryStatesProvider,
   dataDirectoryPathsResolver,
   planMarketUpdateService: injectedPlanMarketUpdateService,
+  leaderboardPublicFeedBaseUrl: leaderboardPublicFeedBaseUrlOverride,
+  leaderboardPublicKey: injectedLeaderboardPublicKey,
   now: nowProvider = () => new Date(),
 } = {}) {
   const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT) || process.env.VITEST === "true";
@@ -2768,6 +2840,15 @@ function createLocalApiHandler({
   const handlerEnv = isTestRunner
     ? createIsolatedHandlerEnvironment(process.env, handlerHome)
     : process.env;
+  const leaderboardPublicFeedBaseUrl = normalizeLeaderboardFeedBaseUrl(
+    leaderboardPublicFeedBaseUrlOverride
+      || handlerEnv.TOKEN_EYES_PUBLIC_FEED_BASE_URL
+      || LEADERBOARD_PUBLIC_FEED_BASE_URL,
+  );
+  const leaderboardPublicKey = injectedLeaderboardPublicKey || fs.readFileSync(
+    path.join(__dirname, "codex-reset-feed-public-key.pem"),
+    "utf8",
+  );
   const getHandlerMachineId = (queuePathForMachineId = qp) => getOrCreateMachineId(
     queuePathForMachineId,
     machineIdSeedPath ? { seedPath: machineIdSeedPath } : undefined,
@@ -2780,6 +2861,8 @@ function createLocalApiHandler({
   const planMarketUpdateService = injectedPlanMarketUpdateService || createPlanMarketUpdateService({
     trackerDataDir,
     now: nowProvider,
+    feedUrl: `${leaderboardPublicFeedBaseUrl}/plan-market/feed.json`,
+    publicKey: leaderboardPublicKey,
   });
 
   // Server-side cookie relay: captures auth cookies from InsForge cloud responses
@@ -2793,6 +2876,8 @@ function createLocalApiHandler({
   const localAuthToken = crypto.randomBytes(24).toString("hex");
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const usageAggregateResponseCache = new Map();
+  let leaderboardCompactStateCache = null;
+  const officialProviderCostsCache = new Map();
   // WorkBuddy credit quota — cache the codebuddy.cn billing response so the
   // dashboard can poll freely without hammering the remote API.
   const WORKBUDDY_QUOTA_CACHE_MS = 5 * 60 * 1000;
@@ -2980,6 +3065,38 @@ function createLocalApiHandler({
     return payload;
   }
 
+  async function readOfficialProviderDailyCosts(fromKey, toKey) {
+    const configs = providerApiConfigs.readProviderApiConfigs(readTrackerConfig()).filter((item) => (
+      item.enabled && isOpenAiCostsConfig(item, { allowTestEndpoint: providerApiTestMode })
+    ));
+    if (configs.length !== 1 || !providerApiCredStore.isAvailable()) return new Map();
+    const config = configs[0];
+    const providerId = normalizeUsageAttribution({
+      billing_mode: "api_key",
+      provider_id: config.providerId,
+    }).provider_id;
+    if (!providerId || providerId === "unknown") return new Map();
+    const cacheKey = `${config.id}\u0001${fromKey}\u0001${toKey}`;
+    const cached = officialProviderCostsCache.get(cacheKey);
+    const nowMs = nowProvider().getTime();
+    if (cached && nowMs - cached.cachedAtMs >= 0 && nowMs - cached.cachedAtMs <= 300_000) {
+      return new Map([[providerId, new Map(cached.dailyCosts)]]);
+    }
+    const secret = providerApiCredStore.readSecret(String(config.apiKeyRef || ""));
+    const result = await fetchOpenAiCostsPeriod({
+      config,
+      secret,
+      fromKey,
+      toKey,
+      allowTestEndpoint: providerApiTestMode,
+    });
+    if (!result.ok) return new Map();
+    const dailyCosts = result.dailyCosts.map((entry) => [entry.date, entry.costUsd]);
+    officialProviderCostsCache.clear();
+    officialProviderCostsCache.set(cacheKey, { cachedAtMs: nowMs, dailyCosts });
+    return new Map([[providerId, new Map(dailyCosts)]]);
+  }
+
   function providerAggregateCacheBody(rawBody) {
     try {
       const payload = JSON.parse(rawBody);
@@ -3114,13 +3231,9 @@ function createLocalApiHandler({
         )];
       },
        enabled: process.env.TOKEN_EYES_CODEX_RESET_MONITOR_ENABLED !== "0",
-       feedEnabled: codexResetFeedEnabled,
-      feedPublicKey: codexResetFeedEnabled
-        ? fs.readFileSync(
-          path.join(__dirname, "codex-reset-feed-public-key.pem"),
-          "utf8",
-         )
-         : null,
+      feedEnabled: codexResetFeedEnabled,
+      feedUrl: `${leaderboardPublicFeedBaseUrl}/codex-reset/feed.json`,
+      feedPublicKey: codexResetFeedEnabled ? leaderboardPublicKey : null,
      });
 
   // 02-ia-api-balance: Provider API credential store + balance refresh manager.
@@ -7232,10 +7345,26 @@ function createLocalApiHandler({
         return true;
       }
       try {
-        const state = buildLeaderboardDeviceState(readQueueData(qp), {
-          deviceId: getHandlerMachineId(qp),
-          capturedAt: new Date(),
-        });
+        const capturedAt = nowProvider();
+        const compactCacheKey = `${queueFileMtimeKey(qp)}:${leaderboardCacheDayFormatter.format(capturedAt)}`;
+        if (leaderboardCompactStateCache?.key !== compactCacheKey) {
+          const built = buildLeaderboardDeviceState(readQueueData(qp), {
+            deviceId: getHandlerMachineId(qp),
+            capturedAt,
+          });
+          leaderboardCompactStateCache = {
+            key: compactCacheKey,
+            state: {
+              version: built.version,
+              device_id: built.device_id,
+              periods: built.periods,
+            },
+          };
+        }
+        const state = {
+          ...leaderboardCompactStateCache.state,
+          captured_at: capturedAt.toISOString(),
+        };
         assertCompactStateSize(state);
         res.writeHead(200, {
           "Content-Type": "application/json",
@@ -7270,189 +7399,81 @@ function createLocalApiHandler({
         return true;
       }
 
-      const allowedPeriods = new Set(["today", "week", "30d", "month", "total"]);
-      const allowedMetrics = new Set(["tokens", "estimated_spend", "actual_cost"]);
-      const allowedSources = new Set([
-        "all", "codex", "claude", "gemini", "cursor", "opencode", "openclaw",
-        "hermes", "kiro", "copilot", "kimi", "every-code", "other",
-      ]);
-      const dimension = (name, allowed, fallback) => {
-        const value = String(url.searchParams.get(name) || "").trim().toLowerCase();
-        return allowed.has(value) ? value : fallback;
-      };
-      const period = dimension("period", allowedPeriods, "total");
-      const metric = dimension("metric", allowedMetrics, "tokens");
-      const source = metric === "actual_cost"
-        ? "all"
-        : dimension("source", allowedSources, "all");
-      const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit")) || 20));
-      const offset = Math.max(0, Math.min(100_000, Number(url.searchParams.get("offset")) || 0));
-      const upstream = new URL(LEADERBOARD_PUBLIC_UPSTREAM);
-      for (const [key, value] of Object.entries({ period, metric, source, limit, offset })) {
-        upstream.searchParams.set(key, String(value));
+      const rawPeriod = String(url.searchParams.get("period") || "total").trim().toLowerCase();
+      const rawMetric = String(url.searchParams.get("metric") || "tokens").trim().toLowerCase();
+      const rawSource = String(url.searchParams.get("source") || "all").trim().toLowerCase();
+      const rawLimit = url.searchParams.get("limit");
+      const rawOffset = url.searchParams.get("offset");
+      if (
+        !LEADERBOARD_PUBLIC_PERIODS.has(rawPeriod)
+        || !LEADERBOARD_PUBLIC_METRICS.has(rawMetric)
+        || !LEADERBOARD_PUBLIC_SOURCES.has(rawSource)
+        || (rawMetric === "actual_cost" && rawSource !== "all")
+        || (rawLimit !== null && rawLimit !== "50")
+        || (rawOffset !== null && rawOffset !== "0")
+      ) {
+        json(res, { ok: false, error: "Unsupported leaderboard snapshot key" }, 400);
+        return true;
       }
-      const cacheKey = upstream.toString();
-      const cached = leaderboardPublicCache.get(cacheKey);
-      const hasCompleteSummary = (body) => body
-        && Number.isFinite(Number(body.participant_count))
-        && Number.isFinite(Number(body.aggregate_total_tokens))
-        && Number.isFinite(Number(body.aggregate_total_cost_usd));
-      const writeResponse = (body, cacheStatus) => {
+
+      const snapshotKey = `${rawPeriod}/${rawMetric}/${rawSource}`;
+      const snapshotPath = path.join(
+        trackerDataDir,
+        "public-feeds",
+        "leaderboard",
+        rawPeriod,
+        rawMetric,
+        `${rawSource}.json`,
+      );
+      const verification = {
+        publicKey: leaderboardPublicKey,
+        expectedSchema: LEADERBOARD_PUBLIC_SCHEMA,
+        expectedSnapshotKey: snapshotKey,
+        nowMs: nowProvider().getTime(),
+        maxEntries: 50,
+      };
+      const lastKnownGood = readSignedLeaderboardSnapshot(snapshotPath, verification);
+      const writeResponse = (payload, cacheStatus) => {
+        const stale = cacheStatus === "STALE";
         res.writeHead(200, {
           "Content-Type": "application/json",
-          "Cache-Control": "private, max-age=60",
+          "Cache-Control": "private, no-cache",
           "X-Leaderboard-Cache": cacheStatus,
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET",
         });
-        res.end(JSON.stringify(body));
+        res.end(JSON.stringify({
+          ...payload,
+          limit: 50,
+          offset: 0,
+          page: 1,
+          total_pages: 1,
+          stale: stale || payload.stale === true,
+        }));
       };
-      if (
-        cached
-        && hasCompleteSummary(cached.body)
-        && Date.now() - cached.fetchedAt < LEADERBOARD_PUBLIC_CACHE_TTL_MS
-      ) {
-        writeResponse(cached.body, "HIT");
-        return true;
-      }
 
       try {
-        const fetchEdge = async () => {
-          const upstreamResponse = await fetch(cacheKey, {
-            method: "GET",
-            headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(5_000),
-          });
-          if (!upstreamResponse.ok) throw new Error(`Upstream ${upstreamResponse.status}`);
-          return upstreamResponse.json();
-        };
-        const fetchSnapshot = async () => {
-          const snapshotUrl = new URL(
-            `${LEADERBOARD_PUBLIC_DATABASE}/api/database/records/tokentracker_leaderboard_snapshots_v2`,
-          );
-          snapshotUrl.searchParams.set(
-            "select",
-            "rank,total_tokens,estimated_cost_usd,actual_cost_usd,source_breakdown,display_name,avatar_url,github_url,pricing_version,generated_at",
-          );
-          snapshotUrl.searchParams.set("period", `eq.${period}`);
-          snapshotUrl.searchParams.set("metric", `eq.${metric}`);
-          snapshotUrl.searchParams.set("source", `eq.${source}`);
-          snapshotUrl.searchParams.set("is_public", "eq.true");
-          snapshotUrl.searchParams.set("order", "rank.asc");
-          snapshotUrl.searchParams.set("offset", String(offset));
-          snapshotUrl.searchParams.set("limit", String(limit));
-          const snapshotResponse = await fetch(snapshotUrl.toString(), {
-            method: "GET",
-            headers: {
-              Accept: "application/json",
-              apikey: LEADERBOARD_PUBLIC_ANON_KEY,
-              Authorization: `Bearer ${LEADERBOARD_PUBLIC_ANON_KEY}`,
-              Prefer: "count=exact",
-            },
-            signal: AbortSignal.timeout(5_000),
-          });
-          if (!snapshotResponse.ok) throw new Error(`Snapshot ${snapshotResponse.status}`);
-          const rows = await snapshotResponse.json();
-          if (!Array.isArray(rows)) throw new Error("Invalid leaderboard snapshot");
-          const range = snapshotResponse.headers.get("content-range") || "";
-          const totalMatch = range.match(/\/(\d+)$/u);
-          const totalEntries = totalMatch ? Number(totalMatch[1]) : rows.length;
-          let aggregateRows = rows;
-          if (offset !== 0 || totalEntries > rows.length) {
-            const aggregatePageSize = 1_000;
-            const aggregateRequests = [];
-            for (let aggregateOffset = 0; aggregateOffset < totalEntries; aggregateOffset += aggregatePageSize) {
-              const aggregateUrl = new URL(
-                `${LEADERBOARD_PUBLIC_DATABASE}/api/database/records/tokentracker_leaderboard_snapshots_v2`,
-              );
-              aggregateUrl.searchParams.set("select", "total_tokens,estimated_cost_usd");
-              aggregateUrl.searchParams.set("period", `eq.${period}`);
-              aggregateUrl.searchParams.set("metric", `eq.${metric}`);
-              aggregateUrl.searchParams.set("source", `eq.${source}`);
-              aggregateUrl.searchParams.set("is_public", "eq.true");
-              aggregateUrl.searchParams.set("offset", String(aggregateOffset));
-              aggregateUrl.searchParams.set("limit", String(aggregatePageSize));
-              aggregateRequests.push(fetch(aggregateUrl.toString(), {
-                method: "GET",
-                headers: {
-                  Accept: "application/json",
-                  apikey: LEADERBOARD_PUBLIC_ANON_KEY,
-                  Authorization: `Bearer ${LEADERBOARD_PUBLIC_ANON_KEY}`,
-                },
-                signal: AbortSignal.timeout(5_000),
-              }));
-            }
-            const aggregateResponses = await Promise.all(aggregateRequests);
-            if (aggregateResponses.some((response) => !response.ok)) {
-              throw new Error("Snapshot summary unavailable");
-            }
-            const aggregatePages = await Promise.all(
-              aggregateResponses.map((response) => response.json()),
-            );
-            aggregateRows = aggregatePages.flatMap((page) => (Array.isArray(page) ? page : []));
-          }
-          const aggregateTotalTokens = aggregateRows.reduce(
-            (sum, row) => sum + (Number(row?.total_tokens) || 0),
-            0,
-          );
-          const aggregateTotalCostUsd = aggregateRows.reduce(
-            (sum, row) => sum + (Number(row?.estimated_cost_usd) || 0),
-            0,
-          );
-          return {
-            entries: rows,
-            period,
-            metric,
-            source,
-            limit,
-            offset,
-            total_entries: totalEntries,
-            participant_count: totalEntries,
-            ranked_entry_count: totalEntries,
-            aggregate_total_tokens: aggregateTotalTokens,
-            aggregate_total_cost_usd: aggregateTotalCostUsd,
-            total_pages: Math.ceil(totalEntries / limit),
-            generated_at: typeof rows[0]?.generated_at === "string" ? rows[0].generated_at : null,
-          };
-        };
-        const body = await new Promise((resolve, reject) => {
-          let settled = false;
-          let snapshotStarted = false;
-          let failures = 0;
-          let pending = 1;
-          const succeed = (value) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(snapshotTimer);
-            resolve(value);
-          };
-          const fail = (error) => {
-            failures += 1;
-            pending -= 1;
-            if (!snapshotStarted) {
-              clearTimeout(snapshotTimer);
-              startSnapshot();
-              return;
-            }
-            if (!settled && pending === 0) reject(error || new Error(`${failures} leaderboard requests failed`));
-          };
-          const startSnapshot = () => {
-            if (settled || snapshotStarted) return;
-            snapshotStarted = true;
-            pending += 1;
-            Promise.resolve().then(fetchSnapshot).then(succeed, fail);
-          };
-          const snapshotTimer = setTimeout(startSnapshot, 100);
-          Promise.resolve().then(fetchEdge).then(succeed, fail);
+        const feedUrl = `${leaderboardPublicFeedBaseUrl}/leaderboard/${snapshotKey}.json`;
+        const response = await fetch(feedUrl, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(5_000),
         });
-        if (!body || typeof body !== "object" || !Array.isArray(body.entries)) {
-          throw new Error("Invalid leaderboard response");
+        if (!response.ok) throw new Error(`Static feed HTTP ${response.status}`);
+        const responseText = await response.text();
+        if (Buffer.byteLength(responseText, "utf8") > 768 * 1024) {
+          throw new RangeError("Static leaderboard envelope exceeds the size limit");
         }
-        leaderboardPublicCache.set(cacheKey, { body, fetchedAt: Date.now() });
-        writeResponse(body, "MISS");
+        const envelope = JSON.parse(responseText);
+        const payload = verifySignedStaticFeed(envelope, {
+          ...verification,
+          minimumGeneratedAt: lastKnownGood?.payload?.generated_at,
+        });
+        writeSignedLeaderboardSnapshot(snapshotPath, envelope);
+        writeResponse(payload, "MISS");
       } catch (_error) {
-        if (cached) {
-          writeResponse(cached.body, "STALE");
+        if (lastKnownGood) {
+          writeResponse(lastKnownGood.payload, "STALE");
         } else {
           json(res, { ok: false, error: "Public leaderboard is temporarily unavailable" }, 502);
         }
@@ -8131,7 +8152,10 @@ function createLocalApiHandler({
       const recentApiView = p === "/functions/tokentracker-provider-api-stats";
       const requestedFrom = url.searchParams.get("from") || "";
       const requestedTo = url.searchParams.get("to") || "";
-      const timeZoneContext = getTimeZoneContext(url);
+      const requestedTimeZoneContext = getTimeZoneContext(url);
+      const timeZoneContext = recentApiView
+        ? { timeZone: "UTC", offsetMinutes: 0 }
+        : requestedTimeZoneContext;
       const validDayKey = (value) => {
         if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
         const timestamp = Date.parse(`${value}T00:00:00.000Z`);
@@ -8160,6 +8184,9 @@ function createLocalApiHandler({
         timeZoneContext,
         sources: effectiveSources,
       });
+      const officialDailyCosts = recentApiView
+        ? await readOfficialProviderDailyCosts(from, to)
+        : new Map();
       const providers = aggregateByProvider(scopedRows, {
         fromKey: from,
         toKey: to,
@@ -8171,6 +8198,7 @@ function createLocalApiHandler({
         requireApiKey: recentApiView,
         requirePositiveCost: recentApiView,
         costMode: recentApiView ? "actual" : "estimated",
+        officialDailyCosts,
       });
 
       const totals = summarizeProviderTotals(providers);
@@ -8188,6 +8216,9 @@ function createLocalApiHandler({
         requested_from: requestedFrom || null,
         requested_to: requestedTo || null,
         period,
+        requested_time_zone: recentApiView
+          ? providerTimeZoneLabel(requestedTimeZoneContext)
+          : null,
         totals_scope: recentApiView
           ? "api_key_attributed_official_billed_cost_positive"
           : "all_provider_attributed",
@@ -9514,6 +9545,7 @@ function createLocalApiHandler({
             monthKey: officialInvoice.monthKey,
             billingPeriodStart: officialInvoice.billingPeriodStart,
             billingPeriodEnd: officialInvoice.billingPeriodEnd,
+            dailyCosts: officialInvoice.dailyCosts,
             status: "synced",
             lastSyncedAt: officialInvoice.lastSyncedAt,
             stale: false,

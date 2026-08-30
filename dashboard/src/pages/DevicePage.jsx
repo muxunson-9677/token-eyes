@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useInsforgeAuth } from "../contexts/InsforgeAuthContext";
+import { getInsforgeRemoteUrl } from "../lib/insforge-config";
 
 /**
  * /device — OAuth-style device flow approval page.
@@ -15,9 +16,7 @@ import { useInsforgeAuth } from "../contexts/InsforgeAuthContext";
 function buildGrantUrl() {
   // Keep this route independent from the cloud SDK chunk; the edge-function
   // origin is the same public environment value used to initialize the SDK.
-  const baseUrl =
-    (import.meta.env && import.meta.env.VITE_INSFORGE_BASE_URL) ||
-    "https://a62b9nf2.ap-southeast.insforge.app";
+  const baseUrl = getInsforgeRemoteUrl();
   return `${baseUrl.replace(/\/$/, "")}/functions/tokentracker-device-flow-grant`;
 }
 

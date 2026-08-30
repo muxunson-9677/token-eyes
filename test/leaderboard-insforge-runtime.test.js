@@ -6,12 +6,10 @@ const path = require("node:path");
 const test = require("node:test");
 
 const EDGE_FILES = [
-  "tokentracker-leaderboard.ts",
   "tokentracker-leaderboard-me.ts",
   "tokentracker-leaderboard-profile.ts",
   "tokentracker-public-visibility.ts",
   "tokentracker-avatar.ts",
-  "tokentracker-avatar-public.ts",
 ];
 
 test("deployed leaderboard edges accept InsForge Cloud's reserved API_KEY", () => {
@@ -24,12 +22,13 @@ test("deployed leaderboard edges accept InsForge Cloud's reserved API_KEY", () =
   }
 });
 
-test("avatar URL uses the public edge hash query contract", () => {
+test("avatar URL uses the public Worker content-addressed contract", () => {
   const source = fs.readFileSync(
     path.resolve("dashboard/edge-patches/tokentracker-avatar.ts"),
     "utf8",
   );
-  assert.match(source, /`\$\{publicBase\}\?hash=\$\{hash\}`/);
+  assert.match(source, /\/v1\/avatars\/\$\{hash\}\.webp/);
+  assert.match(source, /publishStaticAvatar/);
 });
 
 test("authenticated edges ask InsForge to validate current asymmetric JWTs", () => {

@@ -24,6 +24,18 @@ async function verifiedUserId(baseUrl: string, token: string): Promise<string | 
   return !error && typeof data?.user?.id === "string" ? data.user.id : null;
 }
 
+async function notifyRefreshCoordinator(): Promise<boolean> {
+  const triggerUrl = Deno.env.get("LEADERBOARD_DIRTY_TRIGGER_URL") || "";
+  const triggerSecret = Deno.env.get("LEADERBOARD_DIRTY_TRIGGER_SECRET") || "";
+  if (!triggerUrl || !triggerSecret) return false;
+  const response = await fetch(triggerUrl, {
+    method: "POST",
+    headers: { "x-leaderboard-dirty-secret": triggerSecret },
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  return response?.ok === true;
+}
+
 export default async function (req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   const baseUrl = Deno.env.get("INSFORGE_BASE_URL")!;
@@ -121,6 +133,15 @@ export default async function (req: Request): Promise<Response> {
       normalizedDisplayName = body.display_name.trim().slice(0, 50) || null;
     }
 
+    const { data: currentSettings, error: currentSettingsError } = await client.database
+      .from("tokentracker_user_settings")
+      .select("leaderboard_public, display_name, github_url, show_github_url, updated_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (currentSettingsError) {
+      return json({ error: currentSettingsError.message || "Failed to read settings" }, 500);
+    }
+
     // Persist everything to tokentracker_user_settings — the writable base table.
     //
     // display_name MUST be written here, NOT to tokentracker_user_profiles:
@@ -130,12 +151,14 @@ export default async function (req: Request): Promise<Response> {
     //   display_name = COALESCE(s.display_name, users.profile->>'name', email-local-part)
     // so writing tokentracker_user_settings.display_name is exactly what makes
     // the subsequent GET (which reads the view) reflect the saved name.
-    if (
-      body.leaderboard_public === true ||
-      normalizedGithubUrl !== undefined ||
-      body.show_github_url !== undefined ||
-      normalizedDisplayName !== undefined
-    ) {
+    const hasPublicProfileMutation =
+      (body.leaderboard_public === true && currentSettings?.leaderboard_public !== true) ||
+      (normalizedGithubUrl !== undefined && normalizedGithubUrl !== (currentSettings?.github_url ?? null)) ||
+      (body.show_github_url !== undefined
+        && Boolean(body.show_github_url) !== Boolean(currentSettings?.show_github_url)) ||
+      (normalizedDisplayName !== undefined
+        && normalizedDisplayName !== (currentSettings?.display_name ?? null));
+    if (hasPublicProfileMutation) {
       const upsertRow: Record<string, unknown> = {
         user_id: userId,
         updated_at: now,
@@ -151,9 +174,21 @@ export default async function (req: Request): Promise<Response> {
       if (settingsErr) {
         return json({ error: settingsErr.message || "Failed to save settings" }, 500);
       }
+      const dirty = await client.database.rpc("mark_leaderboard_dimensions_dirty", {
+        p_user_id: userId,
+        p_actual_cost_changed: true,
+      });
+      if (dirty.error) {
+        return json({ error: dirty.error.message || "Leaderboard dirty mark failed" }, 500);
+      }
+      if (!await notifyRefreshCoordinator()) {
+        return json({ error: "Leaderboard refresh coordinator unavailable" }, 502);
+      }
     }
 
-    const result: Record<string, unknown> = { updated_at: now };
+    const result: Record<string, unknown> = {
+      updated_at: hasPublicProfileMutation ? now : currentSettings?.updated_at || null,
+    };
     if (body.leaderboard_public === true) result.leaderboard_public = true;
     if (normalizedDisplayName !== undefined) result.display_name = normalizedDisplayName;
     if (normalizedGithubUrl !== undefined) result.github_url = normalizedGithubUrl;

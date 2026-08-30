@@ -1,5 +1,5 @@
 import React from "react";
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   setActualCost: vi.fn(async () => undefined),
   refreshActualCost: vi.fn(async () => true),
   setParticipation: vi.fn(),
+  consumeIntent: vi.fn(() => false),
+  clearIntent: vi.fn(),
 }));
 
 vi.mock("../../contexts/InsforgeAuthContext", () => ({
@@ -35,6 +37,8 @@ vi.mock("../../lib/leaderboard-state-client", () => ({
 vi.mock("../../lib/leaderboard-sync-state", () => ({
   getLeaderboardSyncState: mocks.getSyncState,
   setLeaderboardParticipationState: mocks.setParticipation,
+  consumeLeaderboardLoginIntent: mocks.consumeIntent,
+  clearLeaderboardLoginIntent: mocks.clearIntent,
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -89,6 +93,9 @@ describe("leaderboard participation lifecycle", () => {
     mocks.refreshActualCost.mockReset();
     mocks.refreshActualCost.mockResolvedValue(true);
     mocks.setParticipation.mockReset();
+    mocks.consumeIntent.mockReset();
+    mocks.consumeIntent.mockReturnValue(false);
+    mocks.clearIntent.mockReset();
   });
 
   it("never syncs while signed out", async () => {
@@ -97,7 +104,7 @@ describe("leaderboard participation lifecycle", () => {
     expect(mocks.sync).not.toHaveBeenCalled();
   });
 
-  it("syncs first-login only on a signed-out to signed-in transition", async () => {
+  it("does not enroll or upload when a user signs in outside the leaderboard", async () => {
     const view = renderProbe();
     mocks.auth.signedIn = true;
     mocks.auth.user = { id: "account-a" };
@@ -107,13 +114,10 @@ describe("leaderboard participation lifecycle", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => {
-      expect(mocks.sync).toHaveBeenCalledWith({
-        getAccessToken: expect.any(Function),
-        reason: "first-login",
-        accountId: "account-a",
-      });
-    });
+    await waitFor(() => expect(mocks.getProfile).toHaveBeenCalled());
+    expect(mocks.setProfile).not.toHaveBeenCalled();
+    expect(mocks.sync).not.toHaveBeenCalled();
+    expect(mocks.clearIntent).not.toHaveBeenCalled();
   });
 
   it("checks the local summary hash whenever an authenticated user opens the leaderboard", async () => {
@@ -122,6 +126,8 @@ describe("leaderboard participation lifecycle", () => {
     mocks.getSyncState.mockReturnValue({
       pending: false,
       lastSuccessAt: new Date().toISOString(),
+      participationReady: true,
+      participant: true,
     });
     renderProbe("/leaderboard");
 
@@ -134,27 +140,74 @@ describe("leaderboard participation lifecycle", () => {
     });
   });
 
-  it("requests daily catch-up only when the last success is over 24 hours old", async () => {
+  it("checks the cached local summary every five seconds without reading the public list", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
+    mocks.getSyncState.mockReturnValue({
+      pending: false,
+      participationReady: true,
+      participant: true,
+      shareActualCost: false,
+    });
+    renderProbe("/leaderboard");
+    await waitFor(() => expect(mocks.sync).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "leaderboard-open",
+    })));
+    await waitFor(() => expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 5_000));
+
+    const callback = intervalSpy.mock.calls.find((call) => call[1] === 5_000)?.[0];
+    expect(callback).toBeTypeOf("function");
+    mocks.sync.mockClear();
+    callback?.();
+    await waitFor(() => expect(mocks.sync).toHaveBeenCalledWith({
+      getAccessToken: mocks.auth.getAccessToken,
+      reason: "meaningful-change",
+      accountId: "account-a",
+    }));
+  });
+
+  it("does not perform a daily client catch-up while another page is open", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
     mocks.auth.signedIn = true;
     mocks.auth.user = { id: "account-a" };
     mocks.getSyncState.mockReturnValue({
       pending: false,
       lastSuccessAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
       participationReady: true,
+      participant: true,
       shareActualCost: false,
     });
     renderProbe("/dashboard");
 
-    await waitFor(() => {
-      expect(mocks.sync).toHaveBeenCalledWith({
-        getAccessToken: expect.any(Function),
-        reason: "daily-catchup",
-        accountId: "account-a",
-      });
-    });
+    await Promise.resolve();
+    expect(mocks.sync).not.toHaveBeenCalled();
+    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 5_000);
   });
 
-  it("makes every signed-in session public even when the daily upload is not due", async () => {
+  it("checks known participants for meaningful changes even after they leave the leaderboard", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
+    mocks.getSyncState.mockReturnValue({
+      pending: false,
+      participationReady: true,
+      participant: true,
+      shareActualCost: false,
+    });
+    renderProbe("/dashboard");
+    await waitFor(() => expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 5_000));
+
+    const callback = intervalSpy.mock.calls.find((call) => call[1] === 5_000)?.[0];
+    callback?.();
+    await waitFor(() => expect(mocks.sync).toHaveBeenCalledWith({
+      getAccessToken: mocks.auth.getAccessToken,
+      reason: "meaningful-change",
+      accountId: "account-a",
+    }));
+  });
+
+  it("keeps a signed-in nonparticipant private", async () => {
     mocks.auth.signedIn = true;
     mocks.auth.user = { id: "account-a" };
     mocks.getProfile.mockResolvedValue({
@@ -168,12 +221,64 @@ describe("leaderboard participation lifecycle", () => {
     renderProbe("/dashboard");
 
     await waitFor(() => {
-      expect(mocks.setProfile).toHaveBeenCalledWith({
-        accessToken: "jwt",
-        leaderboard_public: true,
-      });
+      expect(mocks.getProfile).toHaveBeenCalled();
     });
+    expect(mocks.setProfile).not.toHaveBeenCalled();
     expect(mocks.sync).not.toHaveBeenCalled();
+    expect(mocks.setParticipation).toHaveBeenCalledWith({
+      accountId: "account-a",
+      participant: false,
+      shareActualCost: false,
+    });
+  });
+
+  it("enrolls once when leaderboard login intent completes on the leaderboard", async () => {
+    const view = renderProbe("/leaderboard");
+    mocks.consumeIntent.mockReturnValue(true);
+    mocks.getProfile.mockResolvedValue({
+      leaderboard_public: false,
+      share_actual_cost: false,
+    });
+    mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
+    view.rerender(
+      <MemoryRouter initialEntries={["/leaderboard"]}>
+        <Probe />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(mocks.setProfile).toHaveBeenCalledWith({
+      accessToken: "jwt",
+      leaderboard_public: true,
+    }));
+    expect(mocks.sync).toHaveBeenCalledWith({
+      getAccessToken: expect.any(Function),
+      reason: "leaderboard-consent",
+      accountId: "account-a",
+    });
+  });
+
+  it("preserves leaderboard consent across an auth callback and consumes it on return", async () => {
+    mocks.auth.signedIn = true;
+    mocks.auth.user = { id: "account-a" };
+    mocks.consumeIntent.mockReturnValue(true);
+    mocks.getProfile.mockResolvedValue({
+      leaderboard_public: false,
+      share_actual_cost: false,
+    });
+    mocks.getSyncState.mockReturnValue({ pending: false });
+    const view = renderProbe("/auth/callback");
+
+    await waitFor(() => expect(mocks.getProfile).toHaveBeenCalledTimes(1));
+    expect(mocks.setProfile).not.toHaveBeenCalled();
+    expect(mocks.clearIntent).not.toHaveBeenCalled();
+
+    await act(async () => view.navigateRef.current?.("/leaderboard"));
+    await waitFor(() => expect(mocks.setProfile).toHaveBeenCalledWith({
+      accessToken: "jwt",
+      leaderboard_public: true,
+    }));
+    expect(mocks.consumeIntent).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes the four actual-cost totals when consent remains enabled", async () => {
@@ -187,9 +292,10 @@ describe("leaderboard participation lifecycle", () => {
       pending: false,
       lastSuccessAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
       participationReady: true,
+      participant: true,
       shareActualCost: true,
     });
-    renderProbe("/dashboard");
+    renderProbe("/leaderboard");
 
     await waitFor(() => {
       expect(mocks.refreshActualCost).toHaveBeenCalledWith({
@@ -199,7 +305,7 @@ describe("leaderboard participation lifecycle", () => {
     });
     expect(mocks.sync).toHaveBeenCalledWith({
       getAccessToken: expect.any(Function),
-      reason: "daily-catchup",
+      reason: "leaderboard-open",
       accountId: "account-a",
     });
     expect(mocks.getProfile).not.toHaveBeenCalled();
@@ -212,6 +318,7 @@ describe("leaderboard participation lifecycle", () => {
       pending: false,
       lastSuccessAt: new Date().toISOString(),
       participationReady: true,
+      participant: true,
       shareActualCost: true,
     });
     renderProbe("/dashboard");
@@ -240,12 +347,17 @@ describe("leaderboard participation lifecycle", () => {
   it("re-reads the profile when the authenticated account changes", async () => {
     mocks.auth.signedIn = true;
     mocks.auth.user = { id: "account-b" };
+    mocks.getProfile.mockResolvedValue({
+      leaderboard_public: false,
+      share_actual_cost: false,
+    });
     mocks.getSyncState.mockImplementation((accountId?: string) =>
       accountId === "account-a"
         ? {
           pending: false,
           accountId: "account-a",
           participationReady: true,
+          participant: true,
           shareActualCost: true,
         }
         : { pending: false },
@@ -256,6 +368,7 @@ describe("leaderboard participation lifecycle", () => {
     await waitFor(() => expect(mocks.getProfile).toHaveBeenCalled());
     expect(mocks.setParticipation).toHaveBeenCalledWith({
       accountId: "account-b",
+      participant: false,
       shareActualCost: false,
     });
     expect(mocks.refreshActualCost).not.toHaveBeenCalled();

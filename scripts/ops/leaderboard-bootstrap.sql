@@ -6,7 +6,7 @@ begin;
 
 create table if not exists public.tokentracker_user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  leaderboard_public boolean not null default true,
+  leaderboard_public boolean not null default false,
   leaderboard_anonymous boolean not null default false,
   display_name text check (display_name is null or char_length(display_name) between 1 and 50),
   github_url text,
@@ -17,6 +17,9 @@ create table if not exists public.tokentracker_user_settings (
     or github_url ~ '^https://github\\.com/[A-Za-z0-9][A-Za-z0-9-]{0,38}/?$'
   )
 );
+
+alter table public.tokentracker_user_settings
+  alter column leaderboard_public set default false;
 
 alter table public.tokentracker_user_settings enable row level security;
 
@@ -51,9 +54,10 @@ create policy tokentracker_user_settings_own_delete
 
 revoke all on table public.tokentracker_user_settings from public;
 revoke all on table public.tokentracker_user_settings from anon;
-grant select, insert, update, delete
+revoke insert, update, delete
   on table public.tokentracker_user_settings
-  to authenticated;
+  from authenticated;
+grant select on table public.tokentracker_user_settings to authenticated;
 grant all on table public.tokentracker_user_settings to project_admin;
 
 create or replace view public.tokentracker_user_profiles as
@@ -78,5 +82,4 @@ revoke all on table public.tokentracker_user_profiles from public;
 revoke all on table public.tokentracker_user_profiles from anon;
 revoke all on table public.tokentracker_user_profiles from authenticated;
 grant select on table public.tokentracker_user_profiles to project_admin;
-
 commit;

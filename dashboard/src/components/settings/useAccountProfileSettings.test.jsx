@@ -51,19 +51,15 @@ describe("useAccountProfileSettings consent", () => {
     mocks.auth.signOut.mockReset();
   });
 
-  it("bootstraps login participation but keeps actual cost private by default", async () => {
+  it("loads a nonparticipant profile without silently enrolling it", async () => {
     mocks.getProfile.mockResolvedValue({
       leaderboard_public: false,
       share_actual_cost: false,
     });
     const { result } = renderHook(() => useAccountProfileSettings());
     await waitFor(() => expect(result.current.profileLoading).toBeUndefined());
-    await waitFor(() => {
-      expect(mocks.setProfile).toHaveBeenCalledWith({
-        accessToken: "jwt",
-        leaderboard_public: true,
-      });
-    });
+    await waitFor(() => expect(mocks.getProfile).toHaveBeenCalled());
+    expect(mocks.setProfile).not.toHaveBeenCalled();
     expect(result.current.shareActualCost).toBe(false);
   });
 

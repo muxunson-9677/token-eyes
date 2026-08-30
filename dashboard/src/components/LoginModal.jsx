@@ -8,7 +8,7 @@ import { copy } from "../lib/copy";
 
 export function LoginModal() {
   const { isOpen, options, closeLoginModal } = useLoginModal();
-  const { enabled } = useInsforgeAuth();
+  const { enabled, activateAuth } = useInsforgeAuth();
   const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
   const reduceMotion = useReducedMotion();
@@ -16,6 +16,7 @@ export function LoginModal() {
   // Keep keyboard interaction inside the dialog while it is open.
   useEffect(() => {
     if (!isOpen) return;
+    activateAuth?.();
     const previouslyFocused = document.activeElement;
     const frame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     const onKey = (e) => {
@@ -51,7 +52,7 @@ export function LoginModal() {
       document.removeEventListener("keydown", onKey);
       previouslyFocused?.focus?.();
     };
-  }, [isOpen, closeLoginModal]);
+  }, [activateAuth, isOpen, closeLoginModal]);
 
   if (!enabled) return null;
 
@@ -103,14 +104,19 @@ export function LoginModal() {
             {/* LoginCard Form */}
             <LoginCard
               emailOnly={options?.emailOnly === true}
+              title={options?.leaderboardParticipation === true
+                ? copy("login_modal.subtitle")
+                : copy("login.title")}
               onSuccess={closeLoginModal}
               className="p-6 bg-transparent"
             />
-            <div className="tt-surface-nested mx-6 mb-6 rounded-[var(--tt-control-radius)] px-4 py-3 text-xs leading-relaxed text-oai-gray-500 dark:text-oai-gray-400">
-              <p>{copy("login_modal.leaderboard_participation")}</p>
-              <p className="mt-1">{copy("login_modal.upload_boundary")}</p>
-              <p className="mt-1">{copy("login_modal.delete_participation")}</p>
-            </div>
+            {options?.leaderboardParticipation === true ? (
+              <div className="tt-surface-nested mx-6 mb-6 rounded-[var(--tt-control-radius)] px-4 py-3 text-xs leading-relaxed text-oai-gray-500 dark:text-oai-gray-400">
+                <p>{copy("login_modal.leaderboard_participation")}</p>
+                <p className="mt-1">{copy("login_modal.upload_boundary")}</p>
+                <p className="mt-1">{copy("login_modal.delete_participation")}</p>
+              </div>
+            ) : null}
           </motion.div>
         </motion.div>
       )}

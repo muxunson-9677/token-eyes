@@ -22,6 +22,7 @@ export interface InsforgeAuthValue {
   getPublicAuthConfig: () => Promise<any>;
   signOut: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
+  activateAuth: () => void;
 }
 
 export function resolveInsforgeClientAccessToken(

@@ -1597,10 +1597,6 @@ html.native-windows-app .tt-reference-route-leaderboard .tt-main-work-surface ma
   height: 46px;
 }
 
-.tt-reference-route-leaderboard .tt-leaderboard-signin-prompt {
-  display: none;
-}
-
 .tt-reference-route-leaderboard [data-testid="leaderboard-list-surface"] {
   height: 286px;
   border: 1px solid #dce5ee;

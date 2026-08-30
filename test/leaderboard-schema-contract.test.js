@@ -17,6 +17,7 @@ test("device state schema is compact, user-bound, and has no anonymous write pat
   const sql = readSql(DEVICE_SQL_PATH);
 
   assert.match(sql, /create table if not exists public\.tokentracker_leaderboard_device_state/);
+  assert.match(sql, /user_id uuid not null references auth\.users\(id\) on delete cascade/);
   assert.match(sql, /primary key \(user_id, device_id\)/);
   assert.match(sql, /payload jsonb not null/);
   assert.match(sql, /octet_length\(payload::text\) <= 8192/);
@@ -46,10 +47,11 @@ test("device upsert RPC derives the user from auth and never accepts user_id", (
     assert.match(signature[1], new RegExp(parameter.replace(/[()]/g, "\\$&")));
   }
   assert.match(sql, /security definer/);
-  assert.match(sql, /set search_path = public, pg_temp/);
+  assert.match(sql, /set search_path = pg_catalog, public, pg_temp/);
   assert.match(sql, /v_user_id uuid := auth\.uid\(\)/);
   assert.match(sql, /if v_user_id is null then/);
   assert.match(sql, /values \(\s*v_user_id,\s*p_device_id/);
+  assert.match(sql, /where\s+tokentracker_leaderboard_device_state\.summary_hash\s+is distinct from\s+excluded\.summary_hash/i);
 });
 
 test("device upsert is the only write path and validates the complete compact payload", () => {
@@ -61,7 +63,11 @@ test("device upsert is the only write path and validates the complete compact pa
   );
   assert.match(
     sql,
-    /grant\s+select,\s*delete\s+on table public\.tokentracker_leaderboard_device_state\s+to authenticated/i,
+    /grant\s+select\s+on table public\.tokentracker_leaderboard_device_state\s+to authenticated/i,
+  );
+  assert.match(
+    sql,
+    /revoke\s+insert,\s*update,\s*delete\s+on table public\.tokentracker_leaderboard_device_state\s+from authenticated/i,
   );
   assert.match(sql, /p_payload\s*-\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
   assert.match(sql, /p_payload\s*\?\&\s*array\['version',\s*'device_id',\s*'captured_at',\s*'periods'\]/i);
@@ -70,6 +76,8 @@ test("device upsert is the only write path and validates the complete compact pa
   assert.match(sql, /jsonb_array_length\(v_rows\)\s*>\s*100/i);
   assert.match(sql, /jsonb_array_length\(v_item\)\s*<>\s*7/i);
   assert.match(sql, /char_length\(v_item\s*->>\s*0\)\s+not\s+between\s+1\s+and\s+64/i);
+  assert.match(sql, /v_allowed_sources text\[\]/i);
+  assert.match(sql, /not\s*\(\(v_item\s*->>\s*0\)\s*=\s*any\(v_allowed_sources\)\)/i);
   assert.match(sql, /char_length\(v_item\s*->>\s*1\)\s+not\s+between\s+1\s+and\s+256/i);
   assert.match(sql, /\^\[0-9\]\{1,15\}\$/i);
   assert.match(sql, /v_period_token_total\s*:=\s*v_period_token_total\s*\+\s*\(v_item\s*->>\s*v_token_index\)::numeric/i);
@@ -91,7 +99,7 @@ test("actual-cost schema stores consent atomically and keeps disabled amounts nu
   const sql = readSql(ACTUAL_COST_SQL_PATH);
 
   assert.match(sql, /create table if not exists public\.tokentracker_actual_cost_state/);
-  assert.match(sql, /user_id uuid primary key/);
+  assert.match(sql, /user_id uuid primary key references auth\.users\(id\) on delete cascade/);
   assert.match(sql, /share_actual_cost boolean not null default false/);
   for (const column of ["today_usd", "week_usd", "month_usd", "total_usd"]) {
     assert.match(sql, new RegExp(`${column} numeric\\(20,6\\)`));
@@ -106,11 +114,15 @@ test("actual-cost schema stores consent atomically and keeps disabled amounts nu
   );
   assert.match(
     sql,
-    /grant\s+select,\s*delete\s+on table public\.tokentracker_actual_cost_state\s+to authenticated/i,
+    /grant\s+select\s+on table public\.tokentracker_actual_cost_state\s+to authenticated/i,
+  );
+  assert.match(
+    sql,
+    /revoke\s+insert,\s*update,\s*delete\s+on table public\.tokentracker_actual_cost_state\s+from authenticated/i,
   );
 
   const signature = sql.match(
-    /create or replace function public\.set_my_leaderboard_actual_cost\((.*?)\) returns/s,
+    /create or replace function public\.set_my_leaderboard_actual_cost\((.*?)\) returns boolean/s,
   );
   assert.ok(signature, "missing set_my_leaderboard_actual_cost RPC");
   assert.doesNotMatch(signature[1], /user_id/);
@@ -123,10 +135,16 @@ test("actual-cost schema stores consent atomically and keeps disabled amounts nu
     /update public\.tokentracker_actual_cost_state[^;]+where user_id = v_user_id[^;]+share_actual_cost = true/is,
   );
   const refreshSignature = sql.match(
-    /create or replace function public\.refresh_my_leaderboard_actual_cost\((.*?)\) returns boolean/s,
+    /create or replace function public\.refresh_my_leaderboard_actual_cost\((.*?)\) returns jsonb/s,
   );
   assert.ok(refreshSignature, "missing refresh_my_leaderboard_actual_cost RPC");
   assert.doesNotMatch(refreshSignature[1], /p_share|user_id/);
+  assert.ok(
+    (sql.match(/mark_leaderboard_dimensions_dirty\(v_user_id,\s*true\)/gi) || []).length >= 2,
+    "actual-cost consent and refresh must dirty the fixed actual-cost snapshots",
+  );
+  assert.match(sql, /is distinct from/i);
+  assert.match(sql, /jsonb_build_object\('enabled',\s*v_enabled,\s*'changed',\s*v_changed\)/i);
 });
 
 test("cleanup RPC removes all leaderboard-owned data without deleting the auth user", () => {
@@ -138,7 +156,9 @@ test("cleanup RPC removes all leaderboard-owned data without deleting the auth u
   assert.match(combinedSql, /delete from public\.tokentracker_leaderboard_snapshots/);
   assert.match(combinedSql, /delete from public\.tokentracker_user_settings/);
   assert.match(combinedSql, /tokentracker_leaderboard_avatar_metadata/);
+  assert.doesNotMatch(combinedSql, /delete from storage\.objects/i);
   assert.match(combinedSql, /where user_id = v_user_id/);
+  assert.match(combinedSql, /mark_leaderboard_dimensions_dirty\(v_user_id,\s*true\)/i);
   assert.doesNotMatch(combinedSql, /delete from auth\.users/);
 });
 

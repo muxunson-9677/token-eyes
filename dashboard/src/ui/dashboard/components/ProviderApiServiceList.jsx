@@ -37,6 +37,10 @@ function formatMoney(value, currency, rate) {
   });
 }
 
+function formatAttributedMoney(value, currency, rate) {
+  return value == null ? "—" : formatMoney(value, currency, rate);
+}
+
 function formatBalance(balance) {
   const amount = Number(balance?.amount);
   const currency = String(balance?.currency || "").trim().toUpperCase();
@@ -92,7 +96,7 @@ function Breakdown({ title, rows, currency, rate }) {
           <div key={row.id || row.display_name} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-[11px]">
             <span className="min-w-0 break-words text-oai-gray-700 dark:text-oai-gray-200">{row.display_name || row.id}</span>
             <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">{formatCount(row.tokens)}</span>
-            <span className="tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatMoney(row.cost_usd, currency, rate)}</span>
+            <span className="tabular-nums text-oai-gray-900 dark:text-oai-gray-100">{formatAttributedMoney(row.cost_usd, currency, rate)}</span>
           </div>
         )) : <div className="text-[11px] text-oai-gray-400">—</div>}
       </div>
@@ -196,6 +200,9 @@ function ProviderCard({ provider, index, currency, rate, source }) {
   const cached = source === "cache";
   const balance = cached ? null : formatBalance(provider.balance);
   const period = provider.period || { from: daily[0]?.date || "", to: daily.at(-1)?.date || "", days: daily.length };
+  const periodTimeZone = /^[A-Za-z0-9_+\-/:]{1,64}$/u.test(String(period.time_zone || ""))
+    ? String(period.time_zone)
+    : "";
 
   return (
     <article data-testid="provider-api-card" className="tt-surface-nested min-w-0 rounded-2xl border border-oai-gray-200/80 p-4 dark:border-oai-gray-800 sm:p-5">
@@ -212,7 +219,9 @@ function ProviderCard({ provider, index, currency, rate, source }) {
         </div>
         <div className="flex flex-col items-end gap-2">
           {balance ? <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{copy("spend.usage.provider_api.balance")} {balance}</span> : null}
-          <span className="rounded-lg border border-oai-gray-200 px-3 py-1 text-xs text-oai-gray-600 dark:border-oai-gray-700 dark:text-oai-gray-300">{copy("spend.usage.provider_api.period", { days: period.days || 7 })}</span>
+          <span className="rounded-lg border border-oai-gray-200 px-3 py-1 text-xs text-oai-gray-600 dark:border-oai-gray-700 dark:text-oai-gray-300">
+            {copy("spend.usage.provider_api.period", { days: period.days || 7 })}{periodTimeZone ? ` · ${periodTimeZone}` : ""}
+          </span>
         </div>
       </div>
 

@@ -28,13 +28,13 @@ describe("tokenPlanExpiryValue", () => {
     ).toBe("2026-08-27T10:20:30.456Z");
   });
 
-  it("does not fall back when the preferred field is non-empty but invalid", () => {
+  it("falls back when the preferred field is non-empty but invalid", () => {
     expect(
       tokenPlanExpiryValue({
         subscription_end_date: " invalid ",
         expires_at: "2027-01-01T00:00:00.000Z",
       }),
-    ).toBe("invalid");
+    ).toBe("2027-01-01T00:00:00.000Z");
   });
 
   it("uses and trims expires_at when the preferred field is empty", () => {
@@ -140,6 +140,15 @@ describe("isTokenPlanExpired", () => {
 });
 
 describe("token plan three-state validity", () => {
+  it("uses a valid fallback expiry when the preferred expiry is invalid", () => {
+    const record = {
+      subscription_end_date: "invalid",
+      expires_at: "2020-01-01T00:00:00.000Z",
+    };
+
+    expect(tokenPlanValidityState(record, new Date("2026-08-28T00:00:00.000Z"))).toBe("expired");
+  });
+
   it("treats a date-only start as local start-of-day", () => {
     expect(tokenPlanStartTimestamp("2026-08-27"))
       .toBe(new Date(2026, 7, 27, 0, 0, 0, 0).getTime());

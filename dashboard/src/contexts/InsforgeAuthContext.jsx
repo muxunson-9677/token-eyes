@@ -5,8 +5,16 @@ import { isLikelyExpiredAccessToken } from "../lib/auth-token";
 import { getPublicVisibility } from "../lib/api";
 import { clearLocalApiAuthToken, getLocalApiAuthHeaders } from "../lib/local-api-auth";
 import { isNativeWindowsApp } from "../lib/native-bridge.js";
+import { hasLeaderboardParticipationHint } from "../lib/leaderboard-sync-state";
 
 const InsforgeAuthContext = createContext(null);
+
+function shouldProbeAuthOnInitialPage() {
+  if (typeof window === "undefined") return true;
+  const params = new URLSearchParams(window.location.search || "");
+  const authCallbackPresent = params.has("insforge_code") || params.has("code");
+  return authCallbackPresent || hasLeaderboardParticipationHint();
+}
 
 /** Pick a human-readable name from the InsForge user object (OAuth metadata). */
 function pickDisplayNameFromUser(user) {
@@ -62,6 +70,8 @@ export function InsforgeAuthProvider({ children }) {
   const [client, setClient] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authProbeEnabled, setAuthProbeEnabled] = useState(shouldProbeAuthOnInitialPage);
+  const activateAuth = useCallback(() => setAuthProbeEnabled(true), []);
 
   useEffect(() => {
     let active = true;
@@ -85,6 +95,10 @@ export function InsforgeAuthProvider({ children }) {
 
   useEffect(() => {
     if (!client) return;
+    if (!authProbeEnabled) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
     (async () => {
@@ -113,7 +127,7 @@ export function InsforgeAuthProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [authProbeEnabled, client]);
 
   const refreshUser = useCallback(async () => {
     if (!client) return;
@@ -335,6 +349,7 @@ export function InsforgeAuthProvider({ children }) {
         getPublicAuthConfig: async () => ({ data: null, error: new Error("InsForge not configured") }),
         signOut: async () => {},
         getAccessToken: async () => null,
+        activateAuth,
       };
     }
     return {
@@ -357,6 +372,7 @@ export function InsforgeAuthProvider({ children }) {
       getPublicAuthConfig,
       signOut,
       getAccessToken,
+      activateAuth,
     };
   }, [
     client,
@@ -376,6 +392,7 @@ export function InsforgeAuthProvider({ children }) {
     getPublicAuthConfig,
     signOut,
     getAccessToken,
+    activateAuth,
   ]);
 
   return <InsforgeAuthContext.Provider value={value}>{children}</InsforgeAuthContext.Provider>;

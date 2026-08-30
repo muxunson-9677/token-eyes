@@ -638,11 +638,10 @@ test("compatibility summaries carry prior mode slices across normal batch bounda
 
 test("cloud schema keeps the legacy base identity and adds rolling-safe attribution", async () => {
   const root = path.join(__dirname, "..");
-  const [migration, ingest, profile, badge, vite] = await Promise.all([
+  const [migration, ingest, profile, vite] = await Promise.all([
     fs.readFile(path.join(root, "migrations", "20260818120000_add-hourly-billing-mode.sql"), "utf8"),
     fs.readFile(path.join(root, "dashboard", "edge-patches", "tokentracker-ingest.ts"), "utf8"),
     fs.readFile(path.join(root, "dashboard", "edge-patches", "tokentracker-leaderboard-profile.ts"), "utf8"),
-    fs.readFile(path.join(root, "dashboard", "edge-patches", "tokentracker-badge.ts"), "utf8"),
     fs.readFile(path.join(root, "dashboard", "vite.config.js"), "utf8"),
   ]);
   assert.match(migration, /add column if not exists billing_mode_slices jsonb/iu);
@@ -667,9 +666,7 @@ test("cloud schema keeps the legacy base identity and adds rolling-safe attribut
   assert.match(migration, /select distinct[\s\S]+order by lock_key/iu);
   assert.match(migration, /concat_ws\(E'\\x1f',v_user_id::text,v_device_id::text,[\s\S]+extract\(epoch from x\.hour_start\)::text/iu);
   assert.match(ingest, /onConflict:\s*"user_id,device_id,hour_start,source,model"/u);
-  for (const consumer of [profile, badge]) {
-    assert.doesNotMatch(consumer, /\.order\("billing_mode"/u);
-  }
+  assert.doesNotMatch(profile, /\.order\("billing_mode"/u);
   assert.match(vite, /queueUsageIdentity\(row\)/u);
 });
 

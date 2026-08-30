@@ -1,4 +1,3 @@
-import { getLeaderboard } from "./api";
 import { LEADERBOARD_DEFAULT_PERIOD } from "./leaderboard-query.js";
 
 export const DASHBOARD_PRELOAD_TARGETS = Object.freeze(["limits", "leaderboard"]);
@@ -22,9 +21,7 @@ const DEFAULT_RESOURCE_LOADERS = Object.freeze({
 });
 
 const LEADERBOARD_DEFAULT_OFFSET = 0;
-const LEADERBOARD_DEFAULT_PAGE_SIZE = 20;
-const LEADERBOARD_PAGE_SIZE_OPTIONS = Object.freeze([10, 20, 50, 100]);
-const LEADERBOARD_PAGE_SIZE_STORAGE_KEY = "tokentracker:leaderboard:pageSize";
+const LEADERBOARD_DEFAULT_PAGE_SIZE = 50;
 const LEADERBOARD_DEFAULT_MAX_ENTRIES = 20;
 const LEADERBOARD_PERSISTED_CACHE_KEY = "token-eyes:leaderboard:public-cache:v1";
 const PAGE_STATE_SOURCES = Object.freeze([
@@ -403,14 +400,6 @@ export function readPendingLeaderboardPreloadState(contextKey) {
 }
 
 export function getLeaderboardPreloadPageSize() {
-  if (typeof window === "undefined") return LEADERBOARD_DEFAULT_PAGE_SIZE;
-  try {
-    const raw = window.localStorage.getItem(LEADERBOARD_PAGE_SIZE_STORAGE_KEY);
-    const pageSize = Number(raw);
-    if (LEADERBOARD_PAGE_SIZE_OPTIONS.includes(pageSize)) return pageSize;
-  } catch {
-    // Ignore storage errors and keep the page's default page size.
-  }
   return LEADERBOARD_DEFAULT_PAGE_SIZE;
 }
 
@@ -430,8 +419,8 @@ export function getLeaderboardPreloadContextKey(options = {}) {
     accessMode: getLeaderboardPreloadAccessMode({ ...options, baseUrl, mockEnabled }),
     baseUrl,
     mockEnabled,
-    offset: options.offset ?? LEADERBOARD_DEFAULT_OFFSET,
-    pageSize: options.pageSize ?? getLeaderboardPreloadPageSize(),
+    offset: LEADERBOARD_DEFAULT_OFFSET,
+    pageSize: getLeaderboardPreloadPageSize(),
     period: options.period || LEADERBOARD_DEFAULT_PERIOD,
     metric: options.metric || "tokens",
     source: options.source || "all",
@@ -451,15 +440,14 @@ function publishSkippedLeaderboardState(reason, contextKey) {
 }
 
 export function preloadLeaderboardDefaultState(options = {}) {
-  const sessionAtStart = session;
   const mockEnabled = Boolean(options.mockEnabled);
   const baseUrl = options.baseUrl ?? "";
   const accessMode = getLeaderboardPreloadAccessMode({ ...options, baseUrl, mockEnabled });
   const period = options.period || LEADERBOARD_DEFAULT_PERIOD;
   const metric = options.metric || "tokens";
   const source = options.source || "all";
-  const pageSize = options.pageSize ?? getLeaderboardPreloadPageSize();
-  const offset = options.offset ?? LEADERBOARD_DEFAULT_OFFSET;
+  const pageSize = getLeaderboardPreloadPageSize();
+  const offset = LEADERBOARD_DEFAULT_OFFSET;
   const contextKey = getLeaderboardPreloadContextKey({
     accessMode,
     baseUrl,
@@ -470,77 +458,5 @@ export function preloadLeaderboardDefaultState(options = {}) {
     metric,
     source,
   });
-
-  if (!mockEnabled && options.authLoading) {
-    return Promise.resolve(publishSkippedLeaderboardState("auth-loading", contextKey));
-  }
-  if (!mockEnabled && !options.signedIn && accessMode !== "public") {
-    return Promise.resolve(publishSkippedLeaderboardState("not-signed-in", contextKey));
-  }
-  if (!mockEnabled && !baseUrl) {
-    return Promise.resolve(publishSkippedLeaderboardState("missing-base-url", contextKey));
-  }
-  if (!mockEnabled && accessMode === "unavailable") {
-    return Promise.resolve(publishSkippedLeaderboardState("access-unavailable", contextKey));
-  }
-
-  const target = sessionAtStart.targets.leaderboard;
-  const existing = readLeaderboardPreloadState(contextKey);
-  if (existing) return Promise.resolve(existing);
-  if (
-    target.stateStatus === "pending" &&
-    target.statePromise &&
-    target.pendingStateContextKey === contextKey
-  ) {
-    return target.statePromise;
-  }
-
-  const requestId = target.stateRequestId + 1;
-  target.stateRequestId = requestId;
-  target.stateStatus = "pending";
-  target.pendingStateContextKey = contextKey;
-  target.error = null;
-
-  const promise = Promise.resolve()
-    .then(() =>
-      getLeaderboard({
-        baseUrl,
-        period,
-        metric,
-        source,
-        limit: pageSize,
-        offset,
-        timeoutMs: options.timeoutMs ?? 10_000,
-      }),
-    )
-    .then((data) => {
-      if (
-        session !== sessionAtStart ||
-        target.stateRequestId !== requestId ||
-        target.statePromise !== promise
-      ) {
-        return null;
-      }
-      target.pendingStateContextKey = null;
-      return publishLeaderboardPreloadState(data, { contextKey });
-    })
-    .catch((error) => {
-      if (
-        session !== sessionAtStart ||
-        target.stateRequestId !== requestId ||
-        target.statePromise !== promise
-      ) {
-        return null;
-      }
-      target.pendingStateContextKey = null;
-      publishLeaderboardPreloadState(null, {
-        contextKey,
-        status: "rejected",
-        error,
-      });
-      return null;
-    });
-
-  target.statePromise = promise;
-  return promise;
+  return Promise.resolve(publishSkippedLeaderboardState("page-only-read", contextKey));
 }

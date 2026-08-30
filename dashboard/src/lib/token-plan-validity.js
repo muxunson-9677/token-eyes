@@ -15,7 +15,11 @@ function nonEmptyExpiryValue(value) {
 
 export function tokenPlanExpiryValue(record) {
   const subscriptionEndDate = nonEmptyExpiryValue(record?.subscription_end_date);
-  return subscriptionEndDate ?? nonEmptyExpiryValue(record?.expires_at);
+  if (tokenPlanExpiryTimestamp(subscriptionEndDate) !== null) return subscriptionEndDate;
+
+  const expiresAt = nonEmptyExpiryValue(record?.expires_at);
+  if (tokenPlanExpiryTimestamp(expiresAt) !== null) return expiresAt;
+  return subscriptionEndDate ?? expiresAt;
 }
 
 export function tokenPlanStartValue(record) {

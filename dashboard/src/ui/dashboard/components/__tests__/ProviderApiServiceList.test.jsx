@@ -51,7 +51,7 @@ const DAYS = [
 ];
 
 function provider(overrides = {}) {
-  const period = { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "Asia/Shanghai" };
+  const period = { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "UTC" };
   return {
     provider_id: "deepseek",
     display_name: "DeepSeek",
@@ -117,7 +117,7 @@ describe("ProviderApiServiceList", () => {
     expect(within(cards[0]).getByText("finance@company.com")).toBeInTheDocument();
     expect(within(cards[0]).getByText("1 Agents")).toBeInTheDocument();
     expect(within(cards[0]).getByText("1 models")).toBeInTheDocument();
-    expect(within(cards[0]).getByText("7 days")).toBeInTheDocument();
+    expect(within(cards[0]).getByText("7 days · UTC")).toBeInTheDocument();
     expect(within(cards[0]).getByText(/CNY\s*1,245\.80/)).toBeInTheDocument();
     expect(within(cards[0]).getByText("29")).toBeInTheDocument();
     expect(within(cards[0]).getByText("1,940")).toBeInTheDocument();
@@ -144,6 +144,20 @@ describe("ProviderApiServiceList", () => {
     expect(tooltip).toHaveTextContent("460");
     expect(tooltip).toHaveTextContent("4.60");
     expect(tooltip).not.toHaveTextContent("%");
+  });
+
+  it("shows unavailable Agent and model cash attribution instead of fabricated zero spend", () => {
+    const fixture = provider();
+    fixture.daily[0].agents[0].cost_usd = null;
+    fixture.daily[0].models[0].cost_usd = null;
+    useRecentApiProviderStats.mockReturnValue({ ...DEFAULT_HOOK, providers: { providers: [fixture] } });
+
+    render(<ProviderApiServiceList />);
+    fireEvent.focus(screen.getAllByTestId("provider-api-day-point")[0]);
+
+    const tooltip = screen.getByRole("tooltip");
+    expect(within(tooltip).getAllByText("—")).toHaveLength(2);
+    expect(tooltip).not.toHaveTextContent("$0.0000");
   });
 
   it("scales low-cost Provider curves to their real seven-day peak", () => {

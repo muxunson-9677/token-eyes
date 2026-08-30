@@ -1,6 +1,6 @@
 import React from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const authFixture = vi.hoisted(() => ({
   configured: false,
@@ -155,5 +155,66 @@ describe("InsforgeAuthProvider email verification", () => {
     expect(authFixture.client.auth.resendVerificationEmail).toHaveBeenCalledWith({
       email: "person@example.com",
     });
+  });
+});
+
+describe("InsforgeAuthProvider public leaderboard boundary", () => {
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/leaderboard");
+    localStorage.clear();
+    authFixture.configured = true;
+    authFixture.client = {
+      auth: {
+        getCurrentUser: vi.fn(async () => ({ data: { user: null }, error: null })),
+      },
+    };
+  });
+
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("does not probe InsForge Auth for a fresh anonymous public leaderboard visit", async () => {
+    const wrapper = ({ children }) => <InsforgeAuthProvider>{children}</InsforgeAuthProvider>;
+    const { result } = renderHook(() => useInsforgeAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.enabled).toBe(true);
+    expect(authFixture.client.auth.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it("does not probe InsForge Auth on a local-first page without a participation hint", async () => {
+    window.history.replaceState({}, "", "/usage");
+    const wrapper = ({ children }) => <InsforgeAuthProvider>{children}</InsforgeAuthProvider>;
+    const { result } = renderHook(() => useInsforgeAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.enabled).toBe(true);
+    expect(authFixture.client.auth.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it("activates the auth probe only after the leaderboard login action", async () => {
+    const wrapper = ({ children }) => <InsforgeAuthProvider>{children}</InsforgeAuthProvider>;
+    const { result } = renderHook(() => useInsforgeAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      result.current.activateAuth();
+    });
+    await waitFor(() => expect(authFixture.client.auth.getCurrentUser).toHaveBeenCalledTimes(1));
+  });
+
+  it("restores auth for an existing leaderboard participant hint", async () => {
+    localStorage.setItem("tokentracker_leaderboard_sync_state_v1", JSON.stringify({
+      pending: false,
+      accountId: "existing-participant",
+      participationReady: true,
+      participant: true,
+      shareActualCost: false,
+    }));
+    const wrapper = ({ children }) => <InsforgeAuthProvider>{children}</InsforgeAuthProvider>;
+    renderHook(() => useInsforgeAuth(), { wrapper });
+
+    await waitFor(() => expect(authFixture.client.auth.getCurrentUser).toHaveBeenCalled());
   });
 });

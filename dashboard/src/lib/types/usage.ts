@@ -237,7 +237,7 @@ export interface ProviderBreakdown {
   display_name: string;
   tokens: number;
   request_count: number | null;
-  cost_usd: number;
+  cost_usd: number | null;
 }
 
 export interface ProviderPeriod {

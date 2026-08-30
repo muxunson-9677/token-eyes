@@ -1,4 +1,4 @@
-import { getInsforgeFunctionsUrl, getInsforgeRemoteUrl } from "./insforge-config";
+import { getInsforgeRemoteUrl } from "./insforge-config";
 
 export const STATUSPAGE_URL = "https://tokentracker.statuspage.io/";
 
@@ -25,10 +25,12 @@ export function getBackendBaseUrl() {
 }
 
 /**
- * 排行榜专用：`tokentracker-leaderboard`、公开可见性等 InsForge Edge Functions。
- * 与 `getInsforgeBaseUrl()` 相同；在 localhost 只要配置了 `VITE_INSFORGE_BASE_URL` 仍会请求云端。
+ * 公共排行榜专用：签名静态对象基址，不得回退到 InsForge Function。
  */
 export function getLeaderboardBaseUrl() {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
-  return (env?.VITE_LEADERBOARD_PUBLIC_BASE_URL || getInsforgeFunctionsUrl()).trim();
+  return (
+    env?.VITE_LEADERBOARD_PUBLIC_BASE_URL
+    || "https://feeds.tokentracker.cc/v1"
+  ).trim();
 }

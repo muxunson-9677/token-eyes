@@ -363,7 +363,7 @@ export function LoginCard({
             ? copy("reset_password.title")
             : isVerificationMode
               ? copy("login.verify_email_title")
-              : (title || copy("login_modal.subtitle"))}
+              : (title || copy("login.title"))}
         </h2>
         {!isResetMode && subtitle && (
           <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400 mt-1.5 leading-relaxed max-w-[320px] mx-auto">

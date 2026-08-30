@@ -27,9 +27,6 @@ create policy leaderboard_avatar_metadata_own
 
 revoke all on table public.tokentracker_leaderboard_avatar_metadata from public;
 revoke all on table public.tokentracker_leaderboard_avatar_metadata from anon;
-grant select, insert, update, delete
-  on table public.tokentracker_leaderboard_avatar_metadata
-  to authenticated;
+revoke all on table public.tokentracker_leaderboard_avatar_metadata from authenticated;
 grant all on table public.tokentracker_leaderboard_avatar_metadata to project_admin;
-
 commit;

@@ -5,37 +5,30 @@ const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 
 const ASSUMPTIONS = Object.freeze({
-  participants: 6_000,
-  days_per_month: 30,
-  changed_uploads_per_active_user_per_day: 1,
-  first_login_uploads_per_participant: 1,
-  upload_payload_bytes: 8_192,
-  global_refresh_minutes: 15,
-  worker_requests_per_day: 30_000,
-  periods_retained: 4,
-  average_active_sources_per_participant: 2.5,
-  actual_cost_share_ratio: 0.4,
-  snapshot_row_bytes_including_indexes: 880,
-  device_state_row_bytes_including_indexes: 9_216,
+  install_scenarios: [10_000, 50_000, 100_000], participation_ratio: 0.05,
+  public_views_per_install_per_day: 0.2, aggregate_uploads_per_participant_per_day: 1,
+  participant_rank_reads_per_participant_per_day: 0.2, first_login_calls_per_participant: 1,
+  days_per_month: 30, aggregate_upload_bytes: 8_192, fixed_static_objects: 285,
+  average_static_object_bytes: 64 * 1024, average_active_sources_per_participant: 2.5,
+  actual_cost_participant_ratio: 0.4, cache_miss_ratio: 0.05, refresh_windows_per_day: 24 * 60,
+  daily_reconciliation_objects: 285, compact_state_row_bytes_including_indexes: 9_216,
+  snapshot_row_bytes_including_indexes: 880, fixed_snapshot_rows: 285 * 50,
   supporting_database_megabytes: 18,
-  average_avatar_bytes: 10 * 1024,
 });
 
-const LIMITS = Object.freeze({
-  uploads_per_month: 186_000,
-  upload_payload_bytes: 8_192,
-  upload_bandwidth_gib: 1.5,
-  global_refresh_calls_per_month: 2_880,
-  worker_requests_per_day: 30_000,
-  estimated_database_megabytes: 300,
-  avatar_megabytes: 100,
+const CLOUDFLARE_FREE_LIMITS = Object.freeze({
+  workers_requests_per_day: 100_000, workers_cpu_ms_per_request: 10,
+  durable_object_requests_per_day: 100_000, durable_object_rows_read_per_day: 5_000_000,
+  durable_object_rows_written_per_day: 100_000, durable_object_storage_gib: 5,
+  excess_behavior: "operations fail; no usage billing on Workers Free",
+  workers_source: "https://developers.cloudflare.com/workers/platform/pricing/",
+  workers_limits_source: "https://developers.cloudflare.com/workers/platform/limits/",
+  durable_objects_source: "https://developers.cloudflare.com/durable-objects/platform/pricing/",
 });
 
-const WARNING_LINES = Object.freeze({
-  insforge_database_megabytes: 350,
-  insforge_bandwidth_gib: 3.5,
-  insforge_edge_calls_per_month: 70_000,
-  cloudflare_worker_requests_per_day: 70_000,
+const HARD_GATE = Object.freeze({
+  durable_daily_request_warn_at: 70_000, durable_daily_request_stop_at: 90_000,
+  durable_daily_write_warn_at: 70_000, durable_daily_write_stop_at: 90_000,
 });
 
 function round(value, digits = 3) {
@@ -43,134 +36,80 @@ function round(value, digits = 3) {
   return Math.round(value * scale) / scale;
 }
 
-function buildCapacityModel() {
+function expectedRefreshObjectWritesPerDay(participants) {
+  const windows = ASSUMPTIONS.refresh_windows_per_day;
+  const uploadsPerWindow = participants / windows;
+  const activeWindowRatio = 1 - Math.exp(-uploadsPerWindow);
+  const activeWindows = windows * activeWindowRatio;
+  const uniqueSources = 27 * (1 - Math.exp(
+    -uploadsPerWindow * ASSUMPTIONS.average_active_sources_per_participant / 27,
+  ));
+  const sourcesPerActiveWindow = activeWindowRatio > 0 ? uniqueSources / activeWindowRatio : 0;
+  return activeWindows * (12 + 10 * sourcesPerActiveWindow);
+}
+
+function buildScenario(installUsers) {
   const a = ASSUMPTIONS;
-  const dailyUploads =
-    a.participants * a.changed_uploads_per_active_user_per_day;
-  const firstLoginAllowance =
-    a.participants * a.first_login_uploads_per_participant;
-  const uploadsPerMonth =
-    dailyUploads * a.days_per_month + firstLoginAllowance;
-  const uploadBandwidthGiB =
-    uploadsPerMonth * a.upload_payload_bytes / GIB;
-  const globalRefreshCalls =
-    a.days_per_month * 24 * 60 / a.global_refresh_minutes;
-
-  // Each active source creates token + estimated-spend rows. Each participant
-  // also has two all-source rows, plus an all-source actual-cost row only when
-  // consented. Four current snapshots are retained; old runs are deleted.
-  const snapshotRows = Math.ceil(
-    a.participants
-      * a.periods_retained
-      * (
-        a.average_active_sources_per_participant * 2
-        + 2
-        + a.actual_cost_share_ratio
-      ),
-  );
-  const snapshotMegabytes =
-    snapshotRows * a.snapshot_row_bytes_including_indexes / MIB;
-  const deviceStateMegabytes =
-    a.participants * a.device_state_row_bytes_including_indexes / MIB;
-  const estimatedDatabaseMegabytes =
-    snapshotMegabytes
-    + deviceStateMegabytes
+  const participants = Math.round(installUsers * a.participation_ratio);
+  const publicReadsPerDay = Math.round(installUsers * a.public_views_per_install_per_day);
+  const publicCacheMissesPerDay = Math.ceil(publicReadsPerDay * a.cache_miss_ratio);
+  const uploadsPerWindow = participants / a.refresh_windows_per_day;
+  const activeRefreshWindows = Math.ceil(a.refresh_windows_per_day * (1 - Math.exp(-uploadsPerWindow)));
+  const refreshWrites = Math.ceil(expectedRefreshObjectWritesPerDay(participants) + a.daily_reconciliation_objects);
+  const dirtyTriggers = participants * a.aggregate_uploads_per_participant_per_day;
+  const rawRequests = Math.ceil(publicCacheMissesPerDay + dirtyTriggers + activeRefreshWindows + refreshWrites + 1);
+  const rawRowsRead = Math.ceil(publicCacheMissesPerDay * 2 + dirtyTriggers * 3 + activeRefreshWindows * 2 + refreshWrites * 2 + 4);
+  const rawRowsWritten = Math.ceil(publicCacheMissesPerDay + dirtyTriggers * 3 + activeRefreshWindows * 3 + refreshWrites * 2 + 4);
+  const requiresDegradation = rawRequests >= HARD_GATE.durable_daily_request_warn_at
+    || rawRowsWritten >= HARD_GATE.durable_daily_write_warn_at;
+  const aggregateUploads = participants * a.aggregate_uploads_per_participant_per_day * a.days_per_month
+    + participants * a.first_login_calls_per_participant;
+  const rankReads = Math.round(participants * a.participant_rank_reads_per_participant_per_day * a.days_per_month);
+  const databaseMegabytes = (participants * a.compact_state_row_bytes_including_indexes
+    + a.fixed_snapshot_rows * a.snapshot_row_bytes_including_indexes) / MIB
     + a.supporting_database_megabytes;
-  const avatarMegabytes =
-    a.participants * a.average_avatar_bytes / MIB;
-
-  const capacity = {
-    uploads_per_month: uploadsPerMonth,
-    first_login_allowance: firstLoginAllowance,
-    upload_payload_bytes: a.upload_payload_bytes,
-    upload_bandwidth_gib: round(uploadBandwidthGiB),
-    global_refresh_calls_per_month: globalRefreshCalls,
-    worker_requests_per_day: a.worker_requests_per_day,
-    estimated_snapshot_rows: snapshotRows,
-    estimated_database_megabytes: round(estimatedDatabaseMegabytes),
-    avatar_megabytes: round(avatarMegabytes),
-  };
-
-  const checks = {
-    uploads_per_month:
-      capacity.uploads_per_month <= LIMITS.uploads_per_month,
-    upload_payload_bytes:
-      capacity.upload_payload_bytes <= LIMITS.upload_payload_bytes,
-    upload_bandwidth_gib:
-      capacity.upload_bandwidth_gib <= LIMITS.upload_bandwidth_gib,
-    global_refresh_calls_per_month:
-      capacity.global_refresh_calls_per_month
-      <= LIMITS.global_refresh_calls_per_month,
-    worker_requests_per_day:
-      capacity.worker_requests_per_day <= LIMITS.worker_requests_per_day,
-    estimated_database_megabytes:
-      capacity.estimated_database_megabytes
-      <= LIMITS.estimated_database_megabytes,
-    avatar_megabytes:
-      capacity.avatar_megabytes <= LIMITS.avatar_megabytes,
-  };
 
   return {
-    assumptions: { ...a },
-    limits: { ...LIMITS },
-    warning_lines: { ...WARNING_LINES },
-    warning_utilization: {
-      insforge_database: round(
-        capacity.estimated_database_megabytes
-          / WARNING_LINES.insforge_database_megabytes,
-      ),
-      insforge_bandwidth: round(
-        capacity.upload_bandwidth_gib
-          / WARNING_LINES.insforge_bandwidth_gib,
-      ),
-      insforge_edge: round(
-        capacity.global_refresh_calls_per_month
-          / WARNING_LINES.insforge_edge_calls_per_month,
-      ),
-      cloudflare_worker: round(
-        capacity.worker_requests_per_day
-          / WARNING_LINES.cloudflare_worker_requests_per_day,
-      ),
-    },
-    capacity,
-    checks,
-    within_envelope: Object.values(checks).every(Boolean),
-    actions: {
-      warning_threshold_ratio: 0.7,
-      public_ttl_minutes: [15, 30, 60],
-      month_refresh_hours: [1, 4],
-      total_refresh_days: [1, 2],
-      keep_today_week_at_15_minutes: true,
-      today_week_exception: "Increase only if Edge calls cross the 70% warning line",
-      auto_enable_billing: false,
-      disable_local_features: false,
-    },
+    install_users: installUsers, estimated_participants: participants,
+    public_static_reads_per_month: publicReadsPerDay * a.days_per_month,
+    public_cache_misses_per_day: publicCacheMissesPerDay,
+    public_reads_use_insforge: false, public_reads_require_auth: false,
+    aggregate_uploads_per_month: aggregateUploads,
+    aggregate_upload_bandwidth_gib: round(aggregateUploads * a.aggregate_upload_bytes / GIB),
+    participant_rank_reads_per_month: rankReads,
+    estimated_insforge_optional_calls_per_month: aggregateUploads + rankReads,
+    estimated_database_megabytes: round(databaseMegabytes), static_object_count: a.fixed_static_objects,
+    durable_object_public_storage_gib: round(a.fixed_static_objects * a.average_static_object_bytes / GIB, 6),
+    raw_public_object_writes_per_day: refreshWrites, worker_dirty_trigger_requests_per_day: dirtyTriggers,
+    raw_durable_object_requests_per_day: rawRequests, raw_durable_object_rows_read_per_day: rawRowsRead,
+    raw_durable_object_rows_written_per_day: rawRowsWritten,
+    gated_durable_object_requests_per_day: Math.min(rawRequests, HARD_GATE.durable_daily_request_stop_at),
+    gated_durable_object_rows_written_per_day: Math.min(rawRowsWritten, HARD_GATE.durable_daily_write_stop_at),
+    raw_durable_object_within_free_tier: rawRequests <= CLOUDFLARE_FREE_LIMITS.durable_object_requests_per_day
+      && rawRowsRead <= CLOUDFLARE_FREE_LIMITS.durable_object_rows_read_per_day
+      && rawRowsWritten <= CLOUDFLARE_FREE_LIMITS.durable_object_rows_written_per_day,
+    requires_zero_dollar_degradation: requiresDegradation,
+    guaranteed_60_second_public_refresh_at_this_scale: !requiresDegradation,
+    auto_enable_billing: false, unbounded_usage_billing: false, local_core_available: true,
+    degradation_order: ["stop-optional-public-object-writes", "stop-new-dirty-refresh-work", "serve-edge-cache-or-client-lkg"],
   };
 }
 
-function printModel(model) {
-  const rows = Object.entries(model.capacity).map(([metric, value]) => ({
-    metric,
-    value,
-    status: metric === "first_login_allowance"
-      || metric === "estimated_snapshot_rows"
-      ? "info"
-      : model.checks[metric] === false ? "over" : "ok",
-  }));
-  process.stdout.write("Leaderboard free-tier capacity\n");
-  process.stdout.write(`${JSON.stringify(rows, null, 2)}\n\n`);
-  process.stdout.write(`${JSON.stringify(model, null, 2)}\n`);
+function buildCapacityModel() {
+  return {
+    model_version: "token-eyes-leaderboard-zero-dollar/v5",
+    assumptions: { ...ASSUMPTIONS }, cloudflare_free_limits: { ...CLOUDFLARE_FREE_LIMITS },
+    hard_gate: { ...HARD_GATE }, cloudflare_account_verified_free: true,
+    cloudflare_account_probe: "CPU limit 11ms rejected with API 100328: Free plan",
+    insforge_limits_verified: false,
+    insforge_gate: "isolated staging optional auth/write sync must fail closed before any paid resource",
+    scenarios: ASSUMPTIONS.install_scenarios.map(buildScenario),
+  };
 }
 
 if (require.main === module) {
-  const model = buildCapacityModel();
-  printModel(model);
-  if (!model.within_envelope) process.exitCode = 1;
+  process.stdout.write("Leaderboard zero-dollar capacity\n");
+  process.stdout.write(`${JSON.stringify(buildCapacityModel(), null, 2)}\n`);
 }
 
-module.exports = {
-  ASSUMPTIONS,
-  LIMITS,
-  WARNING_LINES,
-  buildCapacityModel,
-};
+module.exports = { ASSUMPTIONS, CLOUDFLARE_FREE_LIMITS, HARD_GATE, buildCapacityModel };

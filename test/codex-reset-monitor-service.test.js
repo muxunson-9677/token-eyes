@@ -215,7 +215,7 @@ test("acknowledging the newest official reset never promotes older history into 
 test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", async () => {
   assert.equal(
     FEED_URL,
-    "https://a62b9nf2.function2.insforge.app/tokentracker-codex-reset-feed",
+    "https://feeds.tokentracker.cc/v1/codex-reset/feed.json",
   );
   assert.equal(FEED_CACHE_MS, 5 * 60_000);
   const keys = crypto.generateKeyPairSync("ed25519");

@@ -12,9 +12,9 @@ const UPSERT_RPC = "upsert_my_leaderboard_device_state";
 const REFRESH_FUNCTION = "tokentracker-leaderboard-refresh";
 
 export type LeaderboardSyncReason =
-  | "first-login"
+  | "leaderboard-consent"
   | "leaderboard-open"
-  | "daily-catchup"
+  | "meaningful-change"
   | "manual-list-refresh"
   | "app-exit";
 
@@ -85,7 +85,6 @@ async function refreshPublishedLeaderboard(options: {
       method: "POST",
       headers,
       body: JSON.stringify({
-        period: "total",
         source: "compact-state-upload",
       }),
     });

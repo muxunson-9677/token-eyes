@@ -328,7 +328,7 @@ test("local API serves plan market state and protects manual refresh with local 
       ok: true,
       catalog,
       refresh: {
-        source_url: "https://a62b9nf2.function2.insforge.app/tokentracker-plan-market-feed",
+        source_url: "https://feeds.tokentracker.cc/v1/plan-market/feed.json",
         source_status: "configured",
         last_successful_at: null,
         catalog_version: null,

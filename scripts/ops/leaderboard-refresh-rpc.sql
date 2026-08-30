@@ -17,7 +17,9 @@ create table if not exists public.tokentracker_leaderboard_snapshots_v2 (
   from_day date not null,
   to_day date not null,
   rank integer not null check (rank > 0),
+  participant_count integer not null check (participant_count > 0),
   user_id uuid not null,
+  public_entry_id text not null check (public_entry_id ~ '^[a-f0-9]{64}$'),
   total_tokens numeric(30,0) not null check (total_tokens >= 0),
   estimated_cost_usd numeric(30,6) not null check (estimated_cost_usd >= 0),
   actual_cost_usd numeric(20,6),
@@ -37,8 +39,32 @@ create table if not exists public.tokentracker_leaderboard_snapshots_v2 (
   is_public boolean not null default true
 );
 
+alter table public.tokentracker_leaderboard_snapshots_v2 enable row level security;
+revoke all on table public.tokentracker_leaderboard_snapshots_v2 from public, anon, authenticated;
+grant all on table public.tokentracker_leaderboard_snapshots_v2 to project_admin;
+
 alter table public.tokentracker_leaderboard_snapshots_v2
   alter column estimated_cost_usd type numeric(30,6);
+
+alter table public.tokentracker_leaderboard_snapshots_v2
+  add column if not exists public_entry_id text;
+
+alter table public.tokentracker_leaderboard_snapshots_v2
+  add column if not exists participant_count integer;
+
+update public.tokentracker_leaderboard_snapshots_v2
+set participant_count = 1
+where participant_count is null;
+
+alter table public.tokentracker_leaderboard_snapshots_v2
+  alter column participant_count set not null;
+
+update public.tokentracker_leaderboard_snapshots_v2
+set public_entry_id = encode(digest(user_id::text, 'sha256'), 'hex')
+where public_entry_id is null;
+
+alter table public.tokentracker_leaderboard_snapshots_v2
+  alter column public_entry_id set not null;
 
 create index if not exists tokentracker_leaderboard_snapshot_v2_rank_idx
   on public.tokentracker_leaderboard_snapshots_v2
@@ -48,13 +74,12 @@ create index if not exists tokentracker_leaderboard_snapshot_v2_user_idx
   on public.tokentracker_leaderboard_snapshots_v2
   (user_id, period, metric, source, snapshot_run_id);
 
-create or replace function public.refresh_leaderboard_snapshots(
-  p_refresh_month boolean,
-  p_refresh_total boolean
+create or replace function public.refresh_leaderboard_snapshot_dimensions(
+  p_dimensions jsonb
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = pg_catalog, public, pg_temp
 as $function$
 declare
   v_started_at timestamptz := clock_timestamp();
@@ -62,22 +87,46 @@ declare
   v_shanghai_day date := (now() at time zone 'Asia/Shanghai')::date;
   v_snapshot_run_id uuid := gen_random_uuid();
   v_allowed_periods text[] := array['today', 'week', '30d', 'month', 'total'];
-  v_periods text[] := array['today', 'week', '30d'];
+  v_allowed_sources text[] := array[
+    'all', 'claude', 'codex', 'every-code', 'cursor', 'trae', 'gemini',
+    'opencode', 'openclaw', 'kilo-cli', 'kilocode', 'roocode', 'kiro',
+    'hermes', 'kimi', 'kimi-code', 'codebuddy', 'workbuddy', 'omp', 'pi',
+    'craft', 'grok', 'copilot', 'zed', 'goose', 'droid', 'antigravity',
+    'deepseek-harness'
+  ];
+  v_periods text[];
   v_pricing_version text;
   v_pricing_version_count integer;
   v_inserted integer := 0;
   v_row_counts jsonb := '{}'::jsonb;
+  v_static_dimensions jsonb := '[]'::jsonb;
 begin
   -- One writer at a time. The transaction keeps the previous complete run
   -- visible if any validation, pricing, or insert operation fails.
   perform pg_advisory_xact_lock(hashtext('tokentracker:leaderboard-refresh'));
 
-  if coalesce(p_refresh_month, false) then
-    v_periods := array_append(v_periods, 'month');
+  if jsonb_typeof(p_dimensions) <> 'array'
+     or jsonb_array_length(p_dimensions) < 1
+     or jsonb_array_length(p_dimensions) > 285 then
+    raise exception 'p_dimensions must contain between 1 and 285 fixed keys';
   end if;
-  if coalesce(p_refresh_total, false) then
-    v_periods := array_append(v_periods, 'total');
+  if exists (
+    select 1
+    from jsonb_array_elements(p_dimensions) dimension
+    where jsonb_typeof(dimension) <> 'object'
+      or dimension - array['period', 'metric', 'source'] <> '{}'::jsonb
+      or not (dimension ?& array['period', 'metric', 'source'])
+      or not ((dimension ->> 'period') = any(v_allowed_periods))
+      or not ((dimension ->> 'metric') = any(array['tokens', 'estimated_spend', 'actual_cost']))
+      or not ((dimension ->> 'source') = any(v_allowed_sources))
+      or ((dimension ->> 'metric') = 'actual_cost' and (dimension ->> 'source') <> 'all')
+  ) then
+    raise exception 'p_dimensions contains a non-whitelisted key';
   end if;
+
+  select array_agg(distinct dimension ->> 'period')
+  into v_periods
+  from jsonb_array_elements(p_dimensions) dimension;
 
   select min(pricing_version), count(distinct pricing_version)
   into v_pricing_version, v_pricing_version_count
@@ -88,6 +137,13 @@ begin
   end if;
 
   with
+  selected_dimensions as (
+    select distinct
+      dimension ->> 'period' as period,
+      dimension ->> 'metric' as metric,
+      dimension ->> 'source' as source
+    from jsonb_array_elements(p_dimensions) dimension
+  ),
   selected_periods as (
     select period
     from unnest(v_periods) as selected(period)
@@ -136,7 +192,8 @@ begin
         )
         or (
           selected.period = '30d'
-          and (state.captured_at at time zone 'Asia/Shanghai')::date = v_shanghai_day
+          and (state.captured_at at time zone 'Asia/Shanghai')::date
+            >= v_shanghai_day - 29
         )
         or (
           selected.period = 'month'
@@ -359,14 +416,26 @@ begin
     from actual_values actual
     where actual.actual_cost_usd is not null
   ),
-  ranked as (
+  ranked_all as (
     select
       ranked_input.*,
-      dense_rank() over (
+      row_number() over (
         partition by ranked_input.period, ranked_input.metric, ranked_input.source
-        order by ranked_input.sort_value desc
-      )::integer as rank
+        order by ranked_input.sort_value desc, ranked_input.user_id asc
+      )::integer as rank,
+      count(*) over (
+        partition by ranked_input.period, ranked_input.metric, ranked_input.source
+      )::integer as participant_count
     from ranked_values ranked_input
+  ),
+  ranked as (
+    select ranked_all.*
+    from ranked_all
+    join selected_dimensions dimension
+      on dimension.period = ranked_all.period
+      and dimension.metric = ranked_all.metric
+      and dimension.source = ranked_all.source
+    where ranked_all.rank <= 50
   ),
   inserted as (
     insert into public.tokentracker_leaderboard_snapshots_v2 (
@@ -376,7 +445,9 @@ begin
       from_day,
       to_day,
       rank,
+      participant_count,
       user_id,
+      public_entry_id,
       total_tokens,
       estimated_cost_usd,
       actual_cost_usd,
@@ -422,7 +493,9 @@ begin
         else v_shanghai_day
       end,
       ranked.rank,
+      ranked.participant_count,
       ranked.user_id,
+      encode(digest(ranked.user_id::text, 'sha256'), 'hex'),
       ranked.total_tokens,
       ranked.estimated_cost_usd,
       ranked.actual_cost_usd,
@@ -463,7 +536,10 @@ begin
       end,
       case
         when coalesce(settings.leaderboard_anonymous, false) then null
-        else coalesce(custom_avatar.avatar_url, profile.avatar_url)
+        -- Public snapshots may reference only the content-addressed avatar
+        -- copied to the public Worker object store by the authenticated avatar upload edge. Auth-provider
+        -- profile URLs are intentionally excluded from the static public path.
+        else custom_avatar.avatar_url
       end,
       case
         when coalesce(settings.leaderboard_anonymous, false)
@@ -493,7 +569,13 @@ begin
   -- earlier error aborts the transaction and leaves the previous run intact.
   delete from public.tokentracker_leaderboard_snapshots_v2
   where snapshot_run_id is distinct from v_snapshot_run_id
-    and period = any(v_periods);
+    and exists (
+      select 1
+      from jsonb_array_elements(p_dimensions) dimension
+      where tokentracker_leaderboard_snapshots_v2.period = dimension ->> 'period'
+        and tokentracker_leaderboard_snapshots_v2.metric = dimension ->> 'metric'
+        and tokentracker_leaderboard_snapshots_v2.source = dimension ->> 'source'
+    );
 
   select coalesce(
     jsonb_object_agg(group_key, row_count),
@@ -509,6 +591,36 @@ begin
     group by period, metric, source
   ) counts;
 
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'period', dimension ->> 'period',
+    'metric', dimension ->> 'metric',
+    'source', dimension ->> 'source',
+    'rows', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'rank', snapshot.rank,
+        'participant_count', snapshot.participant_count,
+        'public_entry_id', snapshot.public_entry_id,
+        'display_name', snapshot.display_name,
+        'avatar_url', snapshot.avatar_url,
+        'github_url', snapshot.github_url,
+        'total_tokens', snapshot.total_tokens::text,
+        'estimated_cost_usd', snapshot.estimated_cost_usd,
+        'actual_cost_usd', snapshot.actual_cost_usd,
+        'source_breakdown', snapshot.source_breakdown,
+        'pricing_version', snapshot.pricing_version,
+        'from_day', snapshot.from_day,
+        'to_day', snapshot.to_day
+      ) order by snapshot.rank)
+      from public.tokentracker_leaderboard_snapshots_v2 snapshot
+      where snapshot.snapshot_run_id = v_snapshot_run_id
+        and snapshot.period = dimension ->> 'period'
+        and snapshot.metric = dimension ->> 'metric'
+        and snapshot.source = dimension ->> 'source'
+    ), '[]'::jsonb)
+  ) order by dimension ->> 'period', dimension ->> 'metric', dimension ->> 'source'), '[]'::jsonb)
+  into v_static_dimensions
+  from jsonb_array_elements(p_dimensions) dimension;
+
   return jsonb_build_object(
     'snapshot_run_id', v_snapshot_run_id,
     'row_counts', v_row_counts,
@@ -516,16 +628,16 @@ begin
     'duration_ms', round(extract(epoch from (clock_timestamp() - v_started_at)) * 1000),
     'pricing_version', v_pricing_version,
     'generated_at', v_generated_at,
+    'static_dimensions', v_static_dimensions,
     'shanghai_period_day', v_shanghai_day
   );
 end;
 $function$;
 
-revoke all on function public.refresh_leaderboard_snapshots(boolean, boolean)
+revoke all on function public.refresh_leaderboard_snapshot_dimensions(jsonb)
   from public;
-revoke all on function public.refresh_leaderboard_snapshots(boolean, boolean)
+revoke all on function public.refresh_leaderboard_snapshot_dimensions(jsonb)
   from anon;
-grant execute on function public.refresh_leaderboard_snapshots(boolean, boolean)
+grant execute on function public.refresh_leaderboard_snapshot_dimensions(jsonb)
   to project_admin;
-
 commit;

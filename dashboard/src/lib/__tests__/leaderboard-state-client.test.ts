@@ -105,7 +105,7 @@ describe("leaderboard state client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(syncLeaderboardState({
-      reason: "first-login",
+      reason: "leaderboard-consent",
       accountId: "account-a",
       getAccessToken: async () => {
         events.push("token");
@@ -120,7 +120,7 @@ describe("leaderboard state client", () => {
     expect(getLeaderboardSyncState().pending).toBe(true);
   });
 
-  it("publishes the authenticated compact state and refreshes the public total immediately", async () => {
+  it("publishes the authenticated compact state and marks its fixed dimensions dirty", async () => {
     const fetchMock = installFetch();
     const tokenWithSubject = "header.eyJzdWIiOiJ1c2VyLTEyMyJ9.signature";
     setLeaderboardSyncState({
@@ -178,7 +178,7 @@ describe("leaderboard state client", () => {
         Authorization: `Bearer ${tokenWithSubject}`,
         apikey: "anon-key",
       },
-      body: JSON.stringify({ period: "total", source: "compact-state-upload" }),
+      body: JSON.stringify({ source: "compact-state-upload" }),
     });
     expect(getLeaderboardSyncState()).toMatchObject({
       pending: false,
@@ -198,7 +198,7 @@ describe("leaderboard state client", () => {
     const fetchMock = installFetch();
 
     await expect(syncLeaderboardState({
-      reason: "daily-catchup",
+      reason: "leaderboard-open",
       accountId: "account-a",
       getAccessToken: async () => "jwt",
     })).resolves.toEqual({ status: "unchanged", summaryHash: SUMMARY_HASH });
@@ -215,7 +215,7 @@ describe("leaderboard state client", () => {
     const fetchMock = installFetch();
 
     await expect(syncLeaderboardState({
-      reason: "first-login",
+      reason: "leaderboard-consent",
       accountId: "account-b",
       getAccessToken: async () => "jwt-b",
     })).resolves.toEqual({ status: "uploaded", summaryHash: SUMMARY_HASH });

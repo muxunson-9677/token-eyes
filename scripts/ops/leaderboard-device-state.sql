@@ -4,7 +4,7 @@
 begin;
 
 create table if not exists public.tokentracker_leaderboard_device_state (
-  user_id uuid not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   device_id text not null check (char_length(device_id) between 8 and 128),
   state_version smallint not null default 1 check (state_version = 1),
   summary_hash text not null check (summary_hash ~ '^[a-f0-9]{64}$'),
@@ -44,12 +44,10 @@ create policy leaderboard_device_state_delete_own
 
 revoke all on table public.tokentracker_leaderboard_device_state from public;
 revoke all on table public.tokentracker_leaderboard_device_state from anon;
-revoke insert, update
+revoke insert, update, delete
   on table public.tokentracker_leaderboard_device_state
   from authenticated;
-grant select, delete
-  on table public.tokentracker_leaderboard_device_state
-  to authenticated;
+grant select on table public.tokentracker_leaderboard_device_state to authenticated;
 
 create or replace function public.upsert_my_leaderboard_device_state(
   p_device_id text,
@@ -60,7 +58,7 @@ create or replace function public.upsert_my_leaderboard_device_state(
 ) returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = pg_catalog, public, pg_temp
 as $function$
 declare
   v_user_id uuid := auth.uid();
@@ -70,6 +68,13 @@ declare
   v_token_index integer;
   v_period_token_total numeric(30,0);
   v_device_count integer;
+  v_allowed_sources text[] := array[
+    'claude', 'codex', 'every-code', 'cursor', 'trae', 'gemini',
+    'opencode', 'openclaw', 'kilo-cli', 'kilocode', 'roocode', 'kiro',
+    'hermes', 'kimi', 'kimi-code', 'codebuddy', 'workbuddy', 'omp', 'pi',
+    'craft', 'grok', 'copilot', 'zed', 'goose', 'droid', 'antigravity',
+    'deepseek-harness'
+  ];
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
@@ -122,6 +127,7 @@ begin
          or jsonb_typeof(v_item -> 0) <> 'string'
          or char_length(v_item ->> 0) not between 1 and 64
          or (v_item ->> 0) !~ '^[^[:cntrl:]]+$'
+         or not ((v_item ->> 0) = any(v_allowed_sources))
          or jsonb_typeof(v_item -> 1) <> 'string'
          or char_length(v_item ->> 1) not between 1 and 256
          or (v_item ->> 1) !~ '^[^[:cntrl:]]+$' then
@@ -184,7 +190,9 @@ begin
       summary_hash = excluded.summary_hash,
       captured_at = excluded.captured_at,
       payload = excluded.payload,
-      updated_at = now();
+      updated_at = now()
+  where tokentracker_leaderboard_device_state.summary_hash
+    is distinct from excluded.summary_hash;
 end;
 $function$;
 
@@ -197,5 +205,4 @@ revoke all on function public.upsert_my_leaderboard_device_state(
 grant execute on function public.upsert_my_leaderboard_device_state(
   text, smallint, text, timestamptz, jsonb
 ) to authenticated;
-
 commit;

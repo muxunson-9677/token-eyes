@@ -7,7 +7,7 @@ const { Readable } = require("node:stream");
 const { test } = require("node:test");
 
 const { createLocalApiHandler } = require("../src/lib/local-api");
-const { fetchOpenAiCostsInvoice, SPEND_AUTHORITIES } = require("../src/lib/api-billing");
+const { fetchOpenAiCostsInvoice, fetchOpenAiCostsPeriod, SPEND_AUTHORITIES } = require("../src/lib/api-billing");
 
 function createRequest({ method = "GET", headers = {}, body = "" } = {}) {
   const req = Readable.from(body ? [Buffer.from(body)] : []);
@@ -199,6 +199,10 @@ test("canonical OpenAI Costs pages reach the selected UTC month cash contract", 
     assert.equal(account.monthKey, "2026-01");
     assert.equal(account.billingPeriodStart, "2026-01-01T00:00:00.000Z");
     assert.equal(account.billingPeriodEnd, "2026-02-01T00:00:00.000Z");
+    assert.deepEqual(account.dailyCosts, [
+      { date: "2026-01-01", costUsd: 2 },
+      { date: "2026-01-02", costUsd: 6 },
+    ]);
     assert.deepEqual(requests.map((request) => request.search), [{
       start_time: String(januaryStart),
       end_time: String(februaryStart),
@@ -227,6 +231,40 @@ test("canonical OpenAI Costs pages reach the selected UTC month cash contract", 
     server.close();
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("official daily costs reject overlapping buckets that do not exactly cover the seven UTC billing days", async () => {
+  const start = Date.parse("2026-05-03T00:00:00.000Z") / 1000;
+  const result = await fetchOpenAiCostsPeriod({
+    config: {
+      providerId: "openai",
+      requestUrl: "https://api.openai.com/v1/organization/costs",
+      requestMethod: "GET",
+      authType: "bearer",
+    },
+    secret: "sk-redacted-test",
+    fromKey: "2026-05-03",
+    toKey: "2026-05-09",
+    executeRequest: async () => ({
+      ok: true,
+      data: {
+        object: "page",
+        data: [0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5].map((offset) => ({
+          object: "bucket",
+          start_time: start + offset * 86400,
+          end_time: start + (offset + 1) * 86400,
+          results: [{
+            object: "organization.costs.result",
+            amount: { value: 1, currency: "usd" },
+          }],
+        })),
+        has_more: false,
+        next_page: null,
+      },
+    }),
+  });
+
+  assert.deepEqual(result, { ok: false, errorCode: "official_invoice_invalid" });
 });
 
 test("official OpenAI Costs atomically replaces local list-price provenance", async () => {

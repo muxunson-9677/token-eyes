@@ -13,6 +13,12 @@ const { buildLocalApiUrlMock, getLocalApiAuthHeadersMock } = vi.hoisted(() => ({
   })),
 }));
 const tauriRuntime = vi.hoisted(() => ({ enabled: false }));
+const verifySignedStaticFeedEnvelopeMock = vi.hoisted(() => vi.fn(async () => ({
+  entries: [],
+  page: 1,
+  total_entries: 0,
+  generated_at: "2026-08-30T08:00:00.000Z",
+})));
 
 vi.mock("../insforge-config", () => ({
   getInsforgeAnonKey: getInsforgeAnonKeyMock,
@@ -27,6 +33,10 @@ vi.mock("../local-api-url", () => ({
 
 vi.mock("../local-api-auth", () => ({
   getLocalApiAuthHeaders: getLocalApiAuthHeadersMock,
+}));
+
+vi.mock("../signed-static-feed", () => ({
+  verifySignedStaticFeedEnvelope: verifySignedStaticFeedEnvelopeMock,
 }));
 
 import {
@@ -65,6 +75,7 @@ describe("public visibility API", () => {
     buildLocalApiUrlMock.mockClear();
     getLocalApiAuthHeadersMock.mockClear();
     tauriRuntime.enabled = false;
+    verifySignedStaticFeedEnvelopeMock.mockClear();
   });
 
   it("reads visibility through the public visibility edge function", async () => {
@@ -140,7 +151,7 @@ describe("public visibility API", () => {
   });
 
   it("writes actual-cost consent through the authenticated RPC without a user id", async () => {
-    const fetchMock = mockJsonFetch({});
+    const fetchMock = mockJsonFetch(true);
     const accessToken = makeJwt({ sub: "writer-1" });
 
     await setLeaderboardActualCost({
@@ -157,7 +168,6 @@ describe("public visibility API", () => {
         headers: expect.objectContaining({
           Authorization: `Bearer ${accessToken}`,
           apikey: "anon-key",
-          Prefer: "return=minimal",
         }),
         body: JSON.stringify({
           p_share: true,
@@ -171,6 +181,30 @@ describe("public visibility API", () => {
       }),
     );
     expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain("writer-1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.function2.insforge.app/tokentracker-leaderboard-refresh",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "dirty-state-change" }),
+      }),
+    );
+  });
+
+  it("does not wake the leaderboard publisher when actual-cost consent is unchanged", async () => {
+    const fetchMock = mockJsonFetch(false);
+    const accessToken = makeJwt({ sub: "writer-1" });
+
+    await setLeaderboardActualCost({
+      accessToken,
+      share: true,
+      periodCosts: { today: 1, week: 2, "30d": 2.5, month: 3, total: 4 },
+      capturedAt: "2026-07-20T08:00:00.000Z",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://example.function2.insforge.app/tokentracker-leaderboard-refresh",
+      expect.anything(),
+    );
   });
 
   it("reads the local rolling 30-day actual cost before consent upload", async () => {
@@ -196,7 +230,7 @@ describe("public visibility API", () => {
   });
 
   it("refreshes actual-cost amounts without enabling server consent", async () => {
-    const fetchMock = mockJsonFetch(false);
+    const fetchMock = mockJsonFetch({ enabled: false, changed: false });
     const accessToken = makeJwt({ sub: "writer-1" });
 
     await expect(refreshLeaderboardActualCost({
@@ -219,12 +253,58 @@ describe("public visibility API", () => {
         }),
       }),
     );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://example.function2.insforge.app/tokentracker-leaderboard-refresh",
+      expect.anything(),
+    );
   });
 
-  it("deletes participation through the auth-bound cleanup RPC", async () => {
+  it("keeps actual-cost consent enabled without a dirty wake-up when totals are unchanged", async () => {
+    const fetchMock = mockJsonFetch({ enabled: true, changed: false });
+    const accessToken = makeJwt({ sub: "writer-1" });
+
+    await expect(refreshLeaderboardActualCost({
+      accessToken,
+      periodCosts: { today: 1, week: 2, "30d": 2.5, month: 3, total: 4 },
+      capturedAt: "2026-07-20T08:00:00.000Z",
+    })).resolves.toBe(true);
+
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://example.function2.insforge.app/tokentracker-leaderboard-refresh",
+      expect.anything(),
+    );
+  });
+
+  it("wakes the leaderboard publisher only when refreshed actual-cost totals changed", async () => {
+    const fetchMock = mockJsonFetch({ enabled: true, changed: true });
+    const accessToken = makeJwt({ sub: "writer-1" });
+
+    await expect(refreshLeaderboardActualCost({
+      accessToken,
+      periodCosts: { today: 2, week: 3, "30d": 4, month: 5, total: 6 },
+      capturedAt: "2026-07-20T08:00:00.000Z",
+    })).resolves.toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.function2.insforge.app/tokentracker-leaderboard-refresh",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "dirty-state-change" }),
+      }),
+    );
+  });
+
+  it("deletes the private avatar before the auth-bound cleanup RPC", async () => {
     const fetchMock = mockJsonFetch({});
     const accessToken = makeJwt({ sub: "writer-1" });
     await deleteLeaderboardParticipation({ accessToken });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.insforge.app/functions/tokentracker-avatar",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({ Authorization: `Bearer ${accessToken}` }),
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://example.insforge.app/api/database/rpc/delete_my_leaderboard_data",
       expect.objectContaining({
@@ -236,6 +316,32 @@ describe("public visibility API", () => {
         }),
       }),
     );
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://example.insforge.app/functions/tokentracker-avatar",
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://example.insforge.app/api/database/rpc/delete_my_leaderboard_data",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.function2.insforge.app/tokentracker-leaderboard-refresh",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "dirty-state-change" }),
+      }),
+    );
+  });
+
+  it("does not delete database participation when private avatar cleanup fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: "Static avatar deletion failed" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const accessToken = makeJwt({ sub: "writer-1" });
+
+    await expect(deleteLeaderboardParticipation({ accessToken })).rejects.toThrow("HTTP 502");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("throws clearly when the InsForge backend URL is not configured", async () => {
@@ -258,8 +364,9 @@ describe("leaderboard API", () => {
     getInsforgeFunctionsUrlMock.mockReturnValue("https://example.function2.insforge.app");
   });
 
-  it("sends only public period, source and metric dimensions without an Authorization header", async () => {
-    const fetchMock = mockJsonFetch({ entries: [], page: 1, total_entries: 0 });
+  it("reads exactly one fixed Top 50 static object without an Authorization header", async () => {
+    const envelope = { version: 1, algorithm: "Ed25519", payload_b64: "signed" };
+    const fetchMock = mockJsonFetch(envelope);
 
     await getLeaderboard({
       period: "today",
@@ -271,12 +378,17 @@ describe("leaderboard API", () => {
 
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "https://example.function2.insforge.app/tokentracker-leaderboard?period=today&metric=tokens&source=codex&limit=20&offset=40",
+      "https://feeds.tokentracker.cc/v1/leaderboard/today/tokens/codex.json",
     );
     expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
     expect((options.headers as Record<string, string>).apikey).toBeUndefined();
     expect((options.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
     expect(options.signal).toBeDefined();
+    expect(verifySignedStaticFeedEnvelopeMock).toHaveBeenCalledWith(envelope, {
+      expectedSchema: "token-eyes.leaderboard-snapshot/v1",
+      expectedSnapshotKey: "today/tokens/codex",
+      maxEntries: 50,
+    });
   });
 
   it("uses local leaderboard data when developer preview explicitly requests mock mode", async () => {
@@ -296,7 +408,7 @@ describe("leaderboard API", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("uses the cached local proxy first in the Tauri desktop runtime", async () => {
+  it("uses the signed disk-backed local proxy in the Tauri desktop runtime", async () => {
     tauriRuntime.enabled = true;
     const payload = { entries: [{ rank: 1, display_name: "Desktop Cache" }] };
     const fetchMock = mockJsonFetch(payload);
@@ -305,78 +417,36 @@ describe("leaderboard API", () => {
       period: "30d",
       source: "all",
       metric: "tokens",
-      limit: 20,
+      limit: 50,
       offset: 0,
     })).resolves.toEqual(payload);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=30d&metric=tokens&source=all&limit=20&offset=0",
+      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=30d&metric=tokens&source=all&limit=50&offset=0",
     );
   });
 
-  it("uses the public snapshot fallback when the edge function stalls", async () => {
-    vi.useFakeTimers();
-    const directRows = [{
-      rank: 1,
-      total_tokens: "1234",
-      estimated_cost_usd: "1.23",
-      actual_cost_usd: null,
-      source_breakdown: [],
-      display_name: "Fast Fallback",
-      avatar_url: null,
-      github_url: null,
-      pricing_version: "pricing-v1",
-      generated_at: "2026-07-22T08:00:00.000Z",
-    }];
-    const fetchMock = vi.fn((url: string, options: RequestInit = {}) => {
-      if (url.startsWith("https://example.function2.insforge.app/")) {
-        return new Promise((_, reject) => {
-          options.signal?.addEventListener("abort", () => {
-            reject(options.signal?.reason || new Error("signal is aborted without reason"));
-          }, { once: true });
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        headers: { get: (name: string) => name.toLowerCase() === "content-range" ? "0-0/1" : null },
-        json: async () => directRows,
-      });
-    });
+  it("never falls back to an InsForge function or public database when the static read fails", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: "unavailable" }),
+    }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const request = getLeaderboard({
+    await expect(getLeaderboard({
       period: "30d",
       source: "all",
       metric: "tokens",
-      limit: 20,
+      limit: 50,
       offset: 0,
-    });
-    await vi.advanceTimersByTimeAsync(500);
+    })).rejects.toThrow("HTTP 503");
 
-    await expect(request).resolves.toMatchObject({
-      entries: directRows,
-      period: "30d",
-      metric: "tokens",
-      source: "all",
-      total_entries: 1,
-      total_pages: 1,
-      participant_count: 1,
-      ranked_entry_count: 1,
-      aggregate_total_tokens: 1234,
-      aggregate_total_cost_usd: 1.23,
-    });
-    const directCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/api/database/records/tokentracker_leaderboard_snapshots_v2"),
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://feeds.tokentracker.cc/v1/leaderboard/30d/tokens/all.json",
     );
-    expect(directCall).toBeTruthy();
-    expect(String(directCall?.[0])).not.toContain("user_id");
-    expect(directCall?.[1]?.headers).toMatchObject({
-      apikey: "anon-key",
-      Authorization: "Bearer anon-key",
-      Prefer: "count=exact",
-    });
-    await vi.advanceTimersByTimeAsync(3_000);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("/api/database/");
   });
 });

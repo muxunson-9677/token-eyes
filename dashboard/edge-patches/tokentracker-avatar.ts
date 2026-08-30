@@ -31,6 +31,43 @@ function hex(bytes: ArrayBuffer) {
     .join("");
 }
 
+async function publishStaticAvatar(hash: string, method: "PUT" | "DELETE", bytes?: Uint8Array) {
+  const publisherOrigin = Deno.env.get("LEADERBOARD_AVATAR_PUBLISH_ORIGIN") || "";
+  const publisherSecret = Deno.env.get("LEADERBOARD_PUBLISHER_SECRET") || "";
+  if (!/^https:\/\//i.test(publisherOrigin) || !publisherSecret) return false;
+  const response = await fetch(
+    new URL(`/internal/leaderboard-avatar/${hash}.webp`, publisherOrigin),
+    {
+      method,
+      headers: {
+        "x-leaderboard-publisher-secret": publisherSecret,
+        ...(method === "PUT" ? { "Content-Type": "image/webp" } : {}),
+      },
+      ...(bytes ? { body: bytes } : {}),
+      signal: AbortSignal.timeout(15_000),
+    },
+  ).catch(() => null);
+  return Boolean(response?.ok);
+}
+
+async function notifyRefreshCoordinator() {
+  const triggerUrl = Deno.env.get("LEADERBOARD_DIRTY_TRIGGER_URL") || "";
+  const triggerSecret = Deno.env.get("LEADERBOARD_DIRTY_TRIGGER_SECRET") || "";
+  if (!triggerUrl || !triggerSecret) return false;
+  const response = await fetch(triggerUrl, {
+    method: "POST",
+    headers: { "x-leaderboard-dirty-secret": triggerSecret },
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  return response?.ok === true;
+}
+
+function staticAvatarUrl(hash: string) {
+  const feedOrigin = Deno.env.get("PUBLIC_FEED_ORIGIN") || "";
+  if (!/^https:\/\//i.test(feedOrigin)) return null;
+  return new URL(`/v1/avatars/${hash}.webp`, feedOrigin).toString();
+}
+
 export default async function (req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "PUT" && req.method !== "DELETE") {
@@ -66,17 +103,27 @@ export default async function (req: Request): Promise<Response> {
     const objectKey = `${userId}/${hash}.webp`;
     const { data: previous } = await client.database
       .from("tokentracker_leaderboard_avatar_metadata")
-      .select("object_key")
+      .select("object_key, content_hash, avatar_url")
       .eq("user_id", userId)
       .maybeSingle();
+    if (previous?.content_hash === hash) {
+      return json({
+        avatar_url: previous.avatar_url || staticAvatarUrl(hash),
+        content_hash: hash,
+        unchanged: true,
+      }, 200, true);
+    }
     const { error: uploadError } = await storage.upload(
       objectKey,
       new Blob([bytes], { type: "image/webp" }),
     );
     if (uploadError) return json({ error: uploadError.message }, 500);
 
-    const publicBase = (Deno.env.get("LEADERBOARD_AVATAR_PUBLIC_BASE") || "").replace(/\/$/, "");
-    const avatarUrl = `${publicBase}?hash=${hash}`;
+    const avatarUrl = staticAvatarUrl(hash);
+    if (!avatarUrl || !await publishStaticAvatar(hash, "PUT", bytes)) {
+      await storage.remove(objectKey);
+      return json({ error: "Static avatar publication failed" }, 502);
+    }
     const { error: metadataError } = await client.database
       .from("tokentracker_leaderboard_avatar_metadata")
       .upsert({
@@ -93,19 +140,44 @@ export default async function (req: Request): Promise<Response> {
     if (previous?.object_key && previous.object_key !== objectKey) {
       await storage.remove(previous.object_key);
     }
+    if (previous?.content_hash && previous.content_hash !== hash) {
+      await publishStaticAvatar(previous.content_hash, "DELETE");
+    }
+    const dirty = await client.database.rpc("mark_leaderboard_dimensions_dirty", {
+      p_user_id: userId,
+      p_actual_cost_changed: true,
+    });
+    if (dirty.error) return json({ error: dirty.error.message || "Leaderboard dirty mark failed" }, 500);
+    if (!await notifyRefreshCoordinator()) {
+      return json({ error: "Leaderboard refresh coordinator unavailable" }, 502);
+    }
     return json({ avatar_url: avatarUrl, content_hash: hash }, 200, true);
   }
 
   const { data: previous } = await client.database
     .from("tokentracker_leaderboard_avatar_metadata")
-    .select("object_key")
+    .select("object_key, content_hash")
     .eq("user_id", userId)
     .maybeSingle();
+  if (!previous) {
+    return json({ avatar_url: null, unchanged: true });
+  }
+  if (previous?.content_hash && !await publishStaticAvatar(previous.content_hash, "DELETE")) {
+    return json({ error: "Static avatar deletion failed" }, 502);
+  }
   const { error: deleteError } = await client.database
     .from("tokentracker_leaderboard_avatar_metadata")
     .delete()
     .eq("user_id", userId);
   if (deleteError) return json({ error: deleteError.message }, 500);
   if (previous?.object_key) await storage.remove(previous.object_key);
+  const dirty = await client.database.rpc("mark_leaderboard_dimensions_dirty", {
+    p_user_id: userId,
+    p_actual_cost_changed: true,
+  });
+  if (dirty.error) return json({ error: dirty.error.message || "Leaderboard dirty mark failed" }, 500);
+  if (!await notifyRefreshCoordinator()) {
+    return json({ error: "Leaderboard refresh coordinator unavailable" }, 502);
+  }
   return json({ avatar_url: null });
 }
