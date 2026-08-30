@@ -317,7 +317,7 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId) {
     "    uint currentThread = GetCurrentThreadId();",
     "    if (foregroundThread != currentThread) AttachThreadInput(currentThread, foregroundThread, true);",
     "    if (targetThread != currentThread) AttachThreadInput(currentThread, targetThread, true);",
-    "    ShowWindowAsync(target, 9);",
+    "    ShowWindowAsync(target, 3);",
     "    BringWindowToTop(target);",
     "    SetForegroundWindow(target);",
     "    SetActiveWindow(target);",
@@ -400,6 +400,22 @@ async function clickElementAsUser(cdp, selector, processId) {
   return clickScreenPoint(point.clientX, point.clientY, point.devicePixelRatio, processId);
 }
 
+async function dismissResetBannerIfPresent(cdp, processId) {
+  const selector = '[role="status"] button';
+  const visible = await cdp.evaluate(`Boolean([...document.querySelectorAll(${JSON.stringify(selector)})]
+    .find((element) => element.getClientRects().length > 0))`);
+  if (!visible) return false;
+  await clickElementAsUser(cdp, selector, processId);
+  await waitForExpression(
+    cdp,
+    `![...document.querySelectorAll(${JSON.stringify(selector)})]
+      .some((element) => element.getClientRects().length > 0)`,
+    "the reset announcement acknowledgement",
+    10_000,
+  );
+  return true;
+}
+
 async function clickCodexAccountActionAsUser(cdp, processId) {
   const selectors = [
     '[data-testid="detection-sync-codex"]',
@@ -408,6 +424,7 @@ async function clickCodexAccountActionAsUser(cdp, processId) {
   ];
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
+    await dismissResetBannerIfPresent(cdp, processId);
     focusProcessWindow(processId);
     const match = await cdp.evaluate(`(() => {
       for (const selector of ${JSON.stringify(selectors)}) {
@@ -690,6 +707,7 @@ test("the final installer reads staging anonymously without polling and complete
   let leaderboardApp;
   try {
     leaderboardApp = await launchApp(executable, leaderboardEnv);
+    focusProcessWindow(leaderboardApp.child.pid);
     await navigateAfterBootstrap(leaderboardApp.cdp, "/leaderboard");
     try {
       await waitForExpression(
@@ -723,6 +741,7 @@ test("the final installer reads staging anonymously without polling and complete
     await delay(65_000);
     const idleResources = await leaderboardApp.cdp.evaluate(resourceSnapshot);
     assert.equal(idleResources.filter((url) => url.includes(localLeaderboardRequest)).length, 1, "installed leaderboard polled without user action");
+    await dismissResetBannerIfPresent(leaderboardApp.cdp, leaderboardApp.child.pid);
     await clickElementAsUser(leaderboardApp.cdp, '[data-testid="leaderboard-manual-refresh"]', leaderboardApp.child.pid);
     await waitForExpression(
       leaderboardApp.cdp,

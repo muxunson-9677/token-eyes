@@ -5074,6 +5074,52 @@ it("reconciles a connected Codex plan when a hidden page becomes visible", async
   }
 });
 
+it("reconciles a connected Codex plan after console sessions finish loading", async () => {
+  mockCodexCatalog();
+  const record = mockConnectedCodexPlan();
+  let resolveSessions;
+  getTokenPlans.mockResolvedValue({ records: [record] });
+  getConsoleSessions.mockImplementation(() => new Promise((resolve) => {
+    resolveSessions = resolve;
+  }));
+  syncCodexConsoleQuota.mockResolvedValue({
+    connected: false,
+    authorized: false,
+    session_ref: codexSessionRef,
+    state_code: "reauth_required",
+    quota_sync_status: "error",
+    error_code: "REAUTH_REQUIRED",
+    error_message: "Codex authorization expired.",
+    legacy_auth_present: false,
+  });
+  verifyConsoleSession.mockImplementation(async (id, nativeStatus) => ({
+    ok: true,
+    session: makeCodexSession({
+      id,
+      session_ref: nativeStatus.session_ref,
+      status: "failed",
+      last_error_code: nativeStatus.error_code,
+      last_error_message: nativeStatus.error_message,
+    }),
+  }));
+
+  render(React.createElement(TokenPlanSection));
+  await screen.findByText(/codex \/ Pro 5x/i);
+  expect(syncCodexConsoleQuota).not.toHaveBeenCalled();
+
+  await act(async () => {
+    resolveSessions({
+      sessions: [makeCodexSession({ id: "codex-session-id", status: "connected" })],
+    });
+  });
+
+  await waitFor(() => expect(syncCodexConsoleQuota).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(verifyConsoleSession).toHaveBeenCalledWith(
+    "codex-session-id",
+    expect.objectContaining({ state_code: "reauth_required" }),
+  ));
+});
+
 it("offers retry-save when local persistence fails after native authorization wins the cancel race", async () => {
   mockCodexCatalog();
   const user = userEvent.setup();

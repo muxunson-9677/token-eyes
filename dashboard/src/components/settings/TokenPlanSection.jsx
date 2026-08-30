@@ -3854,7 +3854,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
   }, [loading, records, showFullEmail]);
 
   useEffect(() => {
-    if (loading) return undefined;
+    if (loading || loadingConsoleSessions) return undefined;
     let cancelled = false;
     const run = async () => {
       if (cancelled || autoCodexRefreshBusyRef.current || document.visibilityState === "hidden") return;
@@ -3890,7 +3890,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [loading]);
+  }, [loading, loadingConsoleSessions]);
 
   useEffect(() => {
     if (!planRefreshTargetId) return;
