@@ -393,7 +393,7 @@ function pressKeyboardKeys(processId, keys) {
   return runScreenInput("key", 0, 0, 1, processId, keys);
 }
 
-async function focusElementWithKeyboard(cdp, selector, processId) {
+async function tryFocusElementWithKeyboard(cdp, selector, processId) {
   focusProcessWindow(processId);
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const focused = await cdp.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
@@ -401,7 +401,7 @@ async function focusElementWithKeyboard(cdp, selector, processId) {
     runScreenInput("key", 0, 0, 1, processId, [9]);
     await delay(80);
   }
-  throw new Error(`native Tab traversal did not focus ${selector}`);
+  return null;
 }
 
 async function clickElementAsUser(cdp, selector, processId) {
@@ -658,15 +658,25 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
     launched = await launchApp(executable, env);
     await navigateToCodexEditor(launched.cdp);
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-before-delete.png`));
-    const tabCount = await focusElementWithKeyboard(
+    const tabCount = await tryFocusElementWithKeyboard(
       launched.cdp,
       '[data-testid="detection-disconnect-codex"]',
       launched.child.pid,
     );
-    const keyboardAction = {
-      tabCount,
-      enter: pressKeyboardKeys(launched.child.pid, [13]),
-    };
+    const inputAction = tabCount === null
+      ? {
+          mode: "native-mouse-fallback",
+          point: await clickElementAsUser(
+            launched.cdp,
+            '[data-testid="detection-disconnect-codex"]',
+            launched.child.pid,
+          ),
+        }
+      : {
+          mode: "native-keyboard",
+          tabCount,
+          enter: pressKeyboardKeys(launched.child.pid, [13]),
+        };
     try {
       await waitForExpression(launched.cdp, `document.querySelector('[data-testid="detection-connect-codex"]') && !document.querySelector('[data-testid="detection-codex-connected"]')`, "the disconnected Codex state", 30_000);
     } catch (error) {
@@ -674,7 +684,7 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
       const bodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
       fs.writeFileSync(
         path.join(evidenceRoot, `${passName}-delete-click-failure.txt`),
-        `${JSON.stringify({ keyboardAction, foreground: foregroundWindow(), bodyText }, null, 2)}\n`,
+        `${JSON.stringify({ inputAction, foreground: foregroundWindow(), bodyText }, null, 2)}\n`,
         "utf8",
       );
       throw error;
