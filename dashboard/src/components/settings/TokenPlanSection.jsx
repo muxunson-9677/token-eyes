@@ -3879,13 +3879,16 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
       }
     };
     const onFocus = () => void run();
+    const onVisibilityChange = () => void run();
     const timer = window.setInterval(run, 60_000);
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     void run();
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [loading]);
 
