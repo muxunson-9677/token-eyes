@@ -109,6 +109,7 @@ function FocusSparkline({ points }) {
       canvas.width = Math.max(1, Math.floor(bounds.width * ratio));
       canvas.height = Math.max(1, Math.floor(bounds.height * ratio));
       const context = canvas.getContext("2d");
+      if (!context) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, bounds.width, bounds.height);
       const values = series.map((point) => point.value);
@@ -216,6 +217,7 @@ function RealtimeLineChart({ points, showLegend = true }) {
       canvas.width = Math.max(1, Math.floor(bounds.width * ratio));
       canvas.height = Math.max(1, Math.floor(bounds.height * ratio));
       const context = canvas.getContext("2d");
+      if (!context) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       const width = bounds.width;
       const height = bounds.height;

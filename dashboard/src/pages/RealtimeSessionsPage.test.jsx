@@ -131,6 +131,15 @@ describe("RealtimeSessionsPage", () => {
     expect(screen.queryByText(copy("realtime.loading"))).not.toBeInTheDocument();
   });
 
+  it("keeps realtime data usable when a canvas 2D context is unavailable", () => {
+    HTMLCanvasElement.prototype.getContext.mockReturnValue(null);
+    peekRealtimeSessions.mockReturnValue(payload);
+    getRealtimeSessions.mockImplementation(() => new Promise(() => {}));
+
+    render(React.createElement(RealtimeSessionsPage));
+    expect(screen.getByText(session.task_label)).toBeVisible();
+  });
+
   it("uses only live runtime states in every Agent card badge", async () => {
     getRealtimeSessions.mockResolvedValue(payload);
     render(<RealtimeSessionsPage />);
