@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Select } from "../ui/components";
 import { BadgeCheck, CircleDollarSign, Coins, Info, MoreVertical, RefreshCw, ShieldCheck, Users } from "lucide-react";
@@ -532,8 +532,15 @@ export function LeaderboardPage({
     void cloudSignOut?.();
   }, [cloudSignOut]);
 
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const manualRefreshRevisionRef = useRef(0);
   const handleManualRefresh = useCallback(() => {
-    setSyncRevision((value) => value + 1);
+    setManualRefreshing(true);
+    setSyncRevision((value) => {
+      const nextRevision = value + 1;
+      manualRefreshRevisionRef.current = nextRevision;
+      return nextRevision;
+    });
     const accountId = typeof cloudUser?.id === "string" ? cloudUser.id.trim() : "";
     if (!cloudSignedIn || !accountId || getLeaderboardSyncState(accountId).participant !== true) return;
     void syncLeaderboardState({
@@ -597,11 +604,15 @@ export function LeaderboardPage({
   useEffect(() => {
     // Mock leaderboard uses local getMockLeaderboard(); real data uses the signed static feed base URL.
     if ((!leaderboardBaseUrl && !leaderboardMockEnabled) || (!leaderboardMockEnabled && leaderboardAccessMode === "unavailable")) {
+      manualRefreshRevisionRef.current = 0;
+      setManualRefreshing(false);
       setListState({ loading: false, error: null, data: null, contextKey: null });
       return;
     }
     const cachedState = readLeaderboardPreloadState(leaderboardPreloadContextKey);
     let active = true;
+    const isManualRefresh = syncRevision !== 0 && manualRefreshRevisionRef.current === syncRevision;
+    const refreshStartedAt = isManualRefresh ? Date.now() : 0;
     if (cachedState) {
       setListState({
         loading: false,
@@ -633,6 +644,12 @@ export function LeaderboardPage({
         offset: listOffset,
         ...(developerPreviewActive ? { mock: true } : {}),
       });
+      if (isManualRefresh) {
+        const remainingFeedbackMs = Math.max(0, 450 - (Date.now() - refreshStartedAt));
+        if (remainingFeedbackMs > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, remainingFeedbackMs));
+        }
+      }
       if (!active) return;
       publishLeaderboardPreloadState(data, {
         activeContextKey: leaderboardPreloadContextKey,
@@ -645,6 +662,10 @@ export function LeaderboardPage({
         data,
         contextKey: leaderboardPreloadContextKey,
       });
+      if (isManualRefresh) {
+        manualRefreshRevisionRef.current = 0;
+        setManualRefreshing(false);
+      }
     })().catch((err) => {
       if (!active) return;
       const error = normalizeLeaderboardError(err);
@@ -659,6 +680,10 @@ export function LeaderboardPage({
           contextKey: leaderboardPreloadContextKey,
         };
       });
+      if (isManualRefresh) {
+        manualRefreshRevisionRef.current = 0;
+        setManualRefreshing(false);
+      }
     });
     return () => {
       active = false;
@@ -1288,12 +1313,13 @@ export function LeaderboardPage({
                 type="button"
                 data-testid="leaderboard-manual-refresh"
                 onClick={handleManualRefresh}
-                disabled={currentListState.loading}
+                disabled={currentListState.loading || manualRefreshing}
+                aria-busy={currentListState.loading || manualRefreshing}
                 aria-label={copy("usage.button.refresh")}
                 className="tt-pressable tt-product-focusable inline-flex h-9 items-center gap-1.5 rounded-[var(--tt-control-radius)] border border-oai-gray-200 bg-white px-3 text-xs font-medium text-oai-gray-600 transition-colors hover:text-oai-black disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:text-white"
               >
-                <RefreshCw className={cn("h-3.5 w-3.5", currentListState.loading && "animate-spin")} aria-hidden="true" />
-                {copy("usage.button.refresh")}
+                <RefreshCw className={cn("h-3.5 w-3.5", (currentListState.loading || manualRefreshing) && "animate-spin")} aria-hidden="true" />
+                {manualRefreshing ? copy("realtime.refreshing") : copy("usage.button.refresh")}
               </button>
               <LeaderboardMeChip
                 me={statusMe || {

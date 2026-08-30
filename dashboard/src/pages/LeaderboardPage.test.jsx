@@ -238,13 +238,17 @@ describe("LeaderboardPage window-session cache reuse", () => {
 
   it("reads again only for an explicit manual refresh, not when participation sync completes", async () => {
     const user = userEvent.setup();
-    getLeaderboard.mockResolvedValue({
+    const refreshedData = {
       ...preloadedData,
       period: "today",
       aggregate_total_tokens: 1234,
       aggregate_total_cost_usd: 1.23,
       summary_details: { tokens: "", cost: "" },
-    });
+    };
+    let resolveRefresh;
+    getLeaderboard
+      .mockResolvedValueOnce(refreshedData)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
 
     renderLeaderboard("/leaderboard?period=today");
     await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
@@ -257,12 +261,18 @@ describe("LeaderboardPage window-session cache reuse", () => {
     await act(async () => Promise.resolve());
     expect(getLeaderboard).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: copy("usage.button.refresh") }));
+    const refreshButton = screen.getByRole("button", { name: copy("usage.button.refresh") });
+    await user.click(refreshButton);
     await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(2));
+    expect(refreshButton).toBeDisabled();
+    expect(refreshButton).toHaveAttribute("aria-busy", "true");
+    expect(refreshButton).toHaveTextContent(copy("realtime.refreshing"));
     expect(getLeaderboard).toHaveBeenLastCalledWith(expect.objectContaining({
       limit: 50,
       offset: 0,
     }));
+    resolveRefresh(refreshedData);
+    await waitFor(() => expect(refreshButton).toBeEnabled());
   });
 
   it("manual refresh also checks an existing participant's compact hash without polling", async () => {
@@ -1007,6 +1017,9 @@ describe("LeaderboardPage window-session cache reuse", () => {
     await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("tab", { name: "今日" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-location")).toHaveTextContent("period=today");
+    });
     await waitFor(() => expect(screen.getByRole("tab", { name: "估算花销" })).not.toBeDisabled());
     await user.click(screen.getByRole("tab", { name: "估算花销" }));
 
