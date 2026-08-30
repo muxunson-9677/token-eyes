@@ -1548,11 +1548,11 @@ usage.billing_filter.label,ui,DashboardPage,UsageOverview,billing_filter_label,"
 usage.billing_filter.all,ui,DashboardPage,UsageOverview,billing_filter_all,"All",,active
 usage.billing_filter.api_key,ui,DashboardPage,UsageOverview,billing_filter_api_key,"API Key",,active
 usage.billing_filter.token_plan,ui,DashboardPage,UsageOverview,billing_filter_token_plan,"Plan",,active
-usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Unknown attribution",,active
+usage.billing_filter.unknown,ui,DashboardPage,UsageOverview,billing_filter_unknown,"Billing method not recorded",,active
 usage.billing_filter.empty,ui,DashboardPage,UsageOverview,billing_filter_empty,"当前计费方式下暂无数据",,active
 usage.billing_mode.api_key,ui,DashboardPage,UsageOverview,billing_mode_api_key,"API Key",,active
 usage.billing_mode.token_plan,ui,DashboardPage,UsageOverview,billing_mode_token_plan,"Plan",,active
-usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Unknown attribution",,active
+usage.billing_mode.unknown,ui,DashboardPage,UsageOverview,billing_mode_unknown,"Billing method not recorded",,active
 usage.billing_mode.mixed,ui,DashboardPage,UsageOverview,billing_mode_mixed,"混合",,active
 usage.request_log.tab,ui,DashboardPage,RequestUsageLog,tab_label,"请求日志",,active
 usage.request_log.title,ui,DashboardPage,RequestUsageLog,title,"请求级 Token 明细",,active

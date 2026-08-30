@@ -189,7 +189,7 @@ describe("UsageStatsPanel", () => {
 
     const cards = screen.getAllByTestId("usage-cost-card");
     expect(cards).toHaveLength(4);
-    expect(cards[0]).toHaveTextContent("本月 API 成本");
+    expect(cards[0]).toHaveTextContent("本月 API 标价等价价值");
     expect(cards[0]).toHaveTextContent("USD 8.25");
     expect(cards[0].querySelector('[data-direction="increase"]')).toHaveTextContent("12.1%");
     expect(cards[1]).toHaveTextContent("本月订阅成本");

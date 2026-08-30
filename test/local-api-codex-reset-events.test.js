@@ -66,6 +66,7 @@ function harness() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-reset-api-"));
   const acknowledgements = [];
   const checks = [];
+  const feedChecks = [];
   const deliveries = [];
   const officialEvent = {
     id: "official:reset-july",
@@ -118,13 +119,16 @@ function harness() {
     check: async (options) => {
       checks.push(options);
     },
+    checkFeed: async (options) => {
+      feedChecks.push(options);
+    },
   };
   const handler = createLocalApiHandler({
     queuePath: path.join(root, "queue.jsonl"),
     trackerDataDir: root,
     codexResetMonitorService: service,
   });
-  return { root, handler, acknowledgements, checks, deliveries, officialEvent };
+  return { root, handler, acknowledgements, checks, feedChecks, deliveries, officialEvent };
 }
 
 test("GET returns no-store sanitized official reset events without auth", async () => {
@@ -148,6 +152,7 @@ test("GET returns no-store sanitized official reset events without auth", async 
     assert.equal(body.history[0].confidence, "confirmed");
     assert.equal(body.history[0].alert_eligible, true);
     assert.equal(body.notification_events.length, 1);
+    assert.deepEqual(h.feedChecks, [{}]);
     assert.doesNotMatch(JSON.stringify(body), /access_token|raw_response|C:\\\\private/i);
   } finally {
     fs.rmSync(h.root, { recursive: true, force: true });

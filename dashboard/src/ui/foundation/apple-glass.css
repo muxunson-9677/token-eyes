@@ -9265,6 +9265,32 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 }
 
 @media (max-width: 1100px) {
+  .tt-reference-route-spend-usage .tt-usage-filter-toolbar.tt-usage-filter-inline-row {
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-filter-inline-row .tt-usage-source-switcher {
+    width: 100%;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-filter-inline-row .tt-usage-source-switcher > [role="group"] {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .tt-reference-route-spend-usage .tt-usage-filter-inline-row .tt-usage-filter-controls {
+    width: 100%;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    margin-left: 0;
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid rgba(164, 179, 197, .55);
+    border-left: 0;
+  }
+
   .tt-reference-route-spend-usage .tt-usage-filter-toolbar {
     padding: 12px;
   }

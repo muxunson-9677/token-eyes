@@ -7282,6 +7282,9 @@ function createLocalApiHandler({
           writeCodexResetResponse(res, { ok: false, error: "Method Not Allowed" }, 405);
           return true;
         }
+        if (typeof codexResetMonitorService.checkFeed === "function") {
+          await codexResetMonitorService.checkFeed({});
+        }
         writeCodexResetResponse(res, responseBody());
         return true;
       }

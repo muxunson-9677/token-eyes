@@ -1059,7 +1059,7 @@
     "dashboard.refresh.interval.1m":  "1分钟",
     "dashboard.refresh.interval.5m":  "5分钟",
     "spend.cost.error.local_service_unreachable":  "无法连接本地数据服务，因此当前成本证据不可用。请重新启动 Token Eyes，然后重试成本数据。",
-    "spend.monthly_api": "本月 API 成本",
+    "spend.monthly_api": "本月 API 标价等价价值",
     "spend.monthly_subscription": "本月订阅成本",
     "spend.monthly_combined": "本月总成本",
     "spend.lifetime_combined": "累计总成本",

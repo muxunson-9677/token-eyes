@@ -405,13 +405,13 @@ describe("UsageOverview", () => {
     // "计费方式" in the default zh-CN locale.
     const tablist = screen.getByRole("tablist", { name: "计费方式" });
     expect(tablist).toBeInTheDocument();
-    // Four tabs: 全部 / API Key / 套餐 / 归属未知.
+    // Four tabs: 全部 / API Key / 套餐 / 计费方式未记录.
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual([
       "全部",
       "API Key",
       "套餐",
-      "归属未知",
+      "计费方式未记录",
     ]);
     // 'all' is the default.
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
@@ -491,7 +491,8 @@ describe("UsageOverview", () => {
 
     expect(screen.getAllByText("API Key").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("套餐").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("归属未知").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("计费方式未记录").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("归属未知")).not.toBeInTheDocument();
     expect(screen.queryByText("直连")).not.toBeInTheDocument();
     expect(screen.queryByText("未配置计费")).not.toBeInTheDocument();
   });
@@ -527,7 +528,7 @@ describe("UsageOverview", () => {
 
   it("shows the empty state when the active filter has no matches", async () => {
     const user = userEvent.setup();
-    // Fleet with only api_key models → selecting 归属未知 should drop them all.
+    // Fleet with only api_key models → selecting 计费方式未记录 should drop them all.
     const apiKeyOnlyFleet = [
       {
         source: "codex",
@@ -556,7 +557,7 @@ describe("UsageOverview", () => {
     );
 
     await act(async () => {
-      await user.click(screen.getByRole("tab", { name: "归属未知" }));
+      await user.click(screen.getByRole("tab", { name: "计费方式未记录" }));
     });
     // The card disappears AND the empty-state copy is rendered.
     expect(screen.queryByRole("button", { name: /CODEX/i })).not.toBeInTheDocument();

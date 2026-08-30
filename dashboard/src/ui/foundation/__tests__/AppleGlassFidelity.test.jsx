@@ -143,6 +143,21 @@ describe("approved M/N material fidelity", () => {
     expect(declarations(sourceChip)["text-overflow"]).not.toBe("ellipsis");
   });
 
+  it("wraps the usage filters inside the supported narrow desktop window", () => {
+    const toolbar = ".tt-reference-route-spend-usage .tt-usage-filter-toolbar.tt-usage-filter-inline-row";
+    const sourceGroup = ".tt-reference-route-spend-usage .tt-usage-filter-inline-row .tt-usage-source-switcher > [role=\"group\"]";
+    const controls = ".tt-reference-route-spend-usage .tt-usage-filter-inline-row .tt-usage-filter-controls";
+
+    expect(mediaDeclarations("(max-width: 1100px)", toolbar)["flex-direction"])
+      .toBe("column");
+    expect(mediaDeclarations("(max-width: 1100px)", sourceGroup)["flex-wrap"])
+      .toBe("wrap");
+    expect(mediaDeclarations("(max-width: 1100px)", controls).width)
+      .toBe("100%");
+    expect(mediaDeclarations("(max-width: 1100px)", controls)["flex-wrap"])
+      .toBe("wrap");
+  });
+
   it("matches the Token reference with balanced evidence columns and a visible wave", () => {
     const route = ".tt-reference-route-dashboard";
     const hero = ".tt-reference-route-dashboard .tt-overview-locked .tt-overview-usage-hero";
