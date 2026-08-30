@@ -289,7 +289,7 @@ async function navigateToCodexEditor(cdp) {
   );
 }
 
-function runScreenInput(action, clientX, clientY, devicePixelRatio, processId) {
+function runScreenInput(action, clientX, clientY, devicePixelRatio, processId, keys = []) {
   const script = [
     "Add-Type @'",
     "using System;",
@@ -309,6 +309,7 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId) {
     "  [DllImport(\"user32.dll\")] public static extern bool ClientToScreen(IntPtr hWnd, ref Point point);",
     "  [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y);",
     "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);",
+    "  [DllImport(\"user32.dll\")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);",
     "  public static bool ForceForeground(IntPtr target) {",
     "    IntPtr foreground = GetForegroundWindow();",
     "    uint ignored;",
@@ -339,6 +340,15 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId) {
     "[NativeInput]::GetWindowThreadProcessId([NativeInput]::GetForegroundWindow(), [ref]$foregroundPid) | Out-Null",
     "if ($foregroundPid -ne $p.Id) { throw 'Token Eyes could not become foreground for the real pointer click' }",
     "if ($action -eq 'focus') { @{ pid = $foregroundPid } | ConvertTo-Json -Compress; exit 0 }",
+    "if ($action -eq 'key') {",
+    "  foreach ($key in $env:TOKEN_EYES_UI_KEYS.Split(',')) {",
+    "    $virtualKey = [byte]::Parse($key, [System.Globalization.CultureInfo]::InvariantCulture)",
+    "    [NativeInput]::keybd_event($virtualKey, 0, 0, [UIntPtr]::Zero)",
+    "    [NativeInput]::keybd_event($virtualKey, 0, 2, [UIntPtr]::Zero)",
+    "    Start-Sleep -Milliseconds 120",
+    "  }",
+    "  @{ pid = $foregroundPid; keys = $env:TOKEN_EYES_UI_KEYS } | ConvertTo-Json -Compress; exit 0",
+    "}",
     "if ($action -ne 'click') { throw 'Unsupported packaged UI input action' }",
     "$origin = [NativeInput+Point]::new()",
     "if (-not [NativeInput]::ClientToScreen($p.MainWindowHandle, [ref]$origin)) { throw 'Token Eyes client origin is unavailable' }",
@@ -362,6 +372,7 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId) {
       TOKEN_EYES_UI_PID: String(processId),
       TOKEN_EYES_UI_CLIENT_X: String(clientX),
       TOKEN_EYES_UI_CLIENT_Y: String(clientY),
+      TOKEN_EYES_UI_KEYS: keys.join(","),
       TOKEN_EYES_UI_SCALE: String(devicePixelRatio),
     },
   });
@@ -375,6 +386,22 @@ function focusProcessWindow(processId) {
 
 function clickScreenPoint(clientX, clientY, devicePixelRatio, processId) {
   return runScreenInput("click", clientX, clientY, devicePixelRatio, processId);
+}
+
+function pressKeyboardKeys(processId, keys) {
+  focusProcessWindow(processId);
+  return runScreenInput("key", 0, 0, 1, processId, keys);
+}
+
+async function focusElementWithKeyboard(cdp, selector, processId) {
+  focusProcessWindow(processId);
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const focused = await cdp.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
+    if (focused) return attempt;
+    runScreenInput("key", 0, 0, 1, processId, [9]);
+    await delay(80);
+  }
+  throw new Error(`native Tab traversal did not focus ${selector}`);
 }
 
 async function clickElementAsUser(cdp, selector, processId) {
@@ -443,7 +470,22 @@ async function clickCodexAccountActionAsUser(cdp, processId) {
     })()`);
     if (match) {
       const point = clickScreenPoint(match.clientX, match.clientY, match.devicePixelRatio, processId);
-      return { point, selector: match.selector };
+      const observationDeadline = Date.now() + 2_000;
+      while (Date.now() < observationDeadline) {
+        const outcome = await cdp.evaluate(`(() => {
+          const bannerVisible = [...document.querySelectorAll('[role="status"] button')]
+            .some((element) => element.getClientRects().length > 0);
+          const loginStarted = Boolean(document.querySelector('[data-testid="detection-codex-login-started"]'));
+          const action = document.querySelector(${JSON.stringify(match.selector)});
+          return { bannerVisible, loginStarted, actionEnabled: Boolean(action && !action.disabled) };
+        })()`);
+        if (outcome.loginStarted || !outcome.actionEnabled) return { point, selector: match.selector };
+        if (outcome.bannerVisible) {
+          await dismissResetBannerIfPresent(cdp, processId);
+          break;
+        }
+        await delay(100);
+      }
     }
     await delay(200);
   }
@@ -616,7 +658,15 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
     launched = await launchApp(executable, env);
     await navigateToCodexEditor(launched.cdp);
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-before-delete.png`));
-    const clickPoint = await clickElementAsUser(launched.cdp, '[data-testid="detection-disconnect-codex"]', launched.child.pid);
+    const tabCount = await focusElementWithKeyboard(
+      launched.cdp,
+      '[data-testid="detection-disconnect-codex"]',
+      launched.child.pid,
+    );
+    const keyboardAction = {
+      tabCount,
+      enter: pressKeyboardKeys(launched.child.pid, [13]),
+    };
     try {
       await waitForExpression(launched.cdp, `document.querySelector('[data-testid="detection-connect-codex"]') && !document.querySelector('[data-testid="detection-codex-connected"]')`, "the disconnected Codex state", 30_000);
     } catch (error) {
@@ -624,7 +674,7 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
       const bodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
       fs.writeFileSync(
         path.join(evidenceRoot, `${passName}-delete-click-failure.txt`),
-        `${JSON.stringify({ clickPoint, foreground: foregroundWindow(), bodyText }, null, 2)}\n`,
+        `${JSON.stringify({ keyboardAction, foreground: foregroundWindow(), bodyText }, null, 2)}\n`,
         "utf8",
       );
       throw error;
