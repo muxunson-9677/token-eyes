@@ -20,9 +20,9 @@ test("reset feed is signed static content and has no public InsForge read edge",
   ), false);
   assert.deepEqual(verifyCodexResetFeed(envelope, {
     publicKey,
-    nowMs: Date.parse("2026-07-22T05:00:00.000Z"),
+    nowMs: Date.parse("2026-08-30T05:00:00.000Z"),
   }), {
-    generated_at: "2026-07-22T04:27:28.361Z",
+    generated_at: "2026-08-30T04:44:20.443Z",
     announcements: [],
   });
 });

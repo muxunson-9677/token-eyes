@@ -18,7 +18,7 @@ const STARTUP_DELAY_MS = 10_000;
 const SUCCESS_INTERVAL_MS = 30_000;
 const FOCUS_FRESHNESS_MS = 60_000;
 const FEED_CACHE_MS = 5 * 60_000;
-const FEED_URL = "https://feeds.tokentracker.cc/v1/codex-reset/feed.json";
+const FEED_URL = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1/codex-reset/feed.json";
 const FAILURE_BACKOFF_MS = Object.freeze([
   2 * 60_000,
   10 * 60_000,

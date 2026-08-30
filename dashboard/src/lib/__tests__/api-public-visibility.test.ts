@@ -378,7 +378,7 @@ describe("leaderboard API", () => {
 
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "https://feeds.tokentracker.cc/v1/leaderboard/today/tokens/codex.json",
+      "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1/leaderboard/today/tokens/codex.json",
     );
     expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
     expect((options.headers as Record<string, string>).apikey).toBeUndefined();
@@ -445,7 +445,7 @@ describe("leaderboard API", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe(
-      "https://feeds.tokentracker.cc/v1/leaderboard/30d/tokens/all.json",
+      "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1/leaderboard/30d/tokens/all.json",
     );
     expect(String(fetchMock.mock.calls[0][0])).not.toContain("/api/database/");
   });

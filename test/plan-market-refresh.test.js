@@ -26,7 +26,7 @@ const bundledCatalog = JSON.parse(fs.readFileSync(
 ));
 
 test("plan market uses the signed public static feed URL", () => {
-  assert.equal(PLAN_MARKET_FEED_URL, "https://feeds.tokentracker.cc/v1/plan-market/feed.json");
+  assert.equal(PLAN_MARKET_FEED_URL, "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1/plan-market/feed.json");
 });
 
 test("plan market accepts an exact HTTPS staging feed URL and binds the signed source to it", async () => {

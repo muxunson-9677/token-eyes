@@ -31,6 +31,6 @@ export function getLeaderboardBaseUrl() {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
   return (
     env?.VITE_LEADERBOARD_PUBLIC_BASE_URL
-    || "https://feeds.tokentracker.cc/v1"
+    || "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1"
   ).trim();
 }

@@ -6,7 +6,7 @@ const path = require("node:path");
 const { verifySignedStaticFeed } = require("../signed-static-feed");
 
 const PLAN_MARKET_FEED_SCHEMA = "token-eyes.plan-market-feed/v1";
-const PLAN_MARKET_FEED_URL = "https://feeds.tokentracker.cc/v1/plan-market/feed.json";
+const PLAN_MARKET_FEED_URL = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1/plan-market/feed.json";
 const PLAN_MARKET_SNAPSHOT_VERSION = 1;
 const PLAN_MARKET_SNAPSHOT_FILE = "plan-market-snapshot.json";
 const MAX_FEED_BYTES = 5 * 1024 * 1024;

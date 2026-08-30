@@ -1,5 +1,5 @@
 const DEFAULT_PUBLIC_KEY_SPKI_BASE64 =
-  "MCowBQYDK2VwAyEAaD7X6+qJlc7id8+aTXAPBSs9/7OO4nT4n/ouqMhyxYk=";
+  "MCowBQYDK2VwAyEAp3URX2TAbzttOKE0YQeu0cjtDvzH9swTfQ+J6x0H+eU=";
 const DEFAULT_MAX_PAYLOAD_BYTES = 512 * 1024;
 const PRIVATE_ENTRY_FIELDS = new Set(["account_id", "device_id", "email", "user_id"]);
 

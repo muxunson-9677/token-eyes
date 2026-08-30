@@ -100,7 +100,7 @@ const AVATAR_PROXY_MAX_BYTES = 512 * 1024; // 512 KiB per image
 const AVATAR_PROXY_MAX_ENTRIES = 64;
 const avatarProxyCache = new Map();
 
-const LEADERBOARD_PUBLIC_FEED_BASE_URL = "https://feeds.tokentracker.cc/v1";
+const LEADERBOARD_PUBLIC_FEED_BASE_URL = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1";
 const LEADERBOARD_PUBLIC_SCHEMA = "token-eyes.leaderboard-snapshot/v1";
 const LEADERBOARD_PUBLIC_PERIODS = new Set(["today", "week", "30d", "month", "total"]);
 const LEADERBOARD_PUBLIC_METRICS = new Set(["tokens", "estimated_spend", "actual_cost"]);

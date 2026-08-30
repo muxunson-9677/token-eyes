@@ -1049,7 +1049,7 @@ export async function getLeaderboard({
   const safeMetric = safeLeaderboardDimension(metric, LEADERBOARD_SAFE_METRICS, "tokens");
   const requestedSource = safeLeaderboardDimension(source, LEADERBOARD_SAFE_SOURCES, "all");
   const safeSource = safeMetric === "actual_cost" ? "all" : requestedSource;
-  const publicBaseUrl = String(baseUrl || "https://feeds.tokentracker.cc/v1").replace(/\/$/, "");
+  const publicBaseUrl = String(baseUrl || "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev/v1").replace(/\/$/, "");
   if (isTauriRuntime()) {
     return fetchLocalLeaderboardPublic({
       period: safePeriod,

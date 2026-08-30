@@ -637,7 +637,7 @@ async function runDeleteJourney({ executable, fixtureBin, passRoot, passName, se
   }
 }
 
-test("the final installed Codex buttons launch browser authorization and complete durable delete twice", {
+test("the final installer reads staging anonymously without polling and completes Codex native journeys twice", {
   skip: enabled ? false : "requires the explicit private packaged-UI acceptance gate",
   timeout: 360_000,
 }, async (t) => {
@@ -671,6 +671,65 @@ test("the final installed Codex buttons launch browser authorization and complet
   await delay(500);
   const executable = path.join(installDir, "token-eyes.exe");
   assert.ok(fs.existsSync(executable), "the isolated installer must deploy token-eyes.exe");
+
+  const leaderboardHome = path.join(root, "leaderboard");
+  const leaderboardEnv = cleanEnvironment(leaderboardHome, fixtureBin, await findFreePort());
+  let leaderboardApp;
+  try {
+    leaderboardApp = await launchApp(executable, leaderboardEnv);
+    await navigateAfterBootstrap(leaderboardApp.cdp, "/leaderboard");
+    try {
+      await waitForExpression(
+        leaderboardApp.cdp,
+        `document.querySelector('[data-testid="leaderboard-generated-at"]') && !document.querySelector('[data-testid="leaderboard-summary-placeholder"]')`,
+        "the installed anonymous signed leaderboard",
+        30_000,
+      );
+    } catch (error) {
+      await capture(leaderboardApp.cdp, path.join(evidenceRoot, "installed-leaderboard-failure.png"));
+      const diagnostic = await leaderboardApp.cdp.evaluate(`({
+        href: window.location.href,
+        bodyText: document.body?.innerText || '',
+        resources: performance.getEntriesByType('resource').map((entry) => entry.name),
+      })`);
+      fs.writeFileSync(path.join(evidenceRoot, "installed-leaderboard-failure.json"), `${JSON.stringify(diagnostic, null, 2)}\n`, "utf8");
+      throw error;
+    }
+    assert.equal(
+      await leaderboardApp.cdp.evaluate("Boolean(document.querySelector('[data-testid=leaderboard-list-error]'))"),
+      false,
+      "the installed leaderboard must not show a public-feed error",
+    );
+    const resourceSnapshot = `performance.getEntriesByType('resource').map((entry) => entry.name)`;
+    const initialResources = await leaderboardApp.cdp.evaluate(resourceSnapshot);
+    const stagingOrigin = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev";
+    const initialWorkerRequests = initialResources.filter((url) => url.startsWith(stagingOrigin));
+    assert.equal(initialWorkerRequests.length, 1, JSON.stringify(initialResources));
+    assert.equal(initialResources.some((url) => url.includes("a62b9nf2")), false);
+    await capture(leaderboardApp.cdp, path.join(evidenceRoot, "installed-leaderboard-initial.png"));
+    await delay(65_000);
+    const idleResources = await leaderboardApp.cdp.evaluate(resourceSnapshot);
+    assert.equal(idleResources.filter((url) => url.startsWith(stagingOrigin)).length, 1, "installed leaderboard polled without user action");
+    await clickElementAsUser(leaderboardApp.cdp, '[data-testid="leaderboard-manual-refresh"]', leaderboardApp.child.pid);
+    await waitForExpression(
+      leaderboardApp.cdp,
+      `performance.getEntriesByType('resource').filter((entry) => entry.name.startsWith('${stagingOrigin}')).length === 2`,
+      "one installed manual leaderboard refresh",
+      30_000,
+    );
+    await capture(leaderboardApp.cdp, path.join(evidenceRoot, "installed-leaderboard-refreshed.png"));
+    fs.writeFileSync(path.join(evidenceRoot, "installed-leaderboard-result.json"), `${JSON.stringify({
+      staging_origin: stagingOrigin,
+      anonymous_signed_read: true,
+      participant_rows: await leaderboardApp.cdp.evaluate("document.querySelectorAll('[data-entry-index]').length"),
+      no_background_polling_ms: 65_000,
+      manual_refresh_request_count: 2,
+      old_insforge_requests: 0,
+    }, null, 2)}\n`, "utf8");
+  } finally {
+    leaderboardApp?.cdp.close();
+    await stopProcessTree(leaderboardApp?.child);
+  }
 
   const results = [];
   for (const [index, passName] of ["pass-1", "pass-2"].entries()) {
