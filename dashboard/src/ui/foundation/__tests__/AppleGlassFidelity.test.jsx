@@ -86,6 +86,7 @@ describe("approved M/N material fidelity", () => {
     const selector = ".tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid";
     const detailSelector = '.tt-reference-route-dashboard [data-testid="dashboard-detail-grid"]';
     const detailColumnSelector = `${detailSelector} > div`;
+    const projectGridSelector = `${detailSelector} .tt-overview-project-grid--stable`;
 
     expect(mediaDeclarations("(min-width: 1500px)", selector)["grid-template-columns"])
       .toBe("minmax(0, 1fr) minmax(0, 2fr)");
@@ -97,6 +98,8 @@ describe("approved M/N material fidelity", () => {
       .toBe("auto");
     expect(mediaDeclarations("(min-width: 900px) and (max-width: 1080px)", detailSelector)["grid-template-columns"])
       .toBe("minmax(0, 1fr)");
+    expect(mediaDeclarations("(min-width: 1081px) and (max-width: 1199px)", projectGridSelector)["grid-template-columns"])
+      .toBe("repeat(2, minmax(0, 1fr))");
   });
 
   it("keeps overview model data complete with one functional scrollbar", () => {

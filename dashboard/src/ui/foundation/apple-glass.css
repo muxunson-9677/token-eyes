@@ -8301,6 +8301,12 @@ html.native-windows-app .tt-reference-route-settings-basic .tt-main-work-surface
   }
 }
 
+@media (min-width: 1081px) and (max-width: 1199px) {
+  .tt-reference-route-dashboard [data-testid="dashboard-detail-grid"] .tt-overview-project-grid--stable {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (min-width: 900px) and (max-width: 1080px) {
   .tt-reference-route-dashboard .tt-overview-locked .tt-reference-overview-grid {
     grid-template-columns: minmax(0, 1fr);

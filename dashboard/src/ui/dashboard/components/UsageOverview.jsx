@@ -325,6 +325,20 @@ export function UsageOverview({
     }
   }, [period]);
   const [expandedProvider, setExpandedProvider] = useState(null);
+  const expandedProviderTriggerRef = useRef(null);
+  useEffect(() => {
+    if (!expandedProvider) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      const trigger = expandedProviderTriggerRef.current;
+      setExpandedProvider(null);
+      queueMicrotask(() => {
+        if (trigger?.isConnected) trigger.focus();
+      });
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [expandedProvider]);
   // Q02: 计费方式筛选器状态。Q02 不会改变父组件 prop 协议；只看 fleetData
   // 自带的 billingMode 元数据并基于本组件 state 重新计算。
   const [billingFilter, setBillingFilter] = useState("all");
@@ -714,7 +728,10 @@ export function UsageOverview({
                       cost: formatCost(provider.usd, currency, rate) || copy("usage.overview.cost_unavailable"),
                       action: copy(isExpanded ? "usage.overview.collapse" : "usage.overview.expand"),
                     })}
-                    onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
+                    onClick={(event) => {
+                      if (!isExpanded) expandedProviderTriggerRef.current = event.currentTarget;
+                      setExpandedProvider(isExpanded ? null : provider.label);
+                    }}
                     className={`tt-provider-card tt-pressable min-w-0 text-left p-3 rounded-xl border transition-[background-color,border-color,box-shadow,transform] duration-200 ${
                       isExpanded
                         ? "ring-2 ring-oai-brand-200 dark:ring-oai-brand-700/50"

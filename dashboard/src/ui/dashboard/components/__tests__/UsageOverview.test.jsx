@@ -201,6 +201,29 @@ describe("UsageOverview", () => {
     expect(screen.getByTestId("context-breakdown")).toHaveTextContent("hermes");
   });
 
+  it("closes an expanded Agent breakdown with Escape and restores its trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <UsageOverview
+        period="total"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="123"
+        fleetData={[mixedFleet[0]]}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /CODEX/i });
+    await act(async () => user.click(trigger));
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await act(async () => user.keyboard("{Escape}"));
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("context-breakdown")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("hides the primary total when it was not provided", () => {
     render(
       <UsageOverview
