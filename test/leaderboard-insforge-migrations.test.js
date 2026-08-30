@@ -19,7 +19,7 @@ const pairs = [
 function withoutTransactionControl(sql) {
   return sql
     .replace(/^begin;\r?\n\r?\n/m, "")
-    .replace(/\r?\ncommit;\r?\n?$/m, "\n");
+    .replace(/\r?\n(?:\r?\n)?commit;\r?\n?$/m, "\n");
 }
 
 function normalizeEol(sql) {

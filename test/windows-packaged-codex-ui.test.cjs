@@ -537,7 +537,16 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
     await capture(launched.cdp, path.join(evidenceRoot, `${passName}-before-sync.png`));
     const initialBodyText = await launched.cdp.evaluate("document.body?.innerText || ''");
     fs.writeFileSync(path.join(evidenceRoot, `${passName}-before-sync.txt`), `${initialBodyText}\n`, "utf8");
-    assert.match(initialBodyText, /已连接/u, "the installed editor must start from the connected state reported by the user");
+    assert.match(
+      initialBodyText,
+      /授权已失效/u,
+      "the installed editor must reconcile a stale local connected record against the missing native authorization",
+    );
+    assert.equal(
+      await launched.cdp.evaluate("Boolean(document.querySelector('[data-testid=\"detection-codex-retry\"]'))"),
+      true,
+      "the reconciled state must expose the real browser reauthorization action",
+    );
     const clickedAction = await clickCodexAccountActionAsUser(launched.cdp, launched.child.pid);
     try {
       await waitForExpression(

@@ -3382,7 +3382,7 @@ it("reopens official Codex OAuth when manual sync reports reauth_required", asyn
   }
 });
 
-it("reopens official Codex OAuth when a connected session cannot fetch quota", async () => {
+it("keeps Codex connected when an authorized session cannot fetch quota", async () => {
   mockCodexCatalog();
   mockConnectedCodexPlan();
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
@@ -3393,13 +3393,8 @@ it("reopens official Codex OAuth when a connected session cannot fetch quota", a
     state_code: "authorized",
     quota_sync_status: "error",
     error_code: "QUOTA_SYNC_FAILED",
-    error_message: "Codex authorization has expired; reconnect this account",
+    error_message: "授权已完成，但额度同步暂时失败，可稍后重试。",
   });
-  createConsoleSession.mockImplementation(async (params) => ({
-    session: makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref }),
-    sessions: [makeCodexSession({ id: "replacement-codex-session", session_ref: params.session_ref })],
-  }));
-  reauthorizeCodexConsoleLogin.mockRejectedValue(new Error("browser open invoked"));
   const user = userEvent.setup();
 
   try {
@@ -3409,7 +3404,13 @@ it("reopens official Codex OAuth when a connected session cannot fetch quota", a
     await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
     await user.click(await screen.findByTestId("detection-sync-codex"));
 
-    await waitFor(() => expect(reauthorizeCodexConsoleLogin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
+      id: "codex-plan",
+      sync_status: "failed",
+      last_error_code: "QUOTA_SYNC_FAILED",
+    })));
+    expect(await screen.findByTestId("detection-codex-connected")).toBeInTheDocument();
+    expect(reauthorizeCodexConsoleLogin).not.toHaveBeenCalled();
     expect(openCodexConsoleLogin).not.toHaveBeenCalled();
   } finally {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
@@ -5237,6 +5238,22 @@ it("Codex connected refresh keeps quota and never falls back to the legacy adapt
     expect(JSON.stringify(localPayload)).not.toContain(secret);
     expect(JSON.stringify(savedPayload)).not.toContain(secret);
   }
+
+  syncCodexConsoleQuota.mockClear();
+  saveTokenPlan.mockClear();
+  await act(async () => {
+    await user.click(screen.getByRole("button", { name: copy("settings.token_plan.edit") }));
+  });
+  expect(await screen.findByTestId("detection-codex-connected")).toBeInTheDocument();
+  await act(async () => {
+    await user.click(screen.getByTestId("detection-sync-codex"));
+  });
+  await waitFor(() => expect(syncCodexConsoleQuota).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(saveTokenPlan).toHaveBeenCalled());
+  expect(reauthorizeCodexConsoleLogin).not.toHaveBeenCalled();
+  expect(openCodexConsoleLogin).not.toHaveBeenCalled();
+  expect(deleteConsoleSession).not.toHaveBeenCalled();
+  expect(screen.getByTestId("detection-codex-connected")).toBeInTheDocument();
 });
 
 it("projects nested Codex auto-refresh quota fields before local persistence and plan save", async () => {
