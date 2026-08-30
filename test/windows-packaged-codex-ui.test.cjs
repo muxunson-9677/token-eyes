@@ -524,6 +524,13 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
     launched = await launchApp(executable, env);
     try {
       await navigateToCodexEditor(launched.cdp);
+      focusProcessWindow(launched.child.pid);
+      await waitForExpression(
+        launched.cdp,
+        `document.querySelector('[data-testid="detection-codex-retry"]')`,
+        "the stale local Codex binding to reconcile against native authorization",
+        30_000,
+      );
     } catch (error) {
       await capture(launched.cdp, path.join(evidenceRoot, `${passName}-startup-failure.png`));
       const diagnostic = await launched.cdp.evaluate(`({
