@@ -439,6 +439,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(await screen.findByRole("link", { name: copy("leaderboard.rules_link") })).toBeVisible();
     expect(screen.queryByRole("button", { name: copy("settings.section.account") })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: copy("settings.account.signOut") })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("leaderboard-me-status")).not.toBeInTheDocument();
   });
 
   it("keeps my displayed usage local while reusing only the cloud rank", async () => {
@@ -1237,17 +1238,14 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
   });
 
-  it("keeps the fixed right-side #1 status block when the personal-rank request is unavailable", async () => {
+  it("does not invent a #1 status when the personal-rank request is unavailable", async () => {
     getLocalLeaderboardState.mockRejectedValue(new Error("local leaderboard state unavailable"));
     getLeaderboard.mockResolvedValue(preloadedData);
 
     renderLeaderboard();
 
-    await waitFor(() => {
-      const status = screen.getByTestId("leaderboard-me-status");
-      expect(status).toBeVisible();
-      expect(within(status).getByText("#1")).toBeVisible();
-    });
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalled());
+    expect(screen.queryByTestId("leaderboard-me-status")).not.toBeInTheDocument();
   });
 
   it("uses the desktop sidebar as the exit and does not duplicate a return-overview link", async () => {

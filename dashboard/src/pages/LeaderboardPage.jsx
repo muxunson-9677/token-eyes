@@ -1321,18 +1321,16 @@ export function LeaderboardPage({
                 <RefreshCw className={cn("h-3.5 w-3.5", (currentListState.loading || manualRefreshing) && "animate-spin")} aria-hidden="true" />
                 {manualRefreshing ? copy("realtime.refreshing") : copy("usage.button.refresh")}
               </button>
-              <LeaderboardMeChip
-                me={statusMe || {
-                  rank: 1,
-                  display_name: meLabel,
-                  user_id: "leaderboard-current-user",
-                }}
-                totalEntries={Math.max(1, Number(totalEntries) || 0)}
-                meLabel={meLabel}
-                onOpenProfile={statusMe?.user_id ? () => openProfileModal(statusMe.user_id) : undefined}
-                onJumpToMe={undefined}
-                canJump={false}
-              />
+              {statusMe ? (
+                <LeaderboardMeChip
+                  me={statusMe}
+                  totalEntries={Math.max(1, Number(totalEntries) || 0)}
+                  meLabel={meLabel}
+                  onOpenProfile={statusMe.user_id ? () => openProfileModal(statusMe.user_id) : undefined}
+                  onJumpToMe={undefined}
+                  canJump={false}
+                />
+              ) : null}
             </div>
           </div>
 
