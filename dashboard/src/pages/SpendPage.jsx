@@ -164,6 +164,7 @@ function SpendUsagePageInner({
   });
   const financialRequestIdRef = useRef(0);
   const initialIntervalLoaded = useRef(false);
+  const persistedIntervalRef = useRef(null);
 
   const { visibleOrdered } = useLimitsDisplayPrefs();
   const visibleProviderIds = useMemo(
@@ -456,6 +457,7 @@ function SpendUsagePageInner({
         const settings = await getLocalSettings();
         if (cancelled) return;
         const savedInterval = String(settings?.dashboardRefresh?.interval || "1m").trim();
+        persistedIntervalRef.current = savedInterval;
         dispatchRefreshInterval(savedInterval);
       } catch {
         // Use default 1m on failure.
@@ -470,11 +472,17 @@ function SpendUsagePageInner({
   // Ticket-02: persist refresh interval to local settings when it changes (after initial load)
   useEffect(() => {
     if (!initialIntervalLoaded.current) return;
+    if (persistedIntervalRef.current === filterState.refreshInterval) return;
+    let cancelled = false;
+    const interval = filterState.refreshInterval;
     setLocalSettings({
-      dashboardRefresh: { interval: filterState.refreshInterval, updated_at: new Date().toISOString() },
+      dashboardRefresh: { interval, updated_at: new Date().toISOString() },
+    }).then(() => {
+      if (!cancelled) persistedIntervalRef.current = interval;
     }).catch((err) => {
-      console.error("[SpendUsagePage] Failed to save refresh interval:", err);
+      if (!cancelled) console.error("[SpendUsagePage] Failed to save refresh interval:", err);
     });
+    return () => { cancelled = true; };
   }, [filterState.refreshInterval]);
 
 

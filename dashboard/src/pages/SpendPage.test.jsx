@@ -238,6 +238,18 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("SpendUsagePage (v2.0 IA split)", () => {
+  it("loads the saved refresh interval without redundantly writing it back", async () => {
+    getLocalSettings.mockResolvedValue({ dashboardRefresh: { interval: "manual" } });
+
+    render(<SpendUsagePage />);
+
+    await waitFor(() => expect(getLocalSettings).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(setLocalSettings).not.toHaveBeenCalled();
+  });
+
   it("loads current and prior-month financial summaries beside usage data", async () => {
     getSpendRecords
       .mockResolvedValueOnce({
