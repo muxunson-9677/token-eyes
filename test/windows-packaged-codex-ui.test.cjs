@@ -227,7 +227,7 @@ async function waitForCdp(port, child) {
       const pages = targets.filter((candidate) => candidate.type === "page" && candidate.webSocketDebuggerUrl);
       const target = pages.find((candidate) => {
         const url = String(candidate.url || "");
-        return url.length > 0 && !url.includes("/desktop-widget");
+        return /^https?:\/\//u.test(url) && !url.includes("/desktop-widget");
       });
       if (target) return target;
     } catch (error) {
@@ -296,7 +296,12 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId, k
     "using System.Runtime.InteropServices;",
     "public static class NativeInput {",
     "  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X; public int Y; }",
+    "  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left; public int Top; public int Right; public int Bottom; }",
+    "  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);",
     "  [DllImport(\"user32.dll\")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);",
+    "  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);",
+    "  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\")] public static extern bool GetClientRect(IntPtr hWnd, out Rect rect);",
     "  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);",
     "  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();",
     "  [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);",
@@ -310,6 +315,21 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId, k
     "  [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y);",
     "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);",
     "  [DllImport(\"user32.dll\")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);",
+    "  public static IntPtr LargestVisibleWindowForProcess(uint processId) {",
+    "    IntPtr best = IntPtr.Zero;",
+    "    long bestArea = -1;",
+    "    EnumWindows((window, ignored) => {",
+    "      uint owner;",
+    "      GetWindowThreadProcessId(window, out owner);",
+    "      Rect rect;",
+    "      if (owner == processId && IsWindowVisible(window) && GetClientRect(window, out rect)) {",
+    "        long area = Math.Max(0, rect.Right - rect.Left) * (long)Math.Max(0, rect.Bottom - rect.Top);",
+    "        if (area > bestArea) { best = window; bestArea = area; }",
+    "      }",
+    "      return true;",
+    "    }, IntPtr.Zero);",
+    "    return best;",
+    "  }",
     "  public static bool ForceForeground(IntPtr target) {",
     "    IntPtr foreground = GetForegroundWindow();",
     "    uint ignored;",
@@ -331,15 +351,16 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId, k
     "'@",
     "[NativeInput]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null",
     "$p = Get-Process -Id $env:TOKEN_EYES_UI_PID -ErrorAction Stop",
+    "$target = [NativeInput]::LargestVisibleWindowForProcess([uint32]$p.Id)",
+    "if ($target -eq [IntPtr]::Zero) { $target = $p.MainWindowHandle }",
+    "if ($target -eq [IntPtr]::Zero) { throw 'Token Eyes has no visible native window' }",
     "$action = $env:TOKEN_EYES_UI_ACTION",
-    "if ($action -eq 'focus') {",
-    "  [NativeInput]::ForceForeground($p.MainWindowHandle) | Out-Null",
-    "  Start-Sleep -Milliseconds 400",
-    "}",
+    "[NativeInput]::ForceForeground($target) | Out-Null",
+    "Start-Sleep -Milliseconds 400",
     "$foregroundPid = [uint32]0",
     "[NativeInput]::GetWindowThreadProcessId([NativeInput]::GetForegroundWindow(), [ref]$foregroundPid) | Out-Null",
     "if ($foregroundPid -ne $p.Id) { throw 'Token Eyes could not become foreground for the real pointer click' }",
-    "if ($action -eq 'focus') { @{ pid = $foregroundPid } | ConvertTo-Json -Compress; exit 0 }",
+    "if ($action -eq 'focus') { @{ pid = $foregroundPid; hwnd = $target.ToInt64() } | ConvertTo-Json -Compress; exit 0 }",
     "if ($action -eq 'key') {",
     "  foreach ($key in $env:TOKEN_EYES_UI_KEYS.Split(',')) {",
     "    $virtualKey = [byte]::Parse($key, [System.Globalization.CultureInfo]::InvariantCulture)",
@@ -351,7 +372,7 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId, k
     "}",
     "if ($action -ne 'click') { throw 'Unsupported packaged UI input action' }",
     "$origin = [NativeInput+Point]::new()",
-    "if (-not [NativeInput]::ClientToScreen($p.MainWindowHandle, [ref]$origin)) { throw 'Token Eyes client origin is unavailable' }",
+    "if (-not [NativeInput]::ClientToScreen($target, [ref]$origin)) { throw 'Token Eyes client origin is unavailable' }",
     "$culture = [System.Globalization.CultureInfo]::InvariantCulture",
     "$clientX = [double]::Parse($env:TOKEN_EYES_UI_CLIENT_X, $culture)",
     "$clientY = [double]::Parse($env:TOKEN_EYES_UI_CLIENT_Y, $culture)",
@@ -361,7 +382,7 @@ function runScreenInput(action, clientX, clientY, devicePixelRatio, processId, k
     "[NativeInput]::SetCursorPos($screenX, $screenY) | Out-Null",
     "[NativeInput]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)",
     "[NativeInput]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)",
-    "@{ x = $screenX; y = $screenY } | ConvertTo-Json -Compress",
+    "@{ x = $screenX; y = $screenY; hwnd = $target.ToInt64() } | ConvertTo-Json -Compress",
   ].join("\n");
   const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
     encoding: "utf8",
@@ -407,7 +428,8 @@ async function tryFocusElementWithKeyboard(cdp, selector, processId) {
 async function clickElementAsUser(cdp, selector, processId) {
   focusProcessWindow(processId);
   const point = await cdp.evaluate(`(() => {
-    const element = document.querySelector(${JSON.stringify(selector)});
+    const element = [...document.querySelectorAll(${JSON.stringify(selector)})]
+      .find((candidate) => !candidate.disabled && candidate.getClientRects().length > 0);
     if (!element) return null;
     element.scrollIntoView({ block: 'center' });
     const rect = element.getBoundingClientRect();
@@ -560,6 +582,11 @@ async function launchApp(executable, env) {
   const target = await waitForCdp(port, child);
   const cdp = new CdpClient(target.webSocketDebuggerUrl);
   await cdp.connect();
+  await waitForExpression(
+    cdp,
+    "['http:', 'https:'].includes(window.location.protocol) && document.readyState !== 'loading'",
+    "the main HTTP WebView document",
+  );
   return { cdp, child };
 }
 
@@ -577,6 +604,10 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
     windowsHide: true,
   });
   assert.notEqual(codexLookup.status, 0, "packaged acceptance must not expose codex.exe or codex.cmd");
+  const callbackReleaseDeadline = Date.now() + 10_000;
+  while (!(await portIsAvailable(1455)) && Date.now() < callbackReleaseDeadline) {
+    await delay(100);
+  }
   assert.equal(await portIsAvailable(1455), true, "OAuth callback port must be free before the click");
   let launched;
   try {
@@ -592,11 +623,16 @@ async function runSyncJourney({ executable, fixtureBin, passRoot, passName, sess
       );
     } catch (error) {
       await capture(launched.cdp, path.join(evidenceRoot, `${passName}-startup-failure.png`));
-      const diagnostic = await launched.cdp.evaluate(`({
-        href: window.location.href,
-        firstRunCompleted: window.localStorage.getItem('tokentracker.firstRun.completed.v1'),
-        bodyText: document.body?.innerText || '',
-      })`);
+      let diagnostic;
+      try {
+        diagnostic = await launched.cdp.evaluate(`({
+          href: window.location.href,
+          firstRunCompleted: window.localStorage.getItem('tokentracker.firstRun.completed.v1'),
+          bodyText: document.body?.innerText || '',
+        })`);
+      } catch (diagnosticError) {
+        diagnostic = { cdp_error: diagnosticError.message };
+      }
       fs.writeFileSync(path.join(evidenceRoot, `${passName}-startup-failure.txt`), `${JSON.stringify(diagnostic, null, 2)}\n`, "utf8");
       throw error;
     }
