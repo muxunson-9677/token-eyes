@@ -671,6 +671,19 @@ test("the final installer reads staging anonymously without polling and complete
   await delay(500);
   const executable = path.join(installDir, "token-eyes.exe");
   assert.ok(fs.existsSync(executable), "the isolated installer must deploy token-eyes.exe");
+  const installedLocalApiPath = path.join(
+    installDir,
+    `EmbeddedServer-${tauriConfig.version}`,
+    "tokentracker",
+    "src",
+    "lib",
+    "local-api.js",
+  );
+  assert.ok(fs.existsSync(installedLocalApiPath), "the isolated installer must deploy the local API proxy source");
+  const installedLocalApi = fs.readFileSync(installedLocalApiPath, "utf8");
+  const stagingOrigin = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev";
+  assert.match(installedLocalApi, new RegExp(stagingOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(installedLocalApi, /a62b9nf2|https:\/\/feeds\.tokentracker\.cc\/v1/);
 
   const leaderboardHome = path.join(root, "leaderboard");
   const leaderboardEnv = cleanEnvironment(leaderboardHome, fixtureBin, await findFreePort());
@@ -702,28 +715,29 @@ test("the final installer reads staging anonymously without polling and complete
     );
     const resourceSnapshot = `performance.getEntriesByType('resource').map((entry) => entry.name)`;
     const initialResources = await leaderboardApp.cdp.evaluate(resourceSnapshot);
-    const stagingOrigin = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev";
-    const initialWorkerRequests = initialResources.filter((url) => url.startsWith(stagingOrigin));
-    assert.equal(initialWorkerRequests.length, 1, JSON.stringify(initialResources));
+    const localLeaderboardRequest = "/functions/tokentracker-leaderboard-public";
+    const initialPublicRequests = initialResources.filter((url) => url.includes(localLeaderboardRequest));
+    assert.equal(initialPublicRequests.length, 1, JSON.stringify(initialResources));
     assert.equal(initialResources.some((url) => url.includes("a62b9nf2")), false);
     await capture(leaderboardApp.cdp, path.join(evidenceRoot, "installed-leaderboard-initial.png"));
     await delay(65_000);
     const idleResources = await leaderboardApp.cdp.evaluate(resourceSnapshot);
-    assert.equal(idleResources.filter((url) => url.startsWith(stagingOrigin)).length, 1, "installed leaderboard polled without user action");
+    assert.equal(idleResources.filter((url) => url.includes(localLeaderboardRequest)).length, 1, "installed leaderboard polled without user action");
     await clickElementAsUser(leaderboardApp.cdp, '[data-testid="leaderboard-manual-refresh"]', leaderboardApp.child.pid);
     await waitForExpression(
       leaderboardApp.cdp,
-      `performance.getEntriesByType('resource').filter((entry) => entry.name.startsWith('${stagingOrigin}')).length === 2`,
+      `performance.getEntriesByType('resource').filter((entry) => entry.name.includes('${localLeaderboardRequest}')).length === 2`,
       "one installed manual leaderboard refresh",
       30_000,
     );
     await capture(leaderboardApp.cdp, path.join(evidenceRoot, "installed-leaderboard-refreshed.png"));
     fs.writeFileSync(path.join(evidenceRoot, "installed-leaderboard-result.json"), `${JSON.stringify({
       staging_origin: stagingOrigin,
+      installed_runtime_staging_binding: true,
       anonymous_signed_read: true,
       participant_rows: await leaderboardApp.cdp.evaluate("document.querySelectorAll('[data-entry-index]').length"),
       no_background_polling_ms: 65_000,
-      manual_refresh_request_count: 2,
+      local_proxy_request_count_after_manual_refresh: 2,
       old_insforge_requests: 0,
     }, null, 2)}\n`, "utf8");
   } finally {
