@@ -79,7 +79,7 @@ function assertBoundedText(value, label, maximum) {
   }
 }
 
-function validateAnnouncement(item, { nowMs }) {
+function validateAnnouncement(item, { nowMs, allowExpired = false }) {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     throw new TypeError("announcement must be an object");
   }
@@ -136,7 +136,7 @@ function validateAnnouncement(item, { nowMs }) {
   if (expiresAt <= publishedAt) {
     throw new TypeError("announcement expiry must follow publication");
   }
-  if (expiresAt <= nowMs) throw new TypeError("announcement is expired");
+  if (!allowExpired && expiresAt <= nowMs) throw new TypeError("announcement is expired");
 }
 
 function isConfirmedResetAnnouncement(item) {
@@ -146,7 +146,10 @@ function isConfirmedResetAnnouncement(item) {
   return CONFIRMED_RESET_CONCEPT.test(String(item.body || item.summary || ""));
 }
 
-function validateCodexResetFeedPayload(payload, { nowMs = Date.now() } = {}) {
+function validateCodexResetFeedPayload(payload, {
+  nowMs = Date.now(),
+  allowExpiredAnnouncements = false,
+} = {}) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new TypeError("feed payload must be an object");
   }
@@ -163,7 +166,7 @@ function validateCodexResetFeedPayload(payload, { nowMs = Date.now() } = {}) {
   const ids = new Set();
   const sourcePosts = new Set();
   for (const item of payload.announcements) {
-    validateAnnouncement(item, { nowMs });
+    validateAnnouncement(item, { nowMs, allowExpired: allowExpiredAnnouncements });
     if (ids.has(item.id)) throw new TypeError("duplicate announcement id");
     ids.add(item.id);
     if (item.source_author && item.source_post_id) {
@@ -215,7 +218,17 @@ function verifyCodexResetFeed(envelope, {
   } catch {
     throw new TypeError("signed feed payload is not valid JSON");
   }
-  return validateCodexResetFeedPayload(payload, { nowMs });
+  const validated = validateCodexResetFeedPayload(payload, {
+    nowMs,
+    allowExpiredAnnouncements: true,
+  });
+  const announcements = validated.announcements.filter(
+    (item) => Date.parse(item.expires_at) > nowMs,
+  );
+  if (validated.announcements.length > 0 && announcements.length === 0) {
+    throw new TypeError("announcement is expired");
+  }
+  return { ...validated, announcements };
 }
 
 function createSignedCodexResetFeedEnvelope(payload, privateKey) {

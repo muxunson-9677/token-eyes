@@ -103,6 +103,25 @@ test("rejects expired, duplicate, oversized, and unsupported announcements", () 
   }
 });
 
+test("accepts a signed rolling feed by dropping expired history when live announcements remain", () => {
+  const expired = announcement({
+    id: "expired-history",
+    source_post_id: "2000000000000000001",
+    source_url: "https://x.com/thsottiaux/status/2000000000000000001",
+    expires_at: "2026-07-20T07:59:59.999Z",
+  });
+  const live = announcement({
+    id: "live-announcement",
+    source_post_id: "2000000000000000002",
+    source_url: "https://x.com/thsottiaux/status/2000000000000000002",
+  });
+  const verified = verifyCodexResetFeed(
+    envelope(payload([expired, live])),
+    { publicKey, nowMs: NOW },
+  );
+  assert.deepEqual(verified.announcements, [live]);
+});
+
 test("retains full announcement bodies and deduplicates the canonical X post", () => {
   const longBody = `${"完整正文 ".repeat(300)}\n最后一段。`;
   const item = announcement({ body: longBody });
