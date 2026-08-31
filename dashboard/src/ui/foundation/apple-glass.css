@@ -2598,6 +2598,10 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
   cursor: pointer;
 }
 
+.tt-reference-route-reset-history [data-testid="reset-history-item"][data-expanded="true"] {
+  z-index: 12;
+}
+
 .tt-reference-route-reset-history [data-testid="reset-history-item"]::before {
   position: absolute;
   top: 22px;
@@ -2625,11 +2629,15 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 }
 
 .tt-reference-route-reset-history .tt-reset-history-detail {
-  grid-column: 2 / -1;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 12px;
+  left: 56px;
+  z-index: 2;
   display: grid;
   gap: 8px;
-  margin-top: 8px;
-  overflow: visible;
+  max-height: min(420px, calc(100vh - 120px));
+  overflow: auto;
   border: 1px solid rgba(31, 43, 56, 0.12);
   border-radius: 14px;
   padding: 14px 16px 16px;
@@ -2778,6 +2786,7 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 
 @media (max-width: 760px) {
   .tt-reset-history-freshness { flex-direction: column; }
+  .tt-reference-route-reset-history .tt-reset-history-detail { right: 8px; left: 40px; }
   .tt-reference-route-reset-history .tt-reset-history-detail-grid { grid-template-columns: 1fr; }
   .tt-reference-route-reset-history .tt-reset-history-detail-wide { grid-column: 1; }
 }

@@ -1401,6 +1401,7 @@ async function assertResetExpansionGeometry(page, scenario) {
       const rect = row.getBoundingClientRect();
       const nextRect = next?.getBoundingClientRect();
       return {
+        scrollY: window.scrollY,
         row: {
           top: rect.top + window.scrollY,
           bottom: rect.bottom + window.scrollY,
@@ -1427,6 +1428,7 @@ async function assertResetExpansionGeometry(page, scenario) {
         .filter((child) => child !== detail)
         .map((child) => child.getBoundingClientRect().bottom + window.scrollY));
       return {
+        scrollY: window.scrollY,
         row: {
           top: rowRect.top + window.scrollY,
           bottom: rowRect.bottom + window.scrollY,
@@ -1449,32 +1451,30 @@ async function assertResetExpansionGeometry(page, scenario) {
     }, { itemIndex: index });
 
     const expansion = after.row.height - before.row.height;
-    const detailGap = after.detail.top - after.summaryBottom;
-    if (!after.detail.parentIsRow || ["absolute", "fixed"].includes(after.detail.position)) {
-      throw new Error(`${scenario.name}: row ${index + 1} detail escaped document flow ${JSON.stringify(after.detail)}`);
+    const detailGap = after.detail.top - before.row.bottom;
+    if (!after.detail.parentIsRow || after.detail.position !== "absolute") {
+      throw new Error(`${scenario.name}: row ${index + 1} detail is not an anchored overlay ${JSON.stringify(after.detail)}`);
     }
-    if (Math.abs(detailGap) > 16) {
+    if (detailGap < 0 || detailGap > 16) {
       throw new Error(`${scenario.name}: row ${index + 1} detail is not adjacent to its owner (${detailGap}px)`);
     }
-    if (expansion < after.detail.height - 2) {
-      throw new Error(`${scenario.name}: row ${index + 1} did not grow for its detail ${JSON.stringify({ expansion, detail: after.detail })}`);
+    if (Math.abs(expansion) > 2 || Math.abs(after.scrollY - before.scrollY) > 1) {
+      throw new Error(`${scenario.name}: row ${index + 1} overlay changed layout or scroll ${JSON.stringify({ expansion, beforeScroll: before.scrollY, afterScroll: after.scrollY })}`);
     }
     if (after.next) {
-      const downstreamShift = (after.next.top - after.row.top)
-        - (before.next.top - before.row.top);
-      if (Math.abs(downstreamShift - expansion) > 2) {
-        throw new Error(`${scenario.name}: row ${index + 1} did not push downstream content ${JSON.stringify({ downstreamShift, expansion })}`);
+      const downstreamShift = after.next.top - before.next.top;
+      if (Math.abs(downstreamShift) > 2) {
+        throw new Error(`${scenario.name}: row ${index + 1} moved downstream content ${JSON.stringify({ downstreamShift })}`);
       }
-      if (after.detail.bottom > after.next.top + 0.5) {
-        throw new Error(`${scenario.name}: row ${index + 1} detail overlaps the next row`);
+      if (after.detail.bottom <= after.next.top + 0.5) {
+        throw new Error(`${scenario.name}: row ${index + 1} overlay did not cover downstream content`);
       }
     }
     if (
       !after.activeIsDetail
       || after.detail.viewportTop < -0.5
-      || after.detail.viewportBottom > after.viewportHeight + 0.5
     ) {
-      throw new Error(`${scenario.name}: row ${index + 1} detail was not focused and scrolled into view ${JSON.stringify(after)}`);
+      throw new Error(`${scenario.name}: row ${index + 1} detail was not focused below its owner ${JSON.stringify(after)}`);
     }
 
     measurements.push({ row: index + 1, expansion, detailGap, detailHeight: after.detail.height });
@@ -1564,11 +1564,15 @@ async function runKeyboardJourney(browser, baseUrl, { captureArtifacts = true } 
   if (await providerHeader.getAttribute("aria-expanded") !== "false") {
     throw new Error("Provider API did not collapse through the keyboard");
   }
-  const providerFocusableCount = await page.locator('[data-testid="provider-api-config-section"]')
+  const providerFocusables = await page.locator('[data-testid="provider-api-config-section"]')
     .locator('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
-    .count();
-  if (providerFocusableCount !== 1) {
-    throw new Error(`Collapsed Provider API retained hidden focus targets: ${providerFocusableCount}`);
+    .evaluateAll((elements) => elements.map((element) => ({
+      visible: Boolean(element.getClientRects().length),
+      text: element.textContent?.trim() || element.getAttribute("aria-label") || element.tagName,
+    })));
+  const hiddenProviderFocusables = providerFocusables.filter((item) => !item.visible);
+  if (hiddenProviderFocusables.length > 0) {
+    throw new Error(`Collapsed Provider API retained hidden focus targets: ${JSON.stringify(hiddenProviderFocusables)}`);
   }
 
   await tabUntil(page, (active) => active.href === "/reset-history");

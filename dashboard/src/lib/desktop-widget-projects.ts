@@ -139,7 +139,54 @@ function normalizeProject(project: WidgetStatusProject) {
     sessionIds: Array.from(new Set((Array.isArray(project?.sessionIds) ? project.sessionIds : [])
       .map((value) => String(value || "").trim())
       .filter(Boolean))),
+    legacyProjectIds: [id],
     updatedAt: newestProjectTimestamp(project, sessions),
+  };
+}
+
+function projectStatusCounts(sessions: Array<NonNullable<ReturnType<typeof normalizeSession>>>) {
+  const counts = { red: 0, yellow: 0, green: 0, unknown: 0 };
+  for (const session of sessions) {
+    const status = String(session?.status || "").trim().toLowerCase();
+    if (status === "red" || status === "yellow" || status === "green") counts[status] += 1;
+    else counts.unknown += 1;
+  }
+  return counts;
+}
+
+function mergeNormalizedProject(
+  existing: NonNullable<ReturnType<typeof normalizeProject>>,
+  candidate: NonNullable<ReturnType<typeof normalizeProject>>,
+) {
+  const sessions = new Map(existing.sessions.map((session) => [session.id, session]));
+  for (const session of candidate.sessions) {
+    const current = sessions.get(session.id);
+    if (!current || Date.parse(session.updatedAt || "") > Date.parse(current.updatedAt || "")) {
+      sessions.set(session.id, session);
+    }
+  }
+  const mergedSessions = Array.from(sessions.values());
+  const mergedCounts = mergedSessions.length > 0
+    ? projectStatusCounts(mergedSessions)
+    : {
+      red: existing.red + candidate.red,
+      yellow: existing.yellow + candidate.yellow,
+      green: existing.green + candidate.green,
+      unknown: existing.unknown + candidate.unknown,
+    };
+  return {
+    ...existing,
+    path: existing.path || candidate.path,
+    ...mergedCounts,
+    sessions: mergedSessions,
+    sessionIds: Array.from(new Set([...existing.sessionIds, ...candidate.sessionIds])),
+    legacyProjectIds: Array.from(new Set([...existing.legacyProjectIds, ...candidate.legacyProjectIds])),
+    updatedAt: newestProjectTimestamp(
+      { updatedAt: [existing.updatedAt, candidate.updatedAt]
+        .filter(Boolean)
+        .sort((left, right) => Date.parse(String(right)) - Date.parse(String(left)))[0] },
+      mergedSessions,
+    ),
   };
 }
 
@@ -149,39 +196,41 @@ export function mergeWidgetStatusProjects(
   selected: DesktopWidgetProjectSelection[] = [],
 ) {
   const projects = new Map<string, NonNullable<ReturnType<typeof normalizeProject>>>();
+  const projectIdByIdentity = new Map<string, string>();
   const projectBySessionId = new Map<string, string>();
+  const addProject = (project: NonNullable<ReturnType<typeof normalizeProject>>) => {
+    const identity = project.path
+      ? `path:${project.path.toLowerCase()}`
+      : `label:${project.label.toLowerCase()}`;
+    const existingId = projectIdByIdentity.get(identity) || (projects.has(project.id) ? project.id : null);
+    const canonicalId = existingId || project.id;
+    const existing = projects.get(canonicalId);
+    const merged = existing ? mergeNormalizedProject(existing, project) : project;
+    projects.set(canonicalId, merged);
+    projectIdByIdentity.set(identity, canonicalId);
+    for (const session of merged.sessions) projectBySessionId.set(session.id, canonicalId);
+    for (const sessionId of merged.sessionIds) projectBySessionId.set(sessionId, canonicalId);
+  };
   for (const candidate of detected) {
     const project = normalizeProject(candidate);
     if (!project) continue;
-    projects.set(project.id, project);
-    for (const session of project.sessions) {
-      if (!projectBySessionId.has(session.id)) projectBySessionId.set(session.id, project.id);
-    }
+    addProject(project);
   }
   for (const candidate of recent) {
     const project = normalizeProject({ ...candidate, sessions: [] });
     if (!project) continue;
-    for (const sessionId of project.sessionIds) {
-      if (!projectBySessionId.has(sessionId)) projectBySessionId.set(sessionId, project.id);
-    }
-    const existing = projects.get(project.id);
-    projects.set(project.id, existing
-      ? { ...existing, sessionIds: Array.from(new Set([...existing.sessionIds, ...project.sessionIds])) }
-      : project);
+    addProject(project);
   }
   for (const candidate of selected) {
     const project = normalizeProject({ ...candidate, sessions: [] });
     if (!project || projectBySessionId.has(project.id)) continue;
-    const existing = projects.get(project.id);
-    projects.set(project.id, existing
-      ? { ...existing, path: project.path || existing.path }
-      : project);
+    addProject(project);
   }
   return Array.from(projects.values());
 }
 
 export function migrateWidgetProjectSelectionIds(
-  projects: Array<{ id?: unknown; sessions?: Array<{ id?: unknown }>; sessionIds?: unknown[] }> = [],
+  projects: Array<{ id?: unknown; sessions?: Array<{ id?: unknown }>; sessionIds?: unknown[]; legacyProjectIds?: unknown[] }> = [],
   selectedIds: unknown[] = [],
 ) {
   const projectBySessionId = new Map<string, string>();
@@ -198,6 +247,12 @@ export function migrateWidgetProjectSelectionIds(
       const sessionId = String(value || "").trim();
       if (sessionId && !projectBySessionId.has(sessionId)) {
         projectBySessionId.set(sessionId, projectId);
+      }
+    }
+    for (const value of Array.isArray(project?.legacyProjectIds) ? project.legacyProjectIds : []) {
+      const legacyProjectId = String(value || "").trim();
+      if (legacyProjectId && !projectBySessionId.has(legacyProjectId)) {
+        projectBySessionId.set(legacyProjectId, projectId);
       }
     }
   }

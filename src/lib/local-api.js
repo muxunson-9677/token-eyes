@@ -5,6 +5,7 @@ const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const readline = require("node:readline");
 const agentRegistry = require("../../shared/agent-registry.json");
+const codexResetReviewed = require("../../shared/codex-reset-reviewed.json");
 const { verifySignedStaticFeed } = require("./signed-static-feed");
 const { DEFAULT_BASE_URL, resolveRuntimeConfig } = require("./runtime-config");
 const {
@@ -3270,6 +3271,7 @@ function createLocalApiHandler({
       },
       loadState: codexResetMonitorStore.load,
       saveState: codexResetMonitorStore.save,
+      reviewedFeed: codexResetReviewed,
       collectCodexResetSnapshots,
       getCodexHomes: () => {
         const dataDirectoryPaths = resolveHandlerDataDirectoryPaths({

@@ -366,7 +366,6 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
   useEffect(() => {
     if (!expanded) return undefined;
     detailRef.current?.focus();
-    detailRef.current?.scrollIntoView({ block: "nearest" });
     const closeAndRestoreFocus = () => {
       setExpanded(false);
       triggerRef.current?.focus();
@@ -445,7 +444,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
       {expanded && hasDetail ? (
         <div
           ref={detailRef}
-          className="tt-reset-history-detail"
+          className="tt-reset-history-detail tt-reset-history-detail--overlay"
           data-testid="reset-history-detail"
           role="region"
           aria-label={event.title || copy("reset_history.detail_content")}

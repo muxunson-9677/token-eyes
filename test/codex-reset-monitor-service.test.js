@@ -171,6 +171,63 @@ test("only signed official extra resets reach unread, history, and native notifi
   assert.deepEqual(h.service.listHistory().map((item) => item.id), [official.id]);
 });
 
+test("a newer packaged reviewed snapshot supplies current reset history while the signed cache catches up", async () => {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const announcement = (postId, publishedOffset) => ({
+    id: `x:${postId}`,
+    type: "official_reset_announcement",
+    title: `Reset ${postId}`,
+    summary: `Summary ${postId}`,
+    body: `Full body ${postId}`,
+    announcement_state: "confirmed",
+    source_url: `https://x.com/thsottiaux/status/${postId}`,
+    source_author: "thsottiaux",
+    source_post_id: postId,
+    official_url: "https://chatgpt.com/codex",
+    published_at: new Date(BASE + publishedOffset).toISOString(),
+    expires_at: new Date(BASE + 30 * 24 * 60 * 60_000).toISOString(),
+    reset_kind: "hard",
+    reset_scope: "all_paid_users",
+  });
+  const signedPayload = {
+    generated_at: new Date(BASE - 60_000).toISOString(),
+    announcements: [announcement("2082317452755751098", -120_000)],
+  };
+  const reviewedFeed = {
+    generated_at: new Date(BASE).toISOString(),
+    announcements: [
+      announcement("2082317452755751098", -120_000),
+      announcement("2094252447271366730", -30_000),
+    ],
+  };
+  const h = harness(async () => validSnapshot(BASE), {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    reviewedFeed,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => createSignedCodexResetFeedEnvelope(signedPayload, keys.privateKey),
+    }),
+  });
+
+  assert.equal(h.service.getStatus().feed_generated_at, reviewedFeed.generated_at);
+  assert.equal(h.service.getStatus().latest_published_at, reviewedFeed.announcements[1].published_at);
+  assert.deepEqual(
+    h.service.listHistory().map((event) => event.id).sort(),
+    [
+      "official:x:2082317452755751098",
+      "official:x:2094252447271366730",
+    ],
+  );
+
+  await h.service.checkFeed({ force: true });
+  assert.equal(h.service.getStatus().feed_generated_at, reviewedFeed.generated_at);
+  assert.equal(h.service.getStatus().feed_error_code, null);
+  assert.equal(h.service.getStatus().feed_stale, false);
+});
+
 test("acknowledging the newest official reset never promotes older history into the banner", () => {
   const previous = {
     id: "official:x:2081955008658252238",

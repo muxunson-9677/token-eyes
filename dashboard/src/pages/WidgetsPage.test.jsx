@@ -336,7 +336,8 @@ describe("WidgetsPage Windows desktop widget", () => {
       .toHaveClass("px-4", "sm:px-6", "lg:px-8");
   });
 
-  it("counts real project records instead of grouping flat recent-project rows by label", async () => {
+  it("groups same-project rows under one project name and keeps every session nested", async () => {
+    const user = userEvent.setup();
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
@@ -373,10 +374,15 @@ describe("WidgetsPage Windows desktop widget", () => {
     await screen.findByTestId("widget-summary");
     const activeSummary = document.querySelector(".tt-widget-summary article[data-tone='green']");
     await waitFor(() => {
-      expect(activeSummary).toHaveTextContent("2");
+      expect(activeSummary).toHaveTextContent("1");
       expect(activeSummary).toHaveTextContent(copy("widgets.reference.active_rate", { rate: 100 }));
-      expect(document.querySelectorAll(".tt-widget-project-row")).toHaveLength(2);
+      expect(document.querySelectorAll(".tt-widget-project-row")).toHaveLength(1);
     });
+    await user.click(screen.getByTestId("widget-project-expand"));
+    expect(screen.getAllByTestId("widget-project-session")).toHaveLength(3);
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("修复桌面小组件");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("复核会话分组");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("另一项目");
   });
 
   it("expands two producer-shaped sessions under their real project without fabricated facts", async () => {

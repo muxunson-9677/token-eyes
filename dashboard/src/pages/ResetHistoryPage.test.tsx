@@ -333,7 +333,7 @@ describe("ResetHistoryPage", () => {
     expect(detail).toHaveTextContent("copy:reset_history.scope.all_codex_work_users");
     expect(detail).toHaveTextContent("copy:reset_history.detail_expires");
     expect(detail).toHaveAttribute("role", "region");
-    expect(detail).not.toHaveClass("tt-reset-history-detail--overlay");
+    expect(detail).toHaveClass("tt-reset-history-detail--overlay");
     expect(item).toContainElement(detail);
     expect(detail.parentElement).toBe(item);
     const source = within(detail).getByRole("link", {
@@ -359,7 +359,7 @@ describe("ResetHistoryPage", () => {
     expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
   });
 
-  it("keeps rows 1, 3, 4, and 5 details in document flow instead of a portal or overlay", async () => {
+  it("anchors rows 1, 3, 4, and 5 details as overlays without scrolling or moving sibling rows", async () => {
     const user = userEvent.setup();
     const scrollIntoView = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -398,10 +398,9 @@ describe("ResetHistoryPage", () => {
         expect(detail.parentElement).toBe(items[index]);
         expect(detail).toHaveTextContent(`ROW_${index + 1}_TITLE`);
         expect(detail).toHaveTextContent(`ROW_${index + 1}_FULL_BODY`);
-        expect(detail).not.toHaveClass("tt-reset-history-detail--overlay");
-        expect(["", "static"]).toContain(window.getComputedStyle(detail).position);
+        expect(detail).toHaveClass("tt-reset-history-detail--overlay");
       }
-      expect(scrollIntoView).toHaveBeenCalledTimes(4);
+      expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
       Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
         configurable: true,

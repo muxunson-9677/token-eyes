@@ -13,6 +13,7 @@ const {
 } = require("./codex-reset-monitor");
 const {
   isConfirmedResetAnnouncement,
+  validateCodexResetFeedPayload,
   verifyCodexResetFeed,
 } = require("./codex-reset-feed");
 
@@ -45,7 +46,7 @@ function emptyState() {
 function materializeOfficialFeedEvents(
   events,
   announcements,
-  { nowMs = Date.now() } = {},
+  { nowMs = Date.now(), eventSource = "signed_feed" } = {},
 ) {
   const compactedEvents = compactCodexResetEvents(events, { nowMs });
   const retainedEvents = compactedEvents.filter(
@@ -56,7 +57,7 @@ function materializeOfficialFeedEvents(
   const previousById = new Map(retainedEvents.map((event) => [event.id, event]));
   const mergedById = new Map(previousById);
   announcements.filter(isConfirmedResetAnnouncement).forEach((announcement) => {
-    const nextEvent = officialEvent(announcement);
+    const nextEvent = officialEvent(announcement, eventSource);
     const previous = previousById.get(nextEvent.id);
     mergedById.set(nextEvent.id, previous ? {
       ...nextEvent,
@@ -71,33 +72,73 @@ function materializeOfficialFeedEvents(
   return compactCodexResetEvents([...mergedById.values()], { nowMs });
 }
 
-function initializeState(value, { nowMs = Date.now() } = {}) {
+function normalizeReviewedFeed(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  let validated;
+  try {
+    validated = validateCodexResetFeedPayload(value, {
+      nowMs: Date.now(),
+      allowExpiredAnnouncements: true,
+    });
+  } catch (_error) {
+    return null;
+  }
+  const announcements = validated.announcements
+    .filter(isConfirmedResetAnnouncement)
+    .map((announcement) => ({ ...announcement }));
+  if (announcements.length !== validated.announcements.length) return null;
+  return {
+    generatedAt: validated.generated_at,
+    fetchedAt: null,
+    lastCheckedAt: null,
+    etag: null,
+    lastModified: null,
+    source: "packaged_reviewed",
+    announcements,
+  };
+}
+
+function selectInitialFeed(cachedFeed, reviewedFeed) {
+  const reviewed = normalizeReviewedFeed(reviewedFeed);
+  if (!reviewed) return cachedFeed;
+  const cachedGeneratedAt = Date.parse(cachedFeed?.generatedAt || "");
+  const reviewedGeneratedAt = Date.parse(reviewed.generatedAt);
+  return !Number.isFinite(cachedGeneratedAt) || reviewedGeneratedAt > cachedGeneratedAt
+    ? reviewed
+    : cachedFeed;
+}
+
+function initializeState(value, { nowMs = Date.now(), reviewedFeed = null } = {}) {
   const base = emptyState();
-  if (!value || typeof value !== "object" || Array.isArray(value)) return base;
-  const feed = value.feed && typeof value.feed === "object" ? value.feed : null;
-  const sourceEvents = Array.isArray(value.events) ? value.events : [];
-  const events = materializeOfficialFeedEvents(sourceEvents, feed?.announcements, { nowMs });
+  const stored = value && typeof value === "object" && !Array.isArray(value) ? value : base;
+  const cachedFeed = stored.feed && typeof stored.feed === "object" ? stored.feed : null;
+  const feed = selectInitialFeed(cachedFeed, reviewedFeed);
+  const sourceEvents = Array.isArray(stored.events) ? stored.events : [];
+  const events = materializeOfficialFeedEvents(sourceEvents, feed?.announcements, {
+    nowMs,
+    eventSource: feed?.source === "packaged_reviewed" ? "reviewed_feed" : "signed_feed",
+  });
   return {
     ...base,
-    ...value,
-    windows: value.windows && typeof value.windows === "object"
-      ? value.windows
+    ...stored,
+    windows: stored.windows && typeof stored.windows === "object"
+      ? stored.windows
       : {},
-    resetCredits: value.resetCredits && typeof value.resetCredits === "object"
-      ? value.resetCredits
+    resetCredits: stored.resetCredits && typeof stored.resetCredits === "object"
+      ? stored.resetCredits
       : null,
     restoreCandidates:
-      value.restoreCandidates && typeof value.restoreCandidates === "object"
-        ? value.restoreCandidates
+      stored.restoreCandidates && typeof stored.restoreCandidates === "object"
+        ? stored.restoreCandidates
         : {},
     events,
     acknowledgedEventIds: remapCodexResetAcknowledgements(
       sourceEvents,
       events,
-      value.acknowledgedEventIds,
+      stored.acknowledgedEventIds,
     ),
-    rolloutCursor: value.rolloutCursor?.files
-      ? value.rolloutCursor
+    rolloutCursor: stored.rolloutCursor?.files
+      ? stored.rolloutCursor
       : { files: {} },
     feed,
   };
@@ -117,7 +158,7 @@ function sameFeedAnnouncements(left, right) {
   return isDeepStrictEqual(byId(left), byId(right));
 }
 
-function officialEvent(announcement) {
+function officialEvent(announcement, source = "signed_feed") {
   return {
     id: `official:${announcement.id}`,
     type: "official_reset_announcement",
@@ -135,7 +176,7 @@ function officialEvent(announcement) {
     summary: announcement.summary,
     body: announcement.body || null,
     expiresAt: announcement.expires_at,
-    source: "signed_feed",
+    source,
     alertEligible: true,
     deliveredChannels: [],
     acknowledgedChannels: [],
@@ -153,6 +194,7 @@ function createCodexResetMonitorService({
   feedEnabled = false,
   feedUrl = FEED_URL,
   feedPublicKey,
+  reviewedFeed = null,
   fetchImpl = fetch,
   collectCodexResetSnapshots,
   getCodexHomes = () => [],
@@ -161,7 +203,7 @@ function createCodexResetMonitorService({
     throw new TypeError("getCodexUsageLimits is required");
   }
 
-  let state = initializeState(loadState?.(), { nowMs: now() });
+  let state = initializeState(loadState?.(), { nowMs: now(), reviewedFeed });
   let timer = null;
   let feedTimer = null;
   let inFlight = null;
@@ -406,12 +448,30 @@ function createCodexResetMonitorService({
       const previousGeneratedAt = Date.parse(state.feed?.generatedAt || "");
       const nextGeneratedAt = Date.parse(payload.generated_at);
       if (Number.isFinite(previousGeneratedAt) && nextGeneratedAt < previousGeneratedAt) {
+        if (state.feed?.source === "packaged_reviewed") {
+          persist({
+            ...state,
+            feed: {
+              ...state.feed,
+              fetchedAt: new Date(now()).toISOString(),
+              lastCheckedAt: new Date(lastFeedAttemptAt).toISOString(),
+              etag: safeHeader(response.headers?.get?.("etag")),
+              lastModified: safeHeader(response.headers?.get?.("last-modified")),
+            },
+          });
+          feedErrorCode = null;
+          return { status: getStatus() };
+        }
         feedErrorCode = "feed_rollback";
         return { status: getStatus() };
       }
 
       if (previousGeneratedAt === nextGeneratedAt) {
         if (!sameFeedAnnouncements(state.feed?.announcements, payload.announcements)) {
+          if (state.feed?.source === "packaged_reviewed") {
+            feedErrorCode = null;
+            return { status: getStatus() };
+          }
           feedErrorCode = "feed_rollback";
           return { status: getStatus() };
         }
@@ -441,6 +501,7 @@ function createCodexResetMonitorService({
           generatedAt: payload.generated_at,
           etag: safeHeader(response.headers?.get?.("etag")),
           lastModified: safeHeader(response.headers?.get?.("last-modified")),
+          source: "signed_feed",
           announcements,
         },
       };

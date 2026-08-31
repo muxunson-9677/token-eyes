@@ -26,7 +26,7 @@ describe("desktop widget project folders", () => {
     }]);
   });
 
-  it("keeps lifecycle sessions nested under their real project ids and retains saved empty projects", () => {
+  it("folds same-project lifecycle rows into one project while retaining all nested sessions", () => {
     const merge = (widgetProjects as Record<string, unknown>).mergeWidgetStatusProjects;
     expect(merge).toBeTypeOf("function");
     if (typeof merge !== "function") return;
@@ -35,6 +35,7 @@ describe("desktop widget project folders", () => {
       {
         id: "project-a",
         label: "Token Eyes",
+        path: "D:\\Work\\Token Eyes",
         red: 0,
         yellow: 1,
         green: 1,
@@ -47,11 +48,14 @@ describe("desktop widget project folders", () => {
       {
         id: "project-b",
         label: "Token Eyes",
+        path: "D:\\Work\\Token Eyes\\",
         red: 0,
-        yellow: 0,
+        yellow: 1,
         green: 0,
         unknown: 0,
-        sessions: [],
+        sessions: [
+          { id: "session-b1", taskLabel: "安装包真实验收", status: "yellow", state: "running", updatedAt: "2026-08-30T09:00:00.000Z" },
+        ],
       },
     ], [], [{
       id: "saved-empty",
@@ -61,14 +65,40 @@ describe("desktop widget project folders", () => {
       expect.objectContaining({
         id: "project-a",
         label: "Token Eyes",
-        updatedAt: "2026-08-30T08:00:00.000Z",
+        path: "D:\\Work\\Token Eyes",
+        updatedAt: "2026-08-30T09:00:00.000Z",
+        yellow: 2,
+        green: 1,
         sessions: [
           expect.objectContaining({ id: "session-a1", label: "修复桌面小组件" }),
           expect.objectContaining({ id: "session-a2", label: "复核会话分组" }),
+          expect.objectContaining({ id: "session-b1", label: "安装包真实验收" }),
         ],
       }),
-      expect.objectContaining({ id: "project-b", label: "Token Eyes", sessions: [] }),
       expect.objectContaining({ id: "saved-empty", label: "Archived workspace", sessions: [] }),
+    ]);
+  });
+
+  it("folds pathless duplicate project labels but keeps distinct known paths separate", () => {
+    const merge = (widgetProjects as Record<string, unknown>).mergeWidgetStatusProjects;
+    expect(merge).toBeTypeOf("function");
+    if (typeof merge !== "function") return;
+
+    const projects = merge([
+      { id: "project-a", label: "010-Token eye", sessions: [{ id: "session-a" }] },
+      { id: "project-b", label: "010-Token eye", sessions: [{ id: "session-b" }] },
+      { id: "project-c", label: "Shared", path: "D:\\One\\Shared", sessions: [] },
+      { id: "project-d", label: "Shared", path: "D:\\Two\\Shared", sessions: [] },
+    ]);
+
+    expect(projects.map((project: { id: string }) => project.id)).toEqual([
+      "project-a",
+      "project-c",
+      "project-d",
+    ]);
+    expect(projects[0].sessions.map((session: { id: string }) => session.id)).toEqual([
+      "session-a",
+      "session-b",
     ]);
   });
 

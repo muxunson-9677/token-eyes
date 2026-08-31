@@ -1,4 +1,5 @@
 {
+  "generated_at": "2026-08-31T11:26:00.252Z",
   "announcements": [
     {
       "id": "x:2083395449814229287",
@@ -108,6 +109,28 @@
         "source_verified": true,
         "reviewed_by": "Codex 0.54.49 acceptance",
         "reviewed_at": "2026-08-30T02:29:12.921Z"
+      }
+    },
+    {
+      "id": "x:2094252447271366730",
+      "type": "official_reset_announcement",
+      "title": "Codex 官方额外重置",
+      "summary": "What I wanted to say yesterday is that we hit 25M active users and to celebrate we have now reset usage for all paid subscriptions for ChatGPT Work and Codex. See you soon for more news from The Reset Company.",
+      "body": "What I wanted to say yesterday is that we hit 25M active users and to celebrate we have now reset usage for all paid subscriptions for ChatGPT Work and Codex. See you soon for more news from The Reset Company.",
+      "announcement_state": "confirmed",
+      "source_url": "https://x.com/thsottiaux/status/2094252447271366730",
+      "official_url": "https://chatgpt.com/codex",
+      "published_at": "2026-08-31T02:34:27.415Z",
+      "expires_at": "2026-09-30T02:34:27.415Z",
+      "source_author": "thsottiaux",
+      "source_post_id": "2094252447271366730",
+      "reset_kind": "hard",
+      "reset_scope": "all_paid_users",
+      "review": {
+        "status": "approved",
+        "source_verified": true,
+        "reviewed_by": "Codex 0.54.49 remediation",
+        "reviewed_at": "2026-08-31T11:26:00.252Z"
       }
     }
   ]
