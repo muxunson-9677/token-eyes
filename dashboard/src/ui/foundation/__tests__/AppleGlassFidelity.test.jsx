@@ -51,7 +51,9 @@ describe("approved M/N material fidelity", () => {
   it("keeps the Token service card footprint stable when API content is taller", () => {
     const panel = '.tt-reference-route-spend-usage [data-testid="token-service-mode-panel"]';
 
-    expect(declarations(panel).contain).toBe("size");
+    expect(declarations(panel).height).toBe("390px");
+    expect(declarations(panel)["min-height"]).toBe("390px");
+    expect(declarations(panel)["max-height"]).toBe("390px");
     expect(declarations(panel).overflow).toBe("hidden");
   });
 
