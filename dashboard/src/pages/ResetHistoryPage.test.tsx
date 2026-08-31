@@ -305,6 +305,7 @@ describe("ResetHistoryPage", () => {
 
   it("expands complete announcement details inline and preserves dismissal focus behavior", async () => {
     const user = userEvent.setup();
+    const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
     resetContext.value.history = [
       officialReset("today", new Date(2026, 6, 26, 14, 32)),
     ];
@@ -321,6 +322,7 @@ describe("ResetHistoryPage", () => {
     });
 
     const detail = screen.getByTestId("reset-history-detail");
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
     expect(detail).toHaveTextContent("Codex official extra reset");
     expect(detail).toHaveTextContent("copy:reset_history.detail_content");
     expect(detail).toHaveTextContent("FULL_BODY_FIRST_PARAGRAPH");

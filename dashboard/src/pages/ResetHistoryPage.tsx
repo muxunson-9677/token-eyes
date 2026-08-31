@@ -365,7 +365,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
 
   useEffect(() => {
     if (!expanded) return undefined;
-    detailRef.current?.focus();
+    detailRef.current?.focus({ preventScroll: true });
     const closeAndRestoreFocus = () => {
       setExpanded(false);
       triggerRef.current?.focus();
