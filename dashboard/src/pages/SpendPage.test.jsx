@@ -676,10 +676,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     const timeZone = getBrowserTimeZone() || "UTC";
     const offsetMinutes = getBrowserTimeZoneOffsetMinutes();
     const currentDayKey = getLocalDayKey({ timeZone, offsetMinutes });
-    const currentBillingDayKey = getLocalDayKey({ timeZone: "UTC", offsetMinutes: 0 });
-    const recentDates = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(`${currentBillingDayKey}T00:00:00.000Z`);
-      date.setUTCDate(date.getUTCDate() - 6 + index);
+    const selectedDates = Array.from({ length: 30 }, (_, index) => {
+      const date = new Date("2026-06-01T00:00:00.000Z");
+      date.setUTCDate(date.getUTCDate() + index);
       return date.toISOString().slice(0, 10);
     });
     getSpendTimeseries.mockResolvedValue({
@@ -702,21 +701,21 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
       timezone: { tz: "UTC", tz_offset_minutes: 0 },
       currency: { base: "USD", usd_to_cny: 7.2 },
     });
-    getRecentApiProviderStats.mockResolvedValue({
+    getRecentApiProviderStats.mockImplementation(async ({ from, to, timeZone: requestedTimeZone }) => ({
       ok: true,
       view: "recent_api_7d",
-      from: recentDates[0],
-      to: currentBillingDayKey,
-      period: { from: recentDates[0], to: currentBillingDayKey, days: 7, time_zone: "UTC" },
-      totals_scope: "api_key_attributed_official_billed_cost_positive",
+      from,
+      to,
+      period: { from, to, days: selectedDates.length, time_zone: requestedTimeZone || timeZone },
+      totals_scope: "api_key_attributed_activity_with_official_cost_when_available",
       providers: [{
         provider_id: "deepseek",
         display_name: "DeepSeek",
         account_label: "finance@company.com",
         agents: [{ id: "hermes", display_name: "Hermes", tokens: 100, request_count: 1, cost_usd: 1 }],
         models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 100, request_count: 1, cost_usd: 1 }],
-        period: { from: recentDates[0], to: currentBillingDayKey, days: 7, time_zone: "UTC" },
-        daily: recentDates.map((date) => ({
+        period: { from, to, days: selectedDates.length, time_zone: requestedTimeZone || timeZone },
+        daily: selectedDates.map((date) => ({
           date,
           agents: [{ id: "hermes", display_name: "Hermes", tokens: 100, request_count: 1, cost_usd: 1 }],
           models: [{ id: "deepseek-chat", display_name: "deepseek-chat", tokens: 100, request_count: 1, cost_usd: 1 }],
@@ -738,7 +737,7 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
         latency_sample_count: 7,
       }],
       totals: {},
-    });
+    }));
 
     const user = userEvent.setup();
     render(<SpendUsagePage />);
@@ -749,8 +748,9 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     await user.click(within(panel).getByRole("button", { name: "API" }));
     expect(await within(panel).findByTestId("provider-api-card")).toBeInTheDocument();
     expect(screen.getByTestId("token-service-mode-panel")).toBe(panel);
+    expect(panel).toHaveClass("lg:col-span-1");
     expect(within(panel).queryByTestId("token-service-row")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("usage-trend-plot")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("usage-trend-plot")).toBeInTheDocument();
 
     await user.click(within(panel).getByRole("button", { name: "订阅" }));
     expect(await within(panel).findByTestId("token-service-list")).toBeInTheDocument();

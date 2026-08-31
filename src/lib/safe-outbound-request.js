@@ -140,6 +140,10 @@ function isPublicIpAddress(value) {
   return true;
 }
 
+function isSyntheticProxyIpv4Address(value) {
+  return ipv4InRange(normalizeHostname(value), "198.18.0.0", 15);
+}
+
 function validateOutboundUrl(value, options = {}) {
   const testMode = Boolean(options.testMode);
   const rejectSecretQuery = options.rejectSecretQuery !== false;
@@ -257,7 +261,14 @@ async function resolveSafeOutboundTarget(value, options = {}) {
       throw new SafeOutboundError("dns_resolution_failed", "出站请求 DNS 返回了非法地址记录");
     }
     if (!options.testMode && !isPublicIpAddress(address)) {
-      throw new SafeOutboundError("unsafe_outbound_address", "出站请求 DNS 包含非公网地址");
+      const allowSyntheticDnsAddress = typeof options.allowSyntheticDnsAddress === "function"
+        ? options.allowSyntheticDnsAddress
+        : null;
+      const approvedSyntheticAddress = isSyntheticProxyIpv4Address(address)
+        && allowSyntheticDnsAddress?.({ hostname, address, family: declaredFamily }) === true;
+      if (!approvedSyntheticAddress) {
+        throw new SafeOutboundError("unsafe_outbound_address", "出站请求 DNS 包含非公网地址");
+      }
     }
     return { address, family: declaredFamily };
   });
@@ -444,6 +455,7 @@ module.exports = {
   SECRET_QUERY_PARAMS,
   validateOutboundUrl,
   isPublicIpAddress,
+  isSyntheticProxyIpv4Address,
   createPinnedLookup,
   resolveSafeOutboundTarget,
   safeOutboundRequest,

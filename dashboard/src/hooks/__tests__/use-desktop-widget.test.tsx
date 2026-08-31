@@ -52,6 +52,24 @@ describe("useDesktopWidget", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    delete (window as any).__TAURI_INTERNALS__;
+  });
+
+  it("restores preferences through the Tauri internals bridge", async () => {
+    delete (window as any).__TAURI__;
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: { invoke },
+    });
+
+    const { result } = renderHook(() => useDesktopWidget());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(invoke).toHaveBeenCalledWith("get_desktop_widget_prefs");
+    expect(result.current.prefs.selectedAgent).toBe("codex");
   });
 
   it("restores preferences, polls without resizing, and persists selection", async () => {

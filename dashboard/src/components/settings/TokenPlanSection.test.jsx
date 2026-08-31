@@ -5462,6 +5462,7 @@ it("reports only native remaining_quota as fresh during a partial Cursor manual 
     total_quota: 100,
     used_quota: 40,
     remaining_quota: 60,
+    expires_at: "2099-12-31",
     quota_windows: [{
       kind: "total",
       unit: "percent",
@@ -5471,7 +5472,7 @@ it("reports only native remaining_quota as fresh during a partial Cursor manual 
       percentage: 40,
     }],
     detection_method: "official_account",
-    detection_config: { official_account: { account_binding_id: "cursor-session-id" } },
+    detection_config: { official_account: { account_binding_id: "cursor-session-id", plan_name: "pro" } },
     sync_status: "success",
   };
   getTokenPlans.mockResolvedValue({ records: [record] });
@@ -5489,6 +5490,8 @@ it("reports only native remaining_quota as fresh during a partial Cursor manual 
     state_code: "connected",
     quota: {
       remaining_quota: 0,
+      subscription_expires_at: null,
+      plan_name: "free",
       provider_reported_at: "2026-08-20T10:00:00.000Z",
     },
   });
@@ -5502,6 +5505,8 @@ it("reports only native remaining_quota as fresh during a partial Cursor manual 
   await waitFor(() => expect(saveTokenPlan).toHaveBeenCalledTimes(1));
   const payload = saveTokenPlan.mock.calls[0][0];
   expect(payload.remaining_quota).toBe(0);
+  expect(payload.expires_at).toBe("");
+  expect(payload.detection_config.official_account.plan_name).toBe("free");
   expect(payload.provider_reported_fields).toEqual(["remaining_quota"]);
   expect(payload.provider_reported_at).toBe("2026-08-20T10:00:00.000Z");
   expect(payload.provider_reported_fields).not.toContain("total_quota");

@@ -1634,3 +1634,133 @@ test("provider financial results are NOT summed with subscription fees or local 
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("API balance last-good snapshot survives restart and refresh failures without storing secrets", async () => {
+  let responseMode = "success";
+  const { server, url } = await startMockServer((_req, res) => {
+    if (responseMode === "success") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: { balance: 0, month_spend: 12.5, lifetime_spend: 88, currency: "CNY" } }));
+      return;
+    }
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "expired" }));
+  });
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-lkg-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const vaultPath = path.join(tmp, "credentials.json");
+    const secret = "SYNTHETIC_LKG_SECRET_NEVER_PERSIST";
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: createTestFileCredentialStore(vaultPath),
+      providerApiTestMode: true,
+    });
+    const headers = await getAuthHeaders(handler);
+    const created = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-configs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(validConfig({ requestUrl: `${url}/balance`, label: "Account before rename" })),
+    }));
+    const configId = created.config.id;
+    await call(handler, "/functions/tokentracker-provider-api-secrets", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ configId, secret }),
+    });
+    const synced = readJsonResponse(await call(handler, `/functions/tokentracker-provider-api-refresh?id=${configId}`, {
+      method: "POST",
+      headers,
+    })).balance;
+    assert.equal(synced.status, "synced");
+    assert.equal(synced.balance, 0, "zero is a valid last-good balance");
+    assert.equal(synced.monthSpend, 12.5);
+    const syncedAt = synced.lastSyncedAt;
+
+    const snapshotPath = path.join(trackerDir, "provider-api-balances-v1.json");
+    const snapshotText = await fs.readFile(snapshotPath, "utf8");
+    assert.equal(snapshotText.includes(secret), false);
+    assert.equal(snapshotText.includes(url), false, "request URLs are not persisted in the financial snapshot");
+
+    responseMode = "failure";
+    const restarted = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: createTestFileCredentialStore(vaultPath),
+      providerApiTestMode: true,
+    });
+    const listedAfterRestart = readJsonResponse(await call(restarted, "/functions/tokentracker-provider-api-balances"));
+    assert.equal(listedAfterRestart.balances[0].status, "stale");
+    assert.equal(listedAfterRestart.balances[0].balance, 0);
+    assert.equal(listedAfterRestart.balances[0].monthSpend, 12.5);
+    assert.equal(listedAfterRestart.balances[0].lastSyncedAt, syncedAt);
+
+    const restartedHeaders = await getAuthHeaders(restarted);
+    const failedRefresh = readJsonResponse(await call(restarted, `/functions/tokentracker-provider-api-refresh?id=${configId}`, {
+      method: "POST",
+      headers: restartedHeaders,
+    })).balance;
+    assert.equal(failedRefresh.status, "stale");
+    assert.equal(failedRefresh.balance, 0);
+    assert.equal(failedRefresh.monthSpend, 12.5);
+    assert.equal(failedRefresh.lastSyncedAt, syncedAt);
+    assert.equal(failedRefresh.errorCode, "provider_unauthorized");
+
+    const renamed = readJsonResponse(await call(restarted, `/functions/tokentracker-provider-api-configs?id=${configId}`, {
+      method: "PUT",
+      headers: restartedHeaders,
+      body: JSON.stringify({ label: "Renamed account" }),
+    }));
+    assert.equal(renamed.config.label, "Renamed account");
+    const afterRename = readJsonResponse(await call(restarted, "/functions/tokentracker-provider-api-balances"));
+    assert.equal(afterRename.balances[0].balance, 0, "cosmetic edits preserve last-good data");
+    assert.equal(afterRename.balances[0].accountLabel, "Renamed account");
+  } finally {
+    server.close();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("replacing or deleting a provider credential removes its last-good snapshot", async () => {
+  const { server, url } = await startMockServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ data: { balance: 49.99, currency: "CNY" } }));
+  });
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-provider-api-lkg-delete-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+      credentialStore: createTestCredentialStore(),
+      providerApiTestMode: true,
+    });
+    const headers = await getAuthHeaders(handler);
+    const created = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-configs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(validConfig({ requestUrl: `${url}/balance` })),
+    }));
+    const configId = created.config.id;
+    await call(handler, "/functions/tokentracker-provider-api-secrets", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ configId, secret: "SYNTHETIC_FIRST_IDENTITY" }),
+    });
+    await call(handler, `/functions/tokentracker-provider-api-refresh?id=${configId}`, { method: "POST", headers });
+    assert.equal((await fs.stat(path.join(trackerDir, "provider-api-balances-v1.json"))).isFile(), true);
+
+    await call(handler, "/functions/tokentracker-provider-api-secrets", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ configId, secret: "SYNTHETIC_REPLACED_IDENTITY" }),
+    });
+    const afterReplacement = readJsonResponse(await call(handler, "/functions/tokentracker-provider-api-balances"));
+    assert.equal(afterReplacement.balances[0].balance, null);
+    assert.equal(afterReplacement.balances[0].status, "not-connected");
+  } finally {
+    server.close();
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

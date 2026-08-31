@@ -195,7 +195,7 @@ describe("local usage hooks", () => {
     });
   });
 
-  it("fetches the dedicated current seven-day API Provider view without forwarding page dates", async () => {
+  it("fetches the dedicated API Provider view for the selected page dates", async () => {
     vi.mocked(getRecentApiProviderStats).mockResolvedValue({ providers: [] } as any);
 
     const { result } = renderHook(
@@ -205,9 +205,9 @@ describe("local usage hooks", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(getRecentApiProviderStats).toHaveBeenCalledTimes(1);
-    expect(getRecentApiProviderStats).toHaveBeenCalledWith(expect.not.objectContaining({
-      from: expect.anything(),
-      to: expect.anything(),
+    expect(getRecentApiProviderStats).toHaveBeenCalledWith(expect.objectContaining({
+      from: "2020-01-01",
+      to: "2030-12-31",
     }));
     expect(getProviderStats).not.toHaveBeenCalled();
   });

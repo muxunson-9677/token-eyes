@@ -121,10 +121,73 @@ test("a fresh handler serves the disk LKG when the static object is unavailable"
   const stale = await call(createHandler(), "?period=30d&metric=tokens&source=all");
 
   assert.equal(stale.statusCode, 200);
-  assert.equal(stale.headers["x-leaderboard-cache"], "STALE");
+  assert.equal(stale.headers["x-leaderboard-cache"], "LKG");
   assert.equal(JSON.parse(stale.body()).stale, true);
+  assert.equal(JSON.parse(stale.body()).cache_state, "lkg");
+  assert.equal(JSON.parse(stale.body()).revalidating, true);
   assert.equal(JSON.parse(stale.body()).entries[0].display_name, "Public User");
   assert.doesNotMatch(stale.body(), /offline|private detail/u);
+});
+
+test("returns a verified disk LKG immediately while one background refresh updates it", async () => {
+  global.fetch = async () => new Response(JSON.stringify(signedPayload({
+    entries: [{ rank: 1, display_name: "Cached User", total_tokens: "4321" }],
+  })), { status: 200 });
+  const seeded = await call(createHandler(), "?period=30d&metric=tokens&source=all&refresh=1");
+  assert.equal(seeded.statusCode, 200);
+
+  let releaseRefresh;
+  global.fetch = async () => new Promise((resolve) => {
+    releaseRefresh = () => resolve(new Response(JSON.stringify(signedPayload({
+      generated_at: "2026-08-30T08:00:30.000Z",
+      entries: [{ rank: 1, display_name: "Fresh User", total_tokens: "5432" }],
+    })), { status: 200 }));
+  });
+  delete require.cache[require.resolve("../src/lib/local-api")];
+  const fastResult = await Promise.race([
+    call(createHandler(), "?period=30d&metric=tokens&source=all"),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("LKG response exceeded 100ms")), 100)),
+  ]);
+
+  assert.equal(fastResult.headers["x-leaderboard-cache"], "LKG");
+  assert.equal(JSON.parse(fastResult.body()).entries[0].display_name, "Cached User");
+  assert.equal(JSON.parse(fastResult.body()).revalidating, true);
+  releaseRefresh();
+
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  global.fetch = async () => {
+    throw new Error("offline after refresh");
+  };
+  delete require.cache[require.resolve("../src/lib/local-api")];
+  const refreshedLkg = await call(createHandler(), "?period=30d&metric=tokens&source=all");
+  assert.equal(JSON.parse(refreshedLkg.body()).entries[0].display_name, "Fresh User");
+});
+
+test("joins one in-flight cold refresh for normal and explicit refresh requests", async () => {
+  let fetchCalls = 0;
+  let releaseRefresh;
+  global.fetch = async () => {
+    fetchCalls += 1;
+    return new Promise((resolve) => {
+      releaseRefresh = () => resolve(new Response(JSON.stringify(signedPayload({
+        snapshot_key: "today/tokens/all",
+      })), { status: 200 }));
+    });
+  };
+  const handler = createHandler();
+  const normal = call(handler, "?period=today&metric=tokens&source=all");
+  const explicit = call(handler, "?period=today&metric=tokens&source=all&refresh=1");
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(fetchCalls, 1);
+  releaseRefresh();
+  const [normalResult, explicitResult] = await Promise.all([normal, explicit]);
+
+  assert.equal(normalResult.statusCode, 200);
+  assert.equal(explicitResult.statusCode, 200);
+  assert.equal(JSON.parse(normalResult.body()).cache_state, "live");
+  assert.equal(JSON.parse(explicitResult.body()).cache_state, "live");
+  assert.equal(fetchCalls, 1);
 });
 
 test("rejects pagination and non-whitelisted snapshot keys before any network read", async () => {

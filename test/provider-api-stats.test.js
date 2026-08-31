@@ -229,9 +229,9 @@ test("provider-stats joins exact official Provider/day costs without inventing A
       from: "2026-05-03",
       to: "2026-05-09",
       days: 7,
-      time_zone: "UTC",
+      time_zone: "Asia/Shanghai",
     });
-    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai"]);
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai", "deepseek"]);
     const openai = body.providers[0];
     assert.equal(openai.cost_usd, 6);
     assert.deepEqual(openai.daily.map((day) => day.cost_usd), [1, 0, 2, 0, 0, 0, 3]);
@@ -242,6 +242,8 @@ test("provider-stats joins exact official Provider/day costs without inventing A
       && day.models.every((model) => model.cost_usd === null)
     )));
     assert.equal(body.totals.cost_usd, 6);
+    assert.equal(body.providers[1].cost_usd, null);
+    assert.equal(body.providers[1].cost_basis, null);
     assert.equal(requests.length, 1);
     assert.deepEqual(requests[0].search, {
       start_time: String(Date.parse("2026-05-03T00:00:00.000Z") / 1000),
@@ -278,14 +280,14 @@ test("provider-stats merges agents by true Provider and splits one agent across 
     apiRow({ provider_id: "moonshot" }),
     apiRow({ billing_mode: "token_plan", provider_id: "minimax" }),
     apiRow({ billing_mode: "unknown", provider_id: "xiaomi_mimo" }),
-    // Trusted API attribution alone is insufficient: a zero-cost Provider is hidden.
+    // A zero-cost official fact remains visible as API activity.
     apiRow({ source: "cursor", model: "unpriced-model", provider_id: "openai", actual_cost_usd: 0 }),
   ], async (call) => {
     const body = await call(
       "/functions/tokentracker-provider-api-stats?from=2020-01-01&to=2030-12-31&tz=UTC",
     );
 
-    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["deepseek", "moonshot"]);
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["deepseek", "moonshot", "openai"]);
     const deepseek = body.providers[0];
     assert.equal(deepseek.display_name, "DeepSeek");
     assert.equal(deepseek.account_label, null);
@@ -314,11 +316,11 @@ test("provider-stats merges agents by true Provider and splits one agent across 
     assert.deepEqual(deepseek.daily[0].agents.map((agent) => agent.id), ["claude", "codex"]);
     assert.deepEqual(deepseek.daily[0].models.map((model) => model.id), ["claude-model", "shared-model"]);
     assert.equal(deepseek.daily[1].tokens, 0);
-    assert.equal(body.totals.total_tokens, 4_000_000);
+    assert.equal(body.totals.total_tokens, 5_000_000);
     assert.equal(body.totals.cost_usd, 6);
-    assert.equal(body.totals.provider_count, 2);
+    assert.equal(body.totals.provider_count, 3);
     assert.equal(body.totals.request_count, null);
-    assert.equal(body.totals_scope, "api_key_attributed_official_billed_cost_positive");
+    assert.equal(body.totals_scope, "api_key_attributed_activity_with_official_cost_when_available");
     assert.equal(JSON.stringify(body).includes(secret), false);
     assert.equal(JSON.stringify(body).includes("api.deepseek.com"), false);
     assert.equal(Object.hasOwn(deepseek, "source"), false);
@@ -326,7 +328,7 @@ test("provider-stats merges agents by true Provider and splits one agent across 
   });
 });
 
-test("provider-stats excludes local price estimates and admits only explicit official billed cost facts", async () => {
+test("provider-stats keeps API activity when official cost is unavailable without substituting estimates", async () => {
   await withProviderFixture([
     apiRow({
       provider_id: "deepseek",
@@ -343,14 +345,19 @@ test("provider-stats excludes local price estimates and admits only explicit off
       "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
     );
 
-    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai"]);
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai", "deepseek"]);
     assert.equal(body.providers[0].cost_usd, 4.25);
     assert.deepEqual(body.providers[0].cost_basis, {
       authority: "official_invoice",
       accuracy: "exact",
     });
+    assert.equal(body.providers[1].tokens, 1_000_000);
+    assert.equal(body.providers[1].cost_usd, null);
+    assert.equal(body.providers[1].cost_basis, null);
     assert.equal(body.totals.cost_usd, 4.25);
-    assert.equal(body.totals_scope, "api_key_attributed_official_billed_cost_positive");
+    assert.equal(body.totals.cost_known_provider_count, 1);
+    assert.equal(body.totals.cost_unavailable_provider_count, 1);
+    assert.equal(body.totals_scope, "api_key_attributed_activity_with_official_cost_when_available");
   });
 });
 
@@ -405,7 +412,7 @@ test("public selected-range Provider stats never serialize private account refer
   });
 });
 
-test("provider-stats does not turn a positive local list-price estimate into billed spend", async () => {
+test("provider-stats keeps API activity but does not turn a local list-price estimate into billed spend", async () => {
   await withProviderFixture([
     apiRow({
       provider_id: "openai",
@@ -420,8 +427,11 @@ test("provider-stats does not turn a positive local list-price estimate into bil
       "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC",
     );
 
-    assert.deepEqual(body.providers, []);
-    assert.equal(body.totals.cost_usd, 0);
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai"]);
+    assert.equal(body.providers[0].tokens, 1);
+    assert.equal(body.providers[0].cost_usd, null);
+    assert.equal(body.providers[0].cost_basis, null);
+    assert.equal(body.totals.cost_usd, null);
   }, {
     pricingRules: [{
       source: "codex",
@@ -433,7 +443,7 @@ test("provider-stats does not turn a positive local list-price estimate into bil
   });
 });
 
-test("provider-stats does not advertise a positive-cost card when the response precision rounds cost to zero", async () => {
+test("provider-stats keeps sub-cent API activity without advertising fabricated billed spend", async () => {
   await withProviderFixture([
     apiRow({
       provider_id: "openai",
@@ -448,9 +458,10 @@ test("provider-stats does not advertise a positive-cost card when the response p
       "/functions/tokentracker-provider-api-stats?tz=UTC",
     );
 
-    assert.deepEqual(body.providers, []);
-    assert.equal(body.totals.provider_count, 0);
-    assert.equal(body.totals.cost_usd, 0);
+    assert.deepEqual(body.providers.map((provider) => provider.provider_id), ["openai"]);
+    assert.equal(body.providers[0].cost_usd, null);
+    assert.equal(body.totals.provider_count, 1);
+    assert.equal(body.totals.cost_usd, null);
   }, {
     pricingRules: [{
       source: "codex",
@@ -635,7 +646,8 @@ test("provider-stats exposes only a freshly synced reliable balance and invalida
     });
     assert.equal(unsafeCreated.statusCode, 200, JSON.stringify(unsafeCreated.body));
 
-    const endpoint = "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=UTC";
+    const activityDay = new Date(localNowMs).toISOString().slice(0, 10);
+    const endpoint = `/functions/tokentracker-provider-api-stats?from=${activityDay}&to=${activityDay}&tz=UTC`;
     const before = await callWithOptions(handler, endpoint);
     assert.equal(before.body.providers[0].account_label, "OpenAI account");
     assert.equal(before.body.providers[0].balance, null);
@@ -695,7 +707,7 @@ test("provider-stats exposes only a freshly synced reliable balance and invalida
   }
 });
 
-test("provider-stats uses the explicit seven UTC billing days while preserving the requested Shanghai zone", async () => {
+test("provider-stats uses the selected Shanghai date range for API activity", async () => {
   await withProviderFixture([
     apiRow({ hour_start: "2026-05-02T15:59:59.999Z" }),
     apiRow({ hour_start: "2026-05-02T16:00:00.000Z", input_tokens: 2_000_000, total_tokens: 2_000_000 }),
@@ -705,11 +717,11 @@ test("provider-stats uses the explicit seven UTC billing days while preserving t
     const body = await call(
       "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz=Asia%2FShanghai",
     );
-    assert.deepEqual(body.period, { from: "2026-05-03", to: "2026-05-09", days: 7, time_zone: "UTC" });
+    assert.deepEqual(body.period, { from: "2026-05-03", to: "2026-05-09", days: 7, time_zone: "Asia/Shanghai" });
     assert.equal(body.requested_time_zone, "Asia/Shanghai");
-    assert.equal(body.providers[0].tokens, 7_000_000);
-    assert.equal(body.providers[0].daily[0].tokens, 0);
-    assert.equal(body.providers[0].daily[6].tokens, 7_000_000);
+    assert.equal(body.providers[0].tokens, 5_000_000);
+    assert.equal(body.providers[0].daily[0].tokens, 2_000_000);
+    assert.equal(body.providers[0].daily[6].tokens, 3_000_000);
   });
 });
 
@@ -720,14 +732,14 @@ test("provider-stats reports an explicit UTC offset without exposing raw minutes
     const body = await call(
       "/functions/tokentracker-provider-api-stats?from=2026-05-03&to=2026-05-09&tz_offset_minutes=480",
     );
-    assert.equal(body.period.time_zone, "UTC");
-    assert.equal(body.providers[0].period.time_zone, "UTC");
+    assert.equal(body.period.time_zone, "UTC+08:00");
+    assert.equal(body.providers[0].period.time_zone, "UTC+08:00");
     assert.equal(body.requested_time_zone, "UTC+08:00");
     assert.equal(body.providers[0].daily[0].date, "2026-05-03");
   });
 });
 
-test("provider-stats keeps official billing days in UTC across a requested New York DST boundary", async () => {
+test("provider-stats uses the selected New York activity days across a DST boundary", async () => {
   await withProviderFixture([
     apiRow({ hour_start: "2026-03-03T04:59:59.999Z" }),
     apiRow({ hour_start: "2026-03-03T05:00:00.000Z", input_tokens: 2_000_000, total_tokens: 2_000_000 }),
@@ -739,13 +751,14 @@ test("provider-stats keeps official billing days in UTC across a requested New Y
       "/functions/tokentracker-provider-api-stats?from=2026-03-03&to=2026-03-09&tz=America%2FNew_York",
     );
     assert.equal(body.requested_time_zone, "America/New_York");
-    assert.equal(body.providers[0].tokens, 6_000_000);
+    assert.equal(body.period.time_zone, "America/New_York");
+    assert.equal(body.providers[0].tokens, 9_000_000);
     assert.deepEqual(body.providers[0].daily.map((day) => day.date), [
       "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06",
       "2026-03-07", "2026-03-08", "2026-03-09",
     ]);
-    assert.equal(body.providers[0].daily[0].tokens, 3_000_000);
+    assert.equal(body.providers[0].daily[0].tokens, 2_000_000);
     assert.equal(body.providers[0].daily[5].tokens, 3_000_000);
-    assert.equal(body.providers[0].daily[6].tokens, 0);
+    assert.equal(body.providers[0].daily[6].tokens, 4_000_000);
   }, { nowIso: "2026-03-09T12:00:00.000Z" });
 });

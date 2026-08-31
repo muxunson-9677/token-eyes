@@ -33,9 +33,7 @@ export function resolveProviderStatsDayKey({
   offsetMinutes?: number;
   date?: Date;
 }): string {
-  return view === "recent_api_7d"
-    ? getLocalDayKey({ timeZone: "UTC", offsetMinutes: 0, date })
-    : getLocalDayKey({ timeZone, offsetMinutes, date });
+  return getLocalDayKey({ timeZone, offsetMinutes, date });
 }
 
 interface ProviderStatsCacheEntry {
@@ -71,7 +69,7 @@ export function isProviderStatsCachePayload(
 ): value is ProviderStatsResponse {
   if (!isRecord(value) || value.ok !== true || value.view !== expectedView) return false;
   const expectedScope = expectedView === "recent_api_7d"
-    ? "api_key_attributed_official_billed_cost_positive"
+    ? "api_key_attributed_activity_with_official_cost_when_available"
     : "all_provider_attributed";
   if (value.totals_scope !== expectedScope || !isRecord(value.period)) return false;
   if (
@@ -86,15 +84,20 @@ export function isProviderStatsCachePayload(
     if (typeof provider.provider_id !== "string" || !provider.provider_id) return false;
     if (typeof provider.display_name !== "string" || !provider.display_name) return false;
     if (Object.hasOwn(provider, "source") || Object.hasOwn(provider, "source_display_name")) return false;
-    if (!isRecord(provider.cost_basis)) return false;
-    const expectedCostAuthority = expectedView === "recent_api_7d"
-      ? "official_invoice"
-      : "local_list_price_estimate";
-    const expectedCostAccuracy = expectedView === "recent_api_7d" ? "exact" : "estimated";
+    const costUnavailable = expectedView === "recent_api_7d" && provider.cost_basis == null;
+    if (!costUnavailable) {
+      if (!isRecord(provider.cost_basis)) return false;
+      const expectedCostAuthority = expectedView === "recent_api_7d"
+        ? "official_invoice"
+        : "local_list_price_estimate";
+      const expectedCostAccuracy = expectedView === "recent_api_7d" ? "exact" : "estimated";
+      if (
+        provider.cost_basis.authority !== expectedCostAuthority
+        || provider.cost_basis.accuracy !== expectedCostAccuracy
+      ) return false;
+    }
     if (
-      provider.cost_basis.authority !== expectedCostAuthority
-      || provider.cost_basis.accuracy !== expectedCostAccuracy
-      || !Array.isArray(provider.daily)
+      !Array.isArray(provider.daily)
       || !["request_event", "unavailable"].includes(String(provider.request_count_basis))
       || !Number.isFinite(Number(provider.success_rate_sample_count))
     ) return false;
@@ -128,6 +131,8 @@ export function parseProviderStatsCacheEntry(
   raw: string,
   view: ProviderStatsView,
   currentDayKey: string,
+  expectedFrom?: string,
+  expectedTo?: string,
 ): ProviderStatsCacheEntry | null {
   try {
     const parsed = JSON.parse(raw);
@@ -136,7 +141,11 @@ export function parseProviderStatsCacheEntry(
       || !Number.isFinite(Date.parse(String(parsed.fetchedAt || "")))
       || !isProviderStatsCachePayload(parsed.providers, view)
     ) return null;
-    if (view === "recent_api_7d" && parsed.providers.period.to !== currentDayKey) return null;
+    if (view === "recent_api_7d") {
+      if (expectedFrom && expectedTo) {
+        if (parsed.providers.period.from !== expectedFrom || parsed.providers.period.to !== expectedTo) return null;
+      } else if (parsed.providers.period.to !== currentDayKey) return null;
+    }
     return parsed as unknown as ProviderStatsCacheEntry;
   } catch {
     return null;
@@ -168,7 +177,8 @@ export function buildProviderStatsStorageKey({
 }): string {
   const host = safeHost(baseUrl) || "default";
   const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
-  const rangeKey = view === "range"
+  const selectedRange = typeof from === "string" && from && typeof to === "string" && to;
+  const rangeKey = view === "range" || selectedRange
     ? `${from || ""}.${to || ""}`
     : `current-7d.${currentDayKey || getLocalDayKey({ timeZone, offsetMinutes: tzOffsetMinutes })}`;
   return `tokentracker.providerStats.v2.${view}.${cacheKey}.${host}.${rangeKey}.${tzKey}.${filterCacheKey}.${sources.join(",")}`;
@@ -259,6 +269,8 @@ function useProviderStatsView({
         raw,
         view,
         currentLocalDayKey,
+        from,
+        to,
       );
       if (!parsed) {
         window.localStorage.removeItem(storageKey);
@@ -268,7 +280,7 @@ function useProviderStatsView({
     } catch {
       return null;
     }
-  }, [storageKey, view, currentLocalDayKey]);
+  }, [storageKey, view, currentLocalDayKey, from, to]);
 
   const writeCache = useCallback(
     (payload: ProviderStatsResponse) => {
@@ -298,7 +310,7 @@ function useProviderStatsView({
     view,
     cacheKey || "",
     baseUrl || "",
-    view === "range" ? `${from || ""}.${to || ""}` : "current-7d",
+    from && to ? `${from}.${to}` : view === "range" ? "." : "current-7d",
     currentLocalDayKey,
     getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes }),
     filterCacheKey,
@@ -344,18 +356,16 @@ function useProviderStatsView({
       const res = await fetchProviderStats({
         baseUrl,
         accessToken: token,
-        ...(view === "range" ? { from, to } : {}),
+        ...(from && to ? { from, to } : {}),
         timeZone,
         tzOffsetMinutes,
         sources: effectiveSources,
         models: filterParams.models,
         agentIds: filterParams.agentIds,
       });
-      if (
-        view === "recent_api_7d"
-        && res?.period?.to !== currentLocalDayKey
-      ) {
-        throw new Error("API Provider stats are not for the current local day");
+      if (view === "recent_api_7d" && from && to
+        && (res?.period?.from !== from || res?.period?.to !== to)) {
+        throw new Error("API Provider stats do not match the selected range");
       }
       if (requestId !== requestSequenceRef.current) return;
       setProviders(res as ProviderStatsResponse);

@@ -36,6 +36,8 @@ function getInvoke() {
   const tauri = (window as any).__TAURI__;
   if (typeof tauri?.core?.invoke === "function") return tauri.core.invoke;
   if (typeof tauri?.invoke === "function") return tauri.invoke;
+  const internals = (window as any).__TAURI_INTERNALS__;
+  if (typeof internals?.invoke === "function") return internals.invoke;
   return null;
 }
 

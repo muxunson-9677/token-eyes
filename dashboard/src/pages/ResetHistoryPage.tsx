@@ -1,5 +1,4 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   ArchiveRestore,
   ArrowDownToLine,
@@ -348,7 +347,6 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
   const cardRef = useRef(null as HTMLLIElement | null);
   const detailRef = useRef(null as HTMLDivElement | null);
   const triggerRef = useRef(null as HTMLButtonElement | null);
-  const [overlayStyle, setOverlayStyle] = useState({} as React.CSSProperties);
   const sourceLabel = getSourceLabel(event);
   const resetKind = event.reset_kind && event.reset_kind in RESET_KIND_VISUALS
     ? event.reset_kind as keyof typeof RESET_KIND_VISUALS
@@ -368,6 +366,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
   useEffect(() => {
     if (!expanded) return undefined;
     detailRef.current?.focus();
+    detailRef.current?.scrollIntoView({ block: "nearest" });
     const closeAndRestoreFocus = () => {
       setExpanded(false);
       triggerRef.current?.focus();
@@ -387,39 +386,6 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [expanded]);
-
-  useLayoutEffect(() => {
-    if (!expanded) return undefined;
-    const positionOverlay = () => {
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const availableWidth = Math.max(240, viewportWidth - 32);
-      const width = Math.min(Math.max(320, rect.width - 44), availableWidth);
-      const left = Math.min(
-        Math.max(16, rect.left + 44),
-        Math.max(16, viewportWidth - width - 16),
-      );
-      const below = Math.max(0, viewportHeight - rect.bottom - 16);
-      const above = Math.max(0, rect.top - 16);
-      const placeBelow = below >= Math.min(320, Math.max(200, above));
-      const maxHeight = Math.max(180, Math.min(430, placeBelow ? below : above));
-      setOverlayStyle({
-        top: placeBelow ? rect.bottom + 6 : Math.max(16, rect.top - maxHeight - 6),
-        left,
-        width,
-        maxHeight,
-      });
-    };
-    positionOverlay();
-    window.addEventListener("resize", positionOverlay);
-    window.addEventListener("scroll", positionOverlay, true);
-    return () => {
-      window.removeEventListener("resize", positionOverlay);
-      window.removeEventListener("scroll", positionOverlay, true);
     };
   }, [expanded]);
 
@@ -476,42 +442,78 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
           <ChevronRight className={`tt-reset-row-chevron${expanded ? " is-expanded" : ""}`} aria-hidden />
         </button>
       </time>
-      {expanded && hasDetail && typeof document !== "undefined" ? createPortal((
+      {expanded && hasDetail ? (
         <div
           ref={detailRef}
-          className="tt-reset-history-detail tt-reset-history-detail--overlay"
+          className="tt-reset-history-detail"
           data-testid="reset-history-detail"
-          role="dialog"
+          role="region"
           aria-label={event.title || copy("reset_history.detail_content")}
           tabIndex={-1}
-          style={overlayStyle}
           onClick={(clickEvent) => clickEvent.stopPropagation()}
         >
           <div className="tt-reset-history-detail-header">
             {event.title ? <h3>{event.title}</h3> : <span />}
-            {event.source_url ? (
-              <a
-                href={event.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="tt-reset-history-source-action tt-focus-ring tt-pressable"
-                aria-label={copy("codex_reset.action.view_official")}
-                onClick={handleSourceClick}
-              >
-                <ArrowUpRight aria-hidden />
-              </a>
-            ) : null}
+            <span className="tt-reset-history-kind-badge">{kindLabel}</span>
           </div>
-          <dl>
+          <dl className="tt-reset-history-detail-grid">
+            <div>
+              <dt>{copy("reset_history.detail_source")}</dt>
+              <dd>{sourceLabel}</dd>
+            </div>
+            <div>
+              <dt>{copy("reset_history.detail_published")}</dt>
+              <dd>
+                <time dateTime={event.occurred_at}>
+                  {formatResetDateTime(event.occurred_at)} · {event.occurred_at}
+                </time>
+              </dd>
+            </div>
+            <div>
+              <dt>{copy("reset_history.detail_kind")}</dt>
+              <dd>{kindLabel}</dd>
+            </div>
+            <div>
+              <dt>{copy("reset_history.detail_scope")}</dt>
+              <dd>{scopeLabel}</dd>
+            </div>
             {body ? (
-              <div>
+              <div className="tt-reset-history-detail-wide">
                 <dt>{copy("reset_history.detail_content")}</dt>
                 <dd className="tt-reset-history-full-body">{body}</dd>
               </div>
             ) : null}
+            {event.expires_at ? (
+              <div>
+                <dt>{copy("reset_history.detail_expires")}</dt>
+                <dd>
+                  <time dateTime={event.expires_at}>
+                    {formatResetDateTime(event.expires_at)} · {event.expires_at}
+                  </time>
+                </dd>
+              </div>
+            ) : null}
+            {event.source_url ? (
+              <div className="tt-reset-history-detail-wide">
+                <dt>{copy("reset_history.detail_link")}</dt>
+                <dd>
+                  <a
+                    href={event.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="tt-reset-history-source-action tt-focus-ring tt-pressable"
+                    aria-label={copy("codex_reset.action.view_official")}
+                    onClick={handleSourceClick}
+                  >
+                    <span>{event.source_url}</span>
+                    <ArrowUpRight aria-hidden />
+                  </a>
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </div>
-      ), document.body) : null}
+      ) : null}
     </li>
   );
 }
@@ -528,8 +530,9 @@ export function ResetHistoryPage() {
     };
   }, []);
 
-  const { history, available, status } = useCodexResetEvents();
+  const { history, dataState, status, checkNow } = useCodexResetEvents();
   const [celebrationEffect, setCelebrationEffect] = useState(readResetCelebrationEffect);
+  const [refreshing, setRefreshing] = useState(false);
   const [visibleRecordCount, setVisibleRecordCount] = useState(11);
   const { events, statistics } = useMemo(() => {
     const official = filterRecentOfficialResets(history)
@@ -539,12 +542,43 @@ export function ResetHistoryPage() {
     // are still filtered inside calculateResetStatistics.
     return { events: official, statistics: calculateResetStatistics(history) };
   }, [history]);
-  const feedFailed = available && Boolean(status?.feed_error_code);
+  const feedFailed = dataState === "cached"
+    || dataState === "unavailable"
+    || (dataState === "current" && Boolean(status?.feed_error_code));
   const hasTrustedHistory = Boolean(events.length);
   const showingCachedHistory = feedFailed && hasTrustedHistory;
   const feedUnavailable = feedFailed && !hasTrustedHistory;
   const visibleEvents = events.slice(0, visibleRecordCount);
   const hasMoreRecords = visibleEvents.length < events.length;
+  const freshnessKey = dataState === "cached"
+    ? "reset_history.freshness.cached"
+    : dataState === "unavailable"
+      ? "reset_history.freshness.unavailable"
+      : dataState === "loading"
+        ? "reset_history.freshness.pending"
+        : status?.feed_stale
+          ? "reset_history.freshness.cached"
+          : status?.feed_error_code
+            ? "reset_history.freshness.unavailable"
+            : status?.feed_generated_at
+              ? "reset_history.freshness.current"
+              : "reset_history.freshness.pending";
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await checkNow(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function freshnessTime(value: string | null | undefined, testId: string) {
+    return value ? (
+      <time data-testid={testId} dateTime={value}>
+        {formatResetDateTime(value)} · {value}
+      </time>
+    ) : <span data-testid={testId}>{copy("reset_history.freshness.unknown")}</span>;
+  }
 
   return (
     <div className="tt-reset-history-page flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
@@ -590,6 +624,30 @@ export function ResetHistoryPage() {
             </div>
           </div>
 
+          <section className="tt-reset-history-freshness" data-testid="reset-history-freshness">
+            <div>
+              <strong>{copy(freshnessKey)}</strong>
+              <dl>
+                <div>
+                  <dt>{copy("reset_history.freshness.last_checked")}</dt>
+                  <dd>{freshnessTime(status?.feed_last_checked_at, "reset-history-feed-checked")}</dd>
+                </div>
+                <div>
+                  <dt>{copy("reset_history.freshness.feed_generated")}</dt>
+                  <dd>{freshnessTime(status?.feed_generated_at, "reset-history-feed-generated")}</dd>
+                </div>
+                <div>
+                  <dt>{copy("reset_history.freshness.latest_published")}</dt>
+                  <dd>{freshnessTime(status?.latest_published_at, "reset-history-latest-published")}</dd>
+                </div>
+              </dl>
+            </div>
+            <button type="button" disabled={refreshing} onClick={() => void refresh()}>
+              <RotateCcw aria-hidden />
+              {copy(refreshing ? "reset_history.refreshing" : "reset_history.refresh")}
+            </button>
+          </section>
+
           {feedFailed ? (
             <p
               className="mb-6 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
@@ -607,7 +665,7 @@ export function ResetHistoryPage() {
               <ResetStatisticsSummary
                 statistics={statistics}
                 events={events}
-                isLoading={!available}
+                isLoading={dataState === "loading"}
               />
 
               <ResetActivitySummary events={events} statistics={statistics} />
@@ -650,7 +708,7 @@ export function ResetHistoryPage() {
                 <p className="tt-reset-history-empty py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
                   {feedUnavailable
                     ? copy("reset_history.data_unavailable")
-                    : available
+                    : dataState === "current"
                     ? copy("reset_history.empty")
                     : copy("reset_history.loading_detail")}
                 </p>

@@ -1,5 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { getOrCreateInsforgeClient, isCloudInsforgeConfigured } from "../lib/insforge-config";
+import {
+  getCloudInsforgeDisabledReason,
+  getOrCreateInsforgeClient,
+  isCloudInsforgeConfigured,
+} from "../lib/insforge-config";
 import { clearCloudDeviceSession } from "../lib/cloud-sync-prefs";
 import { isLikelyExpiredAccessToken } from "../lib/auth-token";
 import { getPublicVisibility } from "../lib/api";
@@ -331,6 +335,7 @@ export function InsforgeAuthProvider({ children }) {
     if (!isCloudInsforgeConfigured() || !client) {
       return {
         enabled: false,
+        disabledReason: getCloudInsforgeDisabledReason(),
         client: null,
         user: null,
         signedIn: false,
@@ -354,6 +359,7 @@ export function InsforgeAuthProvider({ children }) {
     }
     return {
       enabled: true,
+      disabledReason: null,
       client,
       user,
       signedIn: Boolean(user),

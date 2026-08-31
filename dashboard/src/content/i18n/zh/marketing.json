@@ -166,6 +166,7 @@
   "leaderboard.signin_checking": "正在检查邮箱登录…",
   "leaderboard.signin_busy": "正在打开邮箱登录…",
   "leaderboard.signin_unavailable": "邮箱登录暂时不可用",
+  "leaderboard.signin_missing_public_credential": "当前安装包缺少公开登录凭据，已停用邮箱注册以避免提交后失败。",
   "leaderboard.signin_error": "无法打开邮箱登录，请稍后重试。",
   "leaderboard.developer_preview.prompt": "微信登录暂未接入；本测试包可进入本地开发者预览",
   "leaderboard.developer_preview.wechat_placeholder": "GitHub 登录（占位）",

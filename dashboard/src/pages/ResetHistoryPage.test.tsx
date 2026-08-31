@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexResetHistoryEvent, CodexResetMonitorStatus } from "../lib/api";
@@ -8,6 +8,7 @@ import zhDashboardRaw from "../content/i18n/zh/dashboard.json?raw";
 const resetContext = vi.hoisted(() => ({
   value: {
     available: true,
+    dataState: "current" as "loading" | "current" | "cached" | "unavailable",
     events: [],
     history: [] as CodexResetHistoryEvent[],
     unreadCount: 0,
@@ -94,6 +95,7 @@ function officialReset(
     title: "Codex official extra reset",
     summary: "FULL_SUMMARY_MUST_NOT_RENDER",
     body: "FULL_BODY_FIRST_PARAGRAPH\n\nFULL_BODY_SECOND_PARAGRAPH",
+    expires_at: new Date(occurredAt.getTime() + 30 * 24 * 60 * 60_000).toISOString(),
   } as unknown as CodexResetHistoryEvent;
 }
 
@@ -110,6 +112,9 @@ function feedErrorStatus(errorCode = "http_error"): CodexResetMonitorStatus {
     unread_count: 0,
     feed_enabled: true,
     feed_last_checked_at: new Date(TEST_NOW.getTime() - 60_000).toISOString(),
+    feed_generated_at: new Date(TEST_NOW.getTime() - 120_000).toISOString(),
+    latest_published_at: new Date(TEST_NOW.getTime() - 180_000).toISOString(),
+    feed_stale: true,
     feed_error_code: errorCode,
     backfill_error_code: null,
   };
@@ -128,8 +133,11 @@ describe("ResetHistoryPage", () => {
     vi.setSystemTime(TEST_NOW);
     window.localStorage.clear();
     resetContext.value.available = true;
+    resetContext.value.dataState = "current";
     resetContext.value.history = [];
     resetContext.value.status = null;
+    resetContext.value.checkNow.mockReset();
+    resetContext.value.checkNow.mockResolvedValue(undefined);
     apiMocks.openExternalLink.mockReset();
     apiMocks.openExternalLink.mockResolvedValue(true);
     document.documentElement.classList.remove("tt-reference-route-reset-history");
@@ -151,6 +159,7 @@ describe("ResetHistoryPage", () => {
 
   it("never injects fixed preview reset records when the local API is unavailable", () => {
     resetContext.value.available = false;
+    resetContext.value.dataState = "loading";
     resetContext.value.history = [];
 
     render(<ResetHistoryPage />);
@@ -186,6 +195,57 @@ describe("ResetHistoryPage", () => {
     expect(screen.getByTestId("reset-history-statistics")).toBeInTheDocument();
     expect(screen.getByTestId("reset-history-activity")).toBeInTheDocument();
     expect(screen.getByTestId("reset-history-item")).toBeInTheDocument();
+  });
+
+  it("does not call an old successful response verified after transport failure", () => {
+    resetContext.value.available = false;
+    resetContext.value.dataState = "cached";
+    resetContext.value.status = {
+      ...feedErrorStatus(),
+      feed_error_code: null,
+      feed_stale: false,
+    };
+    resetContext.value.history = [
+      officialReset("last-known-good", new Date("2026-08-13T04:00:00.000Z")),
+    ];
+
+    render(<ResetHistoryPage />);
+
+    expect(screen.getByTestId("reset-history-freshness"))
+      .toHaveTextContent("copy:reset_history.freshness.cached");
+    expect(screen.getByTestId("reset-history-data-state"))
+      .toHaveTextContent("copy:reset_history.data_cached");
+    expect(screen.getByTestId("reset-history-item")).toBeInTheDocument();
+  });
+
+  it("shows verified feed freshness and forces a real manual refresh", async () => {
+    const user = userEvent.setup();
+    resetContext.value.status = {
+      ...feedErrorStatus(),
+      feed_error_code: null,
+      feed_stale: false,
+    };
+
+    render(<ResetHistoryPage />);
+
+    const freshness = screen.getByTestId("reset-history-freshness");
+    expect(freshness).toHaveTextContent("copy:reset_history.freshness.current");
+    expect(freshness).toHaveTextContent("copy:reset_history.freshness.last_checked");
+    expect(freshness).toHaveTextContent("copy:reset_history.freshness.feed_generated");
+    expect(freshness).toHaveTextContent("copy:reset_history.freshness.latest_published");
+    expect(within(freshness).getByTestId("reset-history-feed-checked"))
+      .toHaveAttribute("datetime", resetContext.value.status.feed_last_checked_at);
+    expect(within(freshness).getByTestId("reset-history-feed-generated"))
+      .toHaveAttribute("datetime", resetContext.value.status.feed_generated_at);
+    expect(within(freshness).getByTestId("reset-history-latest-published"))
+      .toHaveAttribute("datetime", resetContext.value.status.latest_published_at);
+
+    await act(async () => {
+      await user.click(within(freshness).getByRole("button", {
+        name: "copy:reset_history.refresh",
+      }));
+    });
+    expect(resetContext.value.checkNow).toHaveBeenCalledWith(true);
   });
 
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
@@ -243,7 +303,7 @@ describe("ResetHistoryPage", () => {
     );
   });
 
-  it("expands the announcement title, details, and quoted post from the card or chevron", async () => {
+  it("expands complete announcement details inline and preserves dismissal focus behavior", async () => {
     const user = userEvent.setup();
     resetContext.value.history = [
       officialReset("today", new Date(2026, 6, 26, 14, 32)),
@@ -256,7 +316,9 @@ describe("ResetHistoryPage", () => {
     expect(item).not.toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
 
     expect(item).toHaveClass("tt-pressable");
-    await user.click(screen.getByTestId("reset-history-expand"));
+    await act(async () => {
+      await user.click(screen.getByTestId("reset-history-expand"));
+    });
 
     const detail = screen.getByTestId("reset-history-detail");
     expect(detail).toHaveTextContent("Codex official extra reset");
@@ -264,28 +326,88 @@ describe("ResetHistoryPage", () => {
     expect(detail).toHaveTextContent("FULL_BODY_FIRST_PARAGRAPH");
     expect(detail).toHaveTextContent("FULL_BODY_SECOND_PARAGRAPH");
     expect(detail).not.toHaveTextContent("FULL_SUMMARY_MUST_NOT_RENDER");
-    expect(detail).toHaveAttribute("role", "dialog");
-    expect(detail).toHaveClass("tt-reset-history-detail--overlay");
-    expect(detail.parentElement).toBe(document.body);
-    expect(item).not.toContainElement(detail);
+    expect(detail).toHaveTextContent("copy:reset_history.detail_source");
+    expect(detail).toHaveTextContent("copy:reset_history.source.tibo");
+    expect(detail).toHaveTextContent("copy:reset_history.detail_published");
+    expect(detail).toHaveTextContent("copy:reset_history.kind.hard");
+    expect(detail).toHaveTextContent("copy:reset_history.scope.all_codex_work_users");
+    expect(detail).toHaveTextContent("copy:reset_history.detail_expires");
+    expect(detail).toHaveAttribute("role", "region");
+    expect(detail).not.toHaveClass("tt-reset-history-detail--overlay");
+    expect(item).toContainElement(detail);
+    expect(detail.parentElement).toBe(item);
     const source = within(detail).getByRole("link", {
       name: "copy:codex_reset.action.view_official",
     });
     expect(source).toHaveClass("tt-reset-history-source-action");
+    expect(source).toHaveTextContent("https://x.com/thsottiaux/status/2082317452755751098");
     await user.click(source);
     expect(apiMocks.openExternalLink).toHaveBeenCalledWith(
       "reset-source:thsottiaux:2082317452755751098",
     );
     expect(item).toHaveAttribute("data-expanded", "true");
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    act(() => fireEvent.keyDown(document, { key: "Escape" }));
     expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
     expect(screen.getByTestId("reset-history-expand")).toHaveFocus();
 
-    await user.click(screen.getByTestId("reset-history-expand"));
+    await act(async () => {
+      await user.click(screen.getByTestId("reset-history-expand"));
+    });
     expect(screen.getByTestId("reset-history-detail")).toBeInTheDocument();
-    fireEvent.pointerDown(document.body);
+    act(() => fireEvent.pointerDown(document.body));
     expect(screen.queryByTestId("reset-history-detail")).not.toBeInTheDocument();
+  });
+
+  it("keeps rows 1, 3, 4, and 5 details in document flow instead of a portal or overlay", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    resetContext.value.history = Array.from({ length: 5 }, (_, index) => {
+      const event = officialReset(
+        `row-${index + 1}`,
+        new Date(`2026-08-${String(13 - index).padStart(2, "0")}T08:0${index}:00.000Z`),
+        `https://x.com/thsottiaux/status/20823174527557510${90 + index}`,
+      );
+      return {
+        ...event,
+        title: `ROW_${index + 1}_TITLE`,
+        body: `ROW_${index + 1}_FULL_BODY`,
+      };
+    });
+
+    try {
+      render(<ResetHistoryPage />);
+
+      const items = screen.getAllByTestId("reset-history-item");
+      for (const index of [0, 2, 3, 4]) {
+        const previouslyExpanded = items.find((item) => item.dataset.expanded === "true");
+        if (previouslyExpanded) {
+          await act(async () => {
+            await user.click(previouslyExpanded);
+          });
+        }
+        await act(async () => {
+          await user.click(items[index]);
+        });
+        const detail = within(items[index]).getByTestId("reset-history-detail");
+        expect(detail.parentElement).toBe(items[index]);
+        expect(detail).toHaveTextContent(`ROW_${index + 1}_TITLE`);
+        expect(detail).toHaveTextContent(`ROW_${index + 1}_FULL_BODY`);
+        expect(detail).not.toHaveClass("tt-reset-history-detail--overlay");
+        expect(["", "static"]).toContain(window.getComputedStyle(detail).position);
+      }
+      expect(scrollIntoView).toHaveBeenCalledTimes(4);
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    }
   });
 
   it("shows all retained records in descending occurrence order instead of capping at three", () => {
@@ -323,7 +445,9 @@ describe("ResetHistoryPage", () => {
     render(<ResetHistoryPage />);
 
     expect(screen.getAllByTestId("reset-history-item")).toHaveLength(11);
-    await user.click(screen.getByRole("button", { name: "copy:reset_history.load_more" }));
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "copy:reset_history.load_more" }));
+    });
     expect(screen.getAllByTestId("reset-history-item")).toHaveLength(13);
   });
 

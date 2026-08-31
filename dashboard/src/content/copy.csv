@@ -503,6 +503,7 @@ leaderboard.rank_pending,dashboard,LeaderboardPage,LeaderboardPage,rank_pending,
 leaderboard.anon_label,dashboard,LeaderboardPage,LeaderboardPage,anon_label,"Anonymous",,active
 leaderboard.error.unknown,dashboard,LeaderboardPage,LeaderboardPage,error_unknown,"Unknown error",,active
 leaderboard.error.network,dashboard,LeaderboardPage,LeaderboardPage,error_network,"Leaderboard is temporarily unavailable. Check your connection and try again.",,active
+leaderboard.error.refresh_failed_cached,dashboard,LeaderboardPage,LeaderboardPage,error_refresh_failed_cached,"Refresh failed. Showing the last verified leaderboard snapshot.",,active
 leaderboard.retry,dashboard,LeaderboardPage,LeaderboardPage,retry,"Reload",,active
 leaderboard.loading,dashboard,LeaderboardPage,LeaderboardPage,state_loading,"Loading…",,active
 leaderboard.empty,dashboard,LeaderboardPage,LeaderboardPage,state_empty,"No data",,active
@@ -691,6 +692,7 @@ leaderboard.signin_button,ui,LeaderboardPage,LeaderboardPage,signin_button,"Sign
 leaderboard.signin_checking,ui,LeaderboardPage,LeaderboardPage,signin_checking,"Checking email sign-in...",,active
 leaderboard.signin_busy,ui,LeaderboardPage,LeaderboardPage,signin_busy,"Opening email sign-in...",,active
 leaderboard.signin_unavailable,ui,LeaderboardPage,LeaderboardPage,signin_unavailable,"Email sign-in is temporarily unavailable",,active
+leaderboard.signin_missing_public_credential,ui,LeaderboardPage,LeaderboardPage,signin_missing_public_credential,"This build is missing its public sign-in credential. Email account creation is disabled.",,active
 leaderboard.signin_error,ui,LeaderboardPage,LeaderboardPage,signin_error,"Could not open email sign-in. Please try again.",,active
 leaderboard.developer_preview.prompt,ui,LeaderboardPage,LeaderboardPage,developer_preview_prompt,"WeChat sign-in is not connected yet. This test build can enter a local developer preview.",,active
 leaderboard.developer_preview.wechat_placeholder,ui,LeaderboardPage,LeaderboardPage,developer_preview_wechat_placeholder,"GitHub sign-in (placeholder)",,active
@@ -2003,8 +2005,8 @@ spend.usage.provider_api.cost_axis,dashboard,SpendPage,ProviderApiServiceList,pr
 spend.usage.provider_api.loading,dashboard,SpendPage,ProviderApiServiceList,provider_api_loading,"Loading API Provider usage…",,active
 spend.usage.provider_api.error,dashboard,SpendPage,ProviderApiServiceList,provider_api_error,"API Provider usage could not be loaded.",,active
 spend.usage.provider_api.retry,dashboard,SpendPage,ProviderApiServiceList,provider_api_retry,"Retry",,active
-spend.usage.provider_api.empty,dashboard,SpendPage,ProviderApiServiceList,provider_api_empty,"No positive API Provider cost in the last 7 days.",,active
-spend.usage.provider_api.total_cost,dashboard,SpendPage,ProviderApiServiceList,provider_api_total_cost,"7-day spend",,active
+spend.usage.provider_api.empty,dashboard,SpendPage,ProviderApiServiceList,provider_api_empty,"No API-key-attributed Provider activity in the selected range.",,active
+spend.usage.provider_api.total_cost,dashboard,SpendPage,ProviderApiServiceList,provider_api_total_cost,"Official spend in selected range",,active
 spend.usage.provider_api.requests,dashboard,SpendPage,ProviderApiServiceList,provider_api_requests,"Requests",,active
 spend.usage.provider_api.tokens,dashboard,SpendPage,ProviderApiServiceList,provider_api_tokens,"Tokens",,active
 spend.usage.provider_api.peak,dashboard,SpendPage,ProviderApiServiceList,provider_api_peak,"Peak",,active
@@ -2445,6 +2447,16 @@ reset_history.restored,ui,ResetHistoryPage,ResetRecord,restored,"Quota restored 
 reset_history.empty,ui,ResetHistoryPage,ResetHistoryPage,empty,"No reset records yet",,active
 reset_history.data_unavailable,ui,ResetHistoryPage,ResetHistoryPage,data_unavailable,"Data unavailable",,active
 reset_history.data_cached,ui,ResetHistoryPage,ResetHistoryPage,data_cached,"Feed refresh failed. Showing the last trusted reset history.",,active
+reset_history.freshness.current,ui,ResetHistoryPage,ResetHistoryPage,freshness_current,"Feed verified",,active
+reset_history.freshness.cached,ui,ResetHistoryPage,ResetHistoryPage,freshness_cached,"Feed refresh failed · showing verified cache",,active
+reset_history.freshness.unavailable,ui,ResetHistoryPage,ResetHistoryPage,freshness_unavailable,"Feed unavailable",,active
+reset_history.freshness.pending,ui,ResetHistoryPage,ResetHistoryPage,freshness_pending,"Feed not verified yet",,active
+reset_history.freshness.last_checked,ui,ResetHistoryPage,ResetHistoryPage,freshness_last_checked,"Last feed check",,active
+reset_history.freshness.feed_generated,ui,ResetHistoryPage,ResetHistoryPage,freshness_feed_generated,"Verified feed generated",,active
+reset_history.freshness.latest_published,ui,ResetHistoryPage,ResetHistoryPage,freshness_latest_published,"Latest verified publication",,active
+reset_history.freshness.unknown,ui,ResetHistoryPage,ResetHistoryPage,freshness_unknown,"Not available",,active
+reset_history.refresh,ui,ResetHistoryPage,ResetHistoryPage,refresh,"Refresh",,active
+reset_history.refreshing,ui,ResetHistoryPage,ResetHistoryPage,refreshing,"Refreshing…",,active
 reset_history.activity.day_today,ui,ResetHistoryPage,ResetHistoryPage,activity_day_today,"Today",,active
 reset_history.activity.day_yesterday,ui,ResetHistoryPage,ResetHistoryPage,activity_day_yesterday,"Yesterday",,active
 reset_history.source.tibo,ui,ResetHistoryPage,ResetRecord,source_tibo,"Tibo @thsottiaux · X",,active
@@ -2456,6 +2468,12 @@ reset_history.kind.unknown,ui,ResetHistoryPage,ResetRecord,kind_unknown,"Officia
 reset_history.scope.all_paid_users,ui,ResetHistoryPage,ResetRecord,scope_paid,"All paid users",,active
 reset_history.scope.all_codex_work_users,ui,ResetHistoryPage,ResetRecord,scope_codex_work,"Codex and ChatGPT Work users",,active
 reset_history.scope.unknown,ui,ResetHistoryPage,ResetRecord,scope_unknown,"See official announcement for scope",,active
+reset_history.detail_source,ui,ResetHistoryPage,ResetRecord,detail_source,"Source / author",,active
+reset_history.detail_published,ui,ResetHistoryPage,ResetRecord,detail_published,"Exact published time",,active
+reset_history.detail_kind,ui,ResetHistoryPage,ResetRecord,detail_kind,"Reset type",,active
+reset_history.detail_scope,ui,ResetHistoryPage,ResetRecord,detail_scope,"Scope",,active
+reset_history.detail_expires,ui,ResetHistoryPage,ResetRecord,detail_expires,"Expiry / retention",,active
+reset_history.detail_link,ui,ResetHistoryPage,ResetRecord,detail_link,"Precise source link",,active
 reset_history.sources_title,ui,ResetHistoryPage,ResetHistoryPage,sources_title,"Source index",,active
 reset_history.stats.period,ui,ResetHistoryPage,ResetStatisticsSummary,period,"Period",,active
 reset_history.stats.period_value,ui,ResetHistoryPage,ResetStatisticsSummary,period_value,"Last {{days}} days",,active
@@ -2553,6 +2571,8 @@ widget.reset.title,ui,DesktopWidgetPage,ResetAlert,title,"Quota reset",,active
 widget.reset.acknowledge,ui,DesktopWidgetPage,ResetAlert,acknowledge,"Acknowledge quota reset",,active
 widgets.windows.show,ui,WidgetsPage,WindowsWidgetToggle,show,"Show desktop widget",,active
 widgets.windows.hide,ui,WidgetsPage,WindowsWidgetToggle,hide,"Hide desktop widget",,active
+widgets.windows.unavailable,ui,WidgetsPage,WindowsWidgetToggle,unavailable,"Open in the Token Eyes desktop app",,active
+widgets.windows.error,ui,WidgetsPage,WindowsWidgetToggle,error,"Couldn’t update the desktop widget. Try again.",,active
 widgets.windows.projects.title,ui,WidgetsPage,WindowsWidgetProjectSettings,title,"桌面小组件项目",,active
 widgets.windows.projects.recent_hint,ui,WidgetsPage,WindowsWidgetProjectSettings,hint,"选择要在桌面小组件中显示的项目",,active
 widgets.windows.projects.selected_count,ui,WidgetsPage,WindowsWidgetProjectSettings,count,"已选择 {{count}} 个项目",,active

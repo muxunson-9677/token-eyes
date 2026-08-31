@@ -53,7 +53,7 @@ vi.mock("../../../marketing/LogoCarousel.jsx", () => ({ LogoCarousel: () => null
 vi.mock("../../../marketing/agent-logos.js", () => ({ AGENT_LOGOS: [] }));
 
 describe("DashboardView overview hierarchy", () => {
-  it("keeps the desktop Agent panel bottom aligned with the usage-trend card", () => {
+  it("keeps the desktop Agent panel bottom aligned and its card shadows visible", () => {
     expect(overviewStyles).toMatch(
       /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?@media \(min-width: 1081px\)[\s\S]*?\.tt-overview-provider-panel \{[\s\S]*?min-height: 247px;[\s\S]*?\}[\s\S]*?\.tt-overview-provider-panel \.tt-provider-card \{[\s\S]*?height: 144px;/,
     );
@@ -61,7 +61,11 @@ describe("DashboardView overview hierarchy", () => {
       /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?\.tt-overview-usage\.tt-overview-aligned-stack \{[\s\S]*?grid-template-rows: minmax\(0, 620px\) minmax\(247px, auto\);/,
     );
     expect(overviewStyles).toMatch(
-      /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?\.tt-overview-provider-panel \.grid\.grid-cols-2 \{[\s\S]*?grid-template-columns: none;[\s\S]*?grid-auto-flow: column;[\s\S]*?grid-auto-columns: clamp\(122px, 15\.75%, 129px\);[\s\S]*?overflow-x: auto;[\s\S]*?overflow-y: hidden;/,
+      /\.tt-overview-provider-panel \.grid\.grid-cols-2 \{[\s\S]*?grid-template-columns: repeat\(auto-fill, minmax\(122px, 1fr\)\);[\s\S]*?align-items: stretch;/,
+    );
+    expect(overviewStyles).toMatch(/\.tt-provider-card-stage \{[\s\S]*?overflow: visible;/);
+    expect(overviewStyles).not.toMatch(
+      /\/\* OV-01 desktop bottom-alignment contract \*\/[\s\S]*?\.tt-overview-provider-panel \.grid\.grid-cols-2 \{[\s\S]*?overflow-y: hidden;/,
     );
   });
 

@@ -419,11 +419,12 @@ describe("leaderboard API", () => {
       metric: "tokens",
       limit: 50,
       offset: 0,
+      refresh: true,
     })).resolves.toEqual(payload);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=30d&metric=tokens&source=all&limit=50&offset=0",
+      "http://127.0.0.1:7681/functions/tokentracker-leaderboard-public?period=30d&metric=tokens&source=all&limit=50&offset=0&refresh=1",
     );
   });
 

@@ -1562,6 +1562,7 @@ function providerTimeZoneLabel(timeZoneContext) {
 }
 
 function finalizeProviderDay(day, period, costMode) {
+  const costAvailable = costMode !== "actual" || day.costAvailable === true;
   return {
     date: day.date,
     agents: finalizeProviderBreakdown(day.agentMap),
@@ -1569,8 +1570,8 @@ function finalizeProviderDay(day, period, costMode) {
     tokens: day.tokens,
     request_count: day.requestCountUnavailable ? null : day.request_count,
     request_count_basis: providerRequestBasis(day.requestBases, day.requestCountUnavailable),
-    cost_usd: roundProviderMoney(day.cost_usd),
-    cost_basis: providerCostBasis(costMode),
+    cost_usd: costAvailable ? roundProviderMoney(day.cost_usd) : null,
+    cost_basis: costAvailable ? providerCostBasis(costMode) : null,
     period,
   };
 }
@@ -1614,7 +1615,6 @@ function aggregateByProvider(rows, options = {}) {
     const providerOfficialDailyCosts = officialDailyCosts.get(providerId) || null;
     const hasProviderOfficialDailyCosts = providerOfficialDailyCosts instanceof Map;
     const actualCostUsd = costMode === "actual" ? providerActualCostUsd(row) : null;
-    if (costMode === "actual" && actualCostUsd === null && !hasProviderOfficialDailyCosts) continue;
     if (!map.has(providerId)) {
       map.set(providerId, {
         provider_id: providerId,
@@ -1631,6 +1631,7 @@ function aggregateByProvider(rows, options = {}) {
           requestCountUnavailable: false,
           requestBases: new Set(),
           cost_usd: 0,
+          costAvailable: costMode !== "actual",
         }])),
         requestBases: new Set(),
         request_count: null,
@@ -1652,10 +1653,12 @@ function aggregateByProvider(rows, options = {}) {
         interrupted_count: 0,
         latencySum: 0,
         rawCostUsd: 0,
+        costAvailable: costMode !== "actual" || hasProviderOfficialDailyCosts,
         officialDailyCosts: hasProviderOfficialDailyCosts ? providerOfficialDailyCosts : null,
       });
     }
     const acc = map.get(providerId);
+    if (actualCostUsd !== null) acc.costAvailable = true;
     if (attribution.account_ref) acc.accountRefs.add(attribution.account_ref);
     const requestFact = providerRequestFact(row);
     if (requestFact.count !== null) {
@@ -1669,7 +1672,9 @@ function aggregateByProvider(rows, options = {}) {
       : computeRowCostDetailed(row, pricingOptions);
     const costUsd = hasProviderOfficialDailyCosts
       ? null
-      : Number.isFinite(Number(rowCost.cost_usd)) ? Number(rowCost.cost_usd) : 0;
+      : rowCost.cost_usd !== null && Number.isFinite(Number(rowCost.cost_usd))
+        ? Number(rowCost.cost_usd)
+        : null;
     acc.rawCostUsd += costUsd || 0;
     acc.cost_usd += costUsd || 0;
     acc.input_tokens += Number(row.input_tokens || 0);
@@ -1687,6 +1692,7 @@ function aggregateByProvider(rows, options = {}) {
     if (day) {
       day.tokens += Number(row.total_tokens || 0);
       day.cost_usd += costUsd || 0;
+      if (costUsd !== null) day.costAvailable = true;
       if (requestFact.count !== null) {
         day.request_count = Number(day.request_count || 0) + requestFact.count;
         day.requestBases.add(requestFact.basis);
@@ -1718,6 +1724,7 @@ function aggregateByProvider(rows, options = {}) {
     for (const [date, day] of provider.dailyMap) {
       const costUsd = roundProviderMoney(provider.officialDailyCosts.get(date) || 0);
       day.cost_usd = costUsd;
+      day.costAvailable = true;
       provider.cost_usd += costUsd;
       provider.rawCostUsd += costUsd;
     }
@@ -1744,8 +1751,8 @@ function aggregateByProvider(rows, options = {}) {
         request_count: provider.requestCountUnavailable ? null : provider.request_count,
         request_count_basis: providerRequestBasis(provider.requestBases, provider.requestCountUnavailable),
         conversation_count: provider.conversation_count,
-        cost_usd: roundProviderMoney(provider.cost_usd),
-        cost_basis: providerCostBasis(costMode),
+        cost_usd: provider.costAvailable ? roundProviderMoney(provider.cost_usd) : null,
+        cost_basis: provider.costAvailable ? providerCostBasis(costMode) : null,
         priced_tokens: provider.priced_tokens,
         unpriced_tokens: provider.unpriced_tokens,
         pricing_coverage: providerPricingCoverage(provider.priced_tokens, provider.unpriced_tokens),
@@ -1774,7 +1781,7 @@ function aggregateByProvider(rows, options = {}) {
       return result;
     });
   providers.sort((left, right) => (
-    right.cost_usd - left.cost_usd
+    Number(right.cost_usd ?? -1) - Number(left.cost_usd ?? -1)
     || right.tokens - left.tokens
     || left.provider_id.localeCompare(right.provider_id)
   ));
@@ -1796,6 +1803,8 @@ function summarizeProviderTotals(providers) {
     priced_tokens: 0,
     unpriced_tokens: 0,
     pricing_coverage: "complete",
+    cost_known_provider_count: 0,
+    cost_unavailable_provider_count: 0,
   };
   let measuredRequestCount = 0;
   let allProvidersHaveRequestCounts = providers.length > 0;
@@ -1806,7 +1815,11 @@ function summarizeProviderTotals(providers) {
     totals.cached_input_tokens += Number(provider.cached_input_tokens || 0);
     totals.cache_creation_input_tokens += Number(provider.cache_creation_input_tokens || 0);
     totals.reasoning_output_tokens += Number(provider.reasoning_output_tokens || 0);
-    totals.cost_usd += Number(provider.cost_usd || 0);
+    if (provider.cost_usd === null) totals.cost_unavailable_provider_count += 1;
+    else {
+      totals.cost_known_provider_count += 1;
+      totals.cost_usd += Number(provider.cost_usd || 0);
+    }
     totals.conversation_count += Number(provider.conversation_count || 0);
     if (provider.request_count === null) allProvidersHaveRequestCounts = false;
     else measuredRequestCount += Number(provider.request_count || 0);
@@ -1814,7 +1827,9 @@ function summarizeProviderTotals(providers) {
     totals.unpriced_tokens += Number(provider.unpriced_tokens || 0);
   }
   totals.request_count = allProvidersHaveRequestCounts ? measuredRequestCount : null;
-  totals.cost_usd = roundProviderMoney(totals.cost_usd);
+  totals.cost_usd = totals.cost_known_provider_count > 0
+    ? roundProviderMoney(totals.cost_usd)
+    : null;
   totals.pricing_coverage = providerPricingCoverage(totals.priced_tokens, totals.unpriced_tokens);
   return totals;
 }
@@ -2545,6 +2560,9 @@ function sanitizeCodexResetStatus(status) {
       : 0,
     feed_enabled: status?.feed_enabled === true,
     feed_last_checked_at: safeIsoString(status?.feed_last_checked_at),
+    feed_generated_at: safeIsoString(status?.feed_generated_at),
+    latest_published_at: safeIsoString(status?.latest_published_at),
+    feed_stale: status?.feed_stale === true,
     feed_error_code: errorCode(status?.feed_error_code),
     backfill_error_code: errorCode(status?.backfill_error_code),
   };
@@ -2877,6 +2895,7 @@ function createLocalApiHandler({
   const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
   const usageAggregateResponseCache = new Map();
   let leaderboardCompactStateCache = null;
+  const leaderboardPublicRefreshes = new Map();
   const officialProviderCostsCache = new Map();
   // WorkBuddy credit quota — cache the codebuddy.cn billing response so the
   // dashboard can poll freely without hammering the remote API.
@@ -2886,6 +2905,43 @@ function createLocalApiHandler({
   const WORKBUDDY_PUBLIC_GROUP_IDS = new Set(["base", "activity", "extra", "other"]);
   const WORKBUDDY_PUBLIC_PLANS = new Set(["FREE", "TRIAL", "PRO"]);
   const WORKBUDDY_PUBLIC_ERRORS = new Set(["unauthorized", "fetch_failed"]);
+
+  function refreshLeaderboardPublicSnapshot({
+    snapshotKey,
+    snapshotPath,
+    verification,
+    minimumGeneratedAt,
+  }) {
+    const inFlight = leaderboardPublicRefreshes.get(snapshotKey);
+    if (inFlight) return inFlight;
+
+    const refresh = (async () => {
+      const feedUrl = `${leaderboardPublicFeedBaseUrl}/leaderboard/${snapshotKey}.json`;
+      const response = await fetch(feedUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(1_800),
+      });
+      if (!response.ok) throw new Error(`Static feed HTTP ${response.status}`);
+      const responseText = await response.text();
+      if (Buffer.byteLength(responseText, "utf8") > 768 * 1024) {
+        throw new RangeError("Static leaderboard envelope exceeds the size limit");
+      }
+      const envelope = JSON.parse(responseText);
+      const payload = verifySignedStaticFeed(envelope, {
+        ...verification,
+        minimumGeneratedAt,
+      });
+      writeSignedLeaderboardSnapshot(snapshotPath, envelope);
+      return payload;
+    })().finally(() => {
+      if (leaderboardPublicRefreshes.get(snapshotKey) === refresh) {
+        leaderboardPublicRefreshes.delete(snapshotKey);
+      }
+    });
+    leaderboardPublicRefreshes.set(snapshotKey, refresh);
+    return refresh;
+  }
 
   function publicWorkbuddyNumber(value) {
     if (value === null || value === undefined || value === "") return null;
@@ -3043,7 +3099,7 @@ function createLocalApiHandler({
       if (configuredLabel && trustedLocalStatusMessage(configuredLabel) === configuredLabel) {
         provider.account_label = configuredLabel;
       }
-      const cached = providerApiBalanceManager.getCachedBalance(matchingConfigs[0].id);
+      const cached = providerApiBalanceManager.getCachedBalance(matchingConfigs[0]);
       const amount = Number(cached?.balance);
       const observedAtMs = Date.parse(cached?.lastSyncedAt || "");
       const ageMs = currentTimeMs - observedAtMs;
@@ -3245,6 +3301,7 @@ function createLocalApiHandler({
     credentialStore: providerApiCredStore,
     testMode: providerApiTestMode,
     timeoutMs: providerApiTimeoutMs,
+    snapshotPath: path.join(trackerDataDir, "provider-api-balances-v1.json"),
     resolveOfficialConsoleBalance,
   });
 
@@ -3959,11 +4016,20 @@ function createLocalApiHandler({
     let remainingQuota = numberFieldNonNegative("remaining_quota");
     const fallbackExpiresAt = String(fallbackInput.expires_at ?? "").trim();
     let finalExpiresAt = fallbackExpiresAt;
-    if (shouldApplyIncomingProviderField("expires_at")) {
+    const clearsLegacyCursorBillingCycleExpiry = providerId === "cursor"
+      && detectionMethod === "official_account"
+      && detectionFields.sync_status === "success"
+      && hasOwnField(input, "expires_at")
+      && String(input.expires_at ?? "").trim() === "";
+    if (shouldApplyIncomingProviderField("expires_at") || clearsLegacyCursorBillingCycleExpiry) {
       const incomingExpiresAt = String(input.expires_at ?? "").trim();
       if (incomingExpiresAt) {
         finalExpiresAt = incomingExpiresAt;
-      } else if (!hasDetectionConfigured || freshReportedFields.includes("expires_at")) {
+      } else if (
+        clearsLegacyCursorBillingCycleExpiry
+        || !hasDetectionConfigured
+        || freshReportedFields.includes("expires_at")
+      ) {
         finalExpiresAt = "";
       }
     }
@@ -7070,10 +7136,15 @@ function createLocalApiHandler({
             platform: process.platform,
           }),
           typeof codexLifecycleProvider === "function"
-            ? codexLifecycleProvider({ homes: codexHomes, nowMs: widgetNow.getTime() })
+            ? codexLifecycleProvider({
+              homes: codexHomes,
+              nowMs: widgetNow.getTime(),
+              includeProjectLabels: true,
+            })
             : collectCodexLifecycleSessions({
               homes: codexHomes,
               nowMs: widgetNow.getTime(),
+              includeProjectLabels: true,
             }),
         ]);
         const usage = aggregateByModel(readQueueData(qp), {
@@ -7407,6 +7478,7 @@ function createLocalApiHandler({
       const rawSource = String(url.searchParams.get("source") || "all").trim().toLowerCase();
       const rawLimit = url.searchParams.get("limit");
       const rawOffset = url.searchParams.get("offset");
+      const rawRefresh = url.searchParams.get("refresh");
       if (
         !LEADERBOARD_PUBLIC_PERIODS.has(rawPeriod)
         || !LEADERBOARD_PUBLIC_METRICS.has(rawMetric)
@@ -7414,6 +7486,7 @@ function createLocalApiHandler({
         || (rawMetric === "actual_cost" && rawSource !== "all")
         || (rawLimit !== null && rawLimit !== "50")
         || (rawOffset !== null && rawOffset !== "0")
+        || (rawRefresh !== null && rawRefresh !== "1")
       ) {
         json(res, { ok: false, error: "Unsupported leaderboard snapshot key" }, 400);
         return true;
@@ -7436,8 +7509,8 @@ function createLocalApiHandler({
         maxEntries: 50,
       };
       const lastKnownGood = readSignedLeaderboardSnapshot(snapshotPath, verification);
-      const writeResponse = (payload, cacheStatus) => {
-        const stale = cacheStatus === "STALE";
+      const writeResponse = (payload, cacheStatus, state = {}) => {
+        const stale = cacheStatus === "STALE" || cacheStatus === "LKG";
         res.writeHead(200, {
           "Content-Type": "application/json",
           "Cache-Control": "private, no-cache",
@@ -7452,31 +7525,37 @@ function createLocalApiHandler({
           page: 1,
           total_pages: 1,
           stale: stale || payload.stale === true,
+          cache_state: state.cacheState || (stale ? "lkg" : "live"),
+          revalidating: state.revalidating === true,
+          refresh_failed: state.refreshFailed === true,
         }));
       };
 
+      const refresh = () => refreshLeaderboardPublicSnapshot({
+        snapshotKey,
+        snapshotPath,
+        verification,
+        minimumGeneratedAt: lastKnownGood?.payload?.generated_at,
+      });
+
+      if (lastKnownGood && rawRefresh !== "1") {
+        void refresh().catch(() => {});
+        writeResponse(lastKnownGood.payload, "LKG", {
+          cacheState: "lkg",
+          revalidating: true,
+        });
+        return true;
+      }
+
       try {
-        const feedUrl = `${leaderboardPublicFeedBaseUrl}/leaderboard/${snapshotKey}.json`;
-        const response = await fetch(feedUrl, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (!response.ok) throw new Error(`Static feed HTTP ${response.status}`);
-        const responseText = await response.text();
-        if (Buffer.byteLength(responseText, "utf8") > 768 * 1024) {
-          throw new RangeError("Static leaderboard envelope exceeds the size limit");
-        }
-        const envelope = JSON.parse(responseText);
-        const payload = verifySignedStaticFeed(envelope, {
-          ...verification,
-          minimumGeneratedAt: lastKnownGood?.payload?.generated_at,
-        });
-        writeSignedLeaderboardSnapshot(snapshotPath, envelope);
+        const payload = await refresh();
         writeResponse(payload, "MISS");
       } catch (_error) {
         if (lastKnownGood) {
-          writeResponse(lastKnownGood.payload, "STALE");
+          writeResponse(lastKnownGood.payload, "STALE", {
+            cacheState: "lkg",
+            refreshFailed: true,
+          });
         } else {
           json(res, { ok: false, error: "Public leaderboard is temporarily unavailable" }, 502);
         }
@@ -8145,9 +8224,11 @@ function createLocalApiHandler({
     }
 
     // Provider statistics have two explicit contracts. The general endpoint
-    // follows the selected range and retains every explicitly attributed
-    // Provider. The API-card endpoint is always the actual current seven local
-    // days and includes only positive-cost API-key usage.
+    // retains every explicitly attributed Provider. The API-card endpoint
+    // retains API-key activity even when an official billed cost is unavailable.
+    // Both follow a valid selected range (bounded to the billing API's 180-day
+    // window); the API-card endpoint falls back to the latest seven days only
+    // when no usable range was supplied.
     if (
       p === "/functions/tokentracker-provider-stats"
       || p === "/functions/tokentracker-provider-api-stats"
@@ -8156,20 +8237,26 @@ function createLocalApiHandler({
       const requestedFrom = url.searchParams.get("from") || "";
       const requestedTo = url.searchParams.get("to") || "";
       const requestedTimeZoneContext = getTimeZoneContext(url);
-      const timeZoneContext = recentApiView
-        ? { timeZone: "UTC", offsetMinutes: 0 }
-        : requestedTimeZoneContext;
       const validDayKey = (value) => {
         if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
         const timestamp = Date.parse(`${value}T00:00:00.000Z`);
         return Number.isFinite(timestamp)
           && new Date(timestamp).toISOString().slice(0, 10) === value;
       };
+      const requestedRangeDays = validDayKey(requestedFrom) && validDayKey(requestedTo)
+        ? providerRangeDays(requestedFrom, requestedTo)
+        : 0;
+      const useRequestedApiRange = recentApiView
+        && requestedRangeDays >= 1
+        && requestedRangeDays <= 180;
+      const timeZoneContext = requestedTimeZoneContext;
       const currentDay = formatPartsDayKey(getZonedParts(nowProvider(), timeZoneContext))
         || nowProvider().toISOString().slice(0, 10);
-      const to = recentApiView || !validDayKey(requestedTo) ? currentDay : requestedTo;
+      const to = recentApiView
+        ? useRequestedApiRange ? requestedTo : currentDay
+        : !validDayKey(requestedTo) ? currentDay : requestedTo;
       const from = recentApiView
-        ? shiftDayKey(to, -6)
+        ? useRequestedApiRange ? requestedFrom : shiftDayKey(to, -6)
         : validDayKey(requestedFrom) && requestedFrom <= to
           ? requestedFrom
           : shiftDayKey(to, -6);
@@ -8199,7 +8286,7 @@ function createLocalApiHandler({
         models: modelsParam,
         includeDaily: recentApiView,
         requireApiKey: recentApiView,
-        requirePositiveCost: recentApiView,
+        requirePositiveCost: false,
         costMode: recentApiView ? "actual" : "estimated",
         officialDailyCosts,
       });
@@ -8223,7 +8310,7 @@ function createLocalApiHandler({
           ? providerTimeZoneLabel(requestedTimeZoneContext)
           : null,
         totals_scope: recentApiView
-          ? "api_key_attributed_official_billed_cost_positive"
+          ? "api_key_attributed_activity_with_official_cost_when_available"
           : "all_provider_attributed",
         scope,
         excluded_sources: excludedSources,
@@ -9576,7 +9663,7 @@ function createLocalApiHandler({
           account.providerApiConfigured = Boolean(matchingConfig) || hasAmbiguousOfficialInvoice;
           // Include cached balance if available (no network call on list)
           if (matchingConfig && !hasAmbiguousOfficialInvoice) {
-            const cached = providerApiBalanceManager.getCachedBalance(matchingConfig.id);
+            const cached = providerApiBalanceManager.getCachedBalance(matchingConfig);
             // Provider financial data is in a SEPARATE field — never mixed into monthCostUsd
             account.providerApiBalance = cached || null;
           } else {
@@ -9678,6 +9765,10 @@ function createLocalApiHandler({
             providerApiConfigs.upsertProviderApiConfig(configs, normalizedMerged);
           const updated = providerApiConfigs.writeProviderApiConfigs(config, nextConfigs);
           writeTrackerConfig(updated);
+          if (providerApiBalance.balanceIdentityFingerprint(existing)
+              !== providerApiBalance.balanceIdentityFingerprint(updatedConfig)) {
+            providerApiBalanceManager.deleteSnapshot(idParam);
+          }
           providerApiBalanceManager.clearCache(idParam);
           json(res, { config: providerApiConfigs.sanitizeConfigForOutput(updatedConfig) });
         } catch (e) {
@@ -9713,6 +9804,7 @@ function createLocalApiHandler({
           const updated = providerApiConfigs.writeProviderApiConfigs(config, nextConfigs);
           writeTrackerConfig(updated);
           providerApiBalanceManager.clearCache(idParam);
+          providerApiBalanceManager.deleteSnapshot(idParam);
           json(res, { ok: true });
         } catch (e) {
           // 01-密钥安全修复 (F1 错误脱敏): 不得直接返回 e.message
@@ -9799,6 +9891,7 @@ function createLocalApiHandler({
           const updated = providerApiConfigs.writeProviderApiConfigs(config, nextConfigs);
           writeTrackerConfig(updated);
           providerApiBalanceManager.clearCache(configId);
+          providerApiBalanceManager.deleteSnapshot(configId);
 
           // Return only masked preview — NEVER the full secret
           json(res, {
@@ -9837,6 +9930,7 @@ function createLocalApiHandler({
           const updated = providerApiConfigs.writeProviderApiConfigs(config, nextConfigs);
           writeTrackerConfig(updated);
           providerApiBalanceManager.clearCache(configId);
+          providerApiBalanceManager.deleteSnapshot(configId);
           json(res, { ok: true });
         } catch (e) {
           // 01-密钥安全修复 (F1 错误脱敏): 不得直接返回 e.message
@@ -9930,7 +10024,7 @@ function createLocalApiHandler({
         const configs = providerApiConfigs.readProviderApiConfigs(config);
         const balances = configs.map((c) => {
           // Return cached balance if available; otherwise return not-connected/placeholder
-          const cached = providerApiBalanceManager.getCachedBalance(c.id);
+          const cached = providerApiBalanceManager.getCachedBalance(c);
           if (cached) return cached;
           const capabilities = providerApiConfigs.getProviderFinancialCapabilities(c);
           if (capabilities.balance === "unsupported" && capabilities.tokenQuota === "token_plan") {

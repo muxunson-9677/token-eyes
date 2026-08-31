@@ -140,6 +140,32 @@ describe("isTokenPlanExpired", () => {
 });
 
 describe("token plan three-state validity", () => {
+  it("treats a paid Cursor record as expired when the official account reports free membership", () => {
+    const record = {
+      provider_id: "cursor",
+      plan_id: "cursor_pro",
+      expires_at: "2099-12-31",
+      detection_method: "official_account",
+      detection_config: { official_account: { plan_name: "free" } },
+    };
+
+    expect(tokenPlanValidityState(record, new Date("2026-08-31T00:00:00.000Z"))).toBe("expired");
+    expect(isTokenPlanExpired(record, new Date("2026-08-31T00:00:00.000Z"))).toBe(true);
+  });
+
+  it.each(["pro", "business", "team", "enterprise"])(
+    "does not expire an applicable Cursor paid plan when official membership is %s",
+    (planName) => {
+      const planId = planName === "pro" ? "cursor_pro" : "cursor_business";
+      expect(tokenPlanValidityState({
+        provider_id: "cursor",
+        plan_id: planId,
+        detection_method: "official_account",
+        detection_config: { official_account: { plan_name: planName } },
+      }, new Date("2026-08-31T00:00:00.000Z"))).toBe("active");
+    },
+  );
+
   it("uses a valid fallback expiry when the preferred expiry is invalid", () => {
     const record = {
       subscription_end_date: "invalid",

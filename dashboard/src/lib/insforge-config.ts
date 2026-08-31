@@ -48,8 +48,30 @@ export function getInsforgeAnonKey(): string {
   ).trim();
 }
 
+export type CloudInsforgeDisabledReason =
+  | "missing_public_auth_credential"
+  | "invalid_auth_base_url";
+
+function hasSafeInsforgeRemoteUrl(): boolean {
+  try {
+    const url = new URL(getInsforgeRemoteUrl());
+    return url.protocol === "https:"
+      && Boolean(url.hostname)
+      && !url.username
+      && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+export function getCloudInsforgeDisabledReason(): CloudInsforgeDisabledReason | null {
+  if (!hasSafeInsforgeRemoteUrl()) return "invalid_auth_base_url";
+  if (!getInsforgeAnonKey()) return "missing_public_auth_credential";
+  return null;
+}
+
 export function isCloudInsforgeConfigured(): boolean {
-  return Boolean(getInsforgeRemoteUrl());
+  return getCloudInsforgeDisabledReason() === null;
 }
 
 /**
@@ -70,7 +92,7 @@ export async function getOrCreateInsforgeClient(): Promise<InsforgeClient | null
     insforgeClientPromise = import("@insforge/sdk").then(({ createClient }) => {
       insforgeClientSingleton = createClient({
         baseUrl: getInsforgeBaseUrl(),
-        anonKey: getInsforgeAnonKey() || undefined,
+        anonKey: getInsforgeAnonKey(),
         autoRefreshToken: true,
       });
       return insforgeClientSingleton;

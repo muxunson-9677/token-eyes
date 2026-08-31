@@ -147,9 +147,28 @@ function normalizedNowTimestamp(now) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
+function cursorPaidEntitlementEnded(record) {
+  const providerId = String(
+    record?.provider_id || record?.providerId || record?.agent || record?.provider || "",
+  ).trim().toLowerCase();
+  if (providerId !== "cursor") return false;
+
+  const configuredPlanId = String(record?.plan_id || record?.catalogPlanId || "")
+    .trim()
+    .toLowerCase();
+  if (!["cursor_pro", "cursor_business"].includes(configuredPlanId)) return false;
+
+  const reportedPlanName = String(
+    record?.detection_config?.official_account?.plan_name || record?.reportedPlanName || "",
+  ).trim().toLowerCase();
+  return ["free", "hobby"].includes(reportedPlanName);
+}
+
 export function tokenPlanValidityState(record, now = new Date()) {
   const nowTimestamp = normalizedNowTimestamp(now);
   if (nowTimestamp === null) return "active";
+
+  if (cursorPaidEntitlementEnded(record)) return "expired";
 
   const expiryTimestamp = tokenPlanExpiryTimestamp(tokenPlanExpiryValue(record));
   if (expiryTimestamp !== null && expiryTimestamp < nowTimestamp) return "expired";

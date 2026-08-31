@@ -216,15 +216,20 @@ test("realtime endpoint returns a privacy-safe, explicit evidence payload", asyn
       spendRecords: [{ source: "subscription", amount_usd: 8, start_date: "2026-08-01", end_date: "2026-08-31" }],
     }));
     let rolloutFallbackCalls = 0;
+    const lifecycleCalls = [];
     const handler = createLocalApiHandler({
       queuePath,
       trackerDataDir: root,
       now: () => new Date("2026-08-21T08:30:00.000Z"),
-      codexLifecycleProvider: async () => [{
-        agent: "codex", sessionId: "local-session", model: "unpriced-lifecycle-model", status: "running", updatedAt: "2026-08-21T08:25:00.000Z",
-        taskLabel: "完善实时会话",
-        sessionLabel: "must not be copied into a prompt or body",
-      }],
+      codexLifecycleProvider: async (options) => {
+        lifecycleCalls.push(options);
+        return [{
+          agent: "codex", sessionId: "local-session", model: "unpriced-lifecycle-model", status: "running", updatedAt: "2026-08-21T08:25:00.000Z",
+          projectLabel: "Secret Project",
+          taskLabel: "完善实时会话",
+          sessionLabel: "must not be copied into a prompt or body",
+        }];
+      },
       codexRolloutRowsProvider: async () => {
         rolloutFallbackCalls += 1;
         return [{
@@ -244,7 +249,10 @@ test("realtime endpoint returns a privacy-safe, explicit evidence payload", asyn
     const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=today");
     assert.equal(typeof realtime.revision, "string");
     assert.equal(realtime.sessions.some((item) => item.state === "running"), true);
-    assert.equal(realtime.sessions.find((item) => item.state === "running")?.task_label, "完善实时会话");
+    const runningSession = realtime.sessions.find((item) => item.state === "running");
+    assert.equal(runningSession?.task_label, "完善实时会话");
+    assert.equal(runningSession?.project_label, null);
+    assert.equal(lifecycleCalls[0].includeProjectLabels, undefined);
     assert.equal(realtime.activity_points.length, 2);
     assert.deepEqual(realtime.pricing_coverage, {
       covered_models: 0,
@@ -273,6 +281,7 @@ test("realtime endpoint returns a privacy-safe, explicit evidence payload", asyn
       assert.equal(publicPayload.includes(forbiddenField), false);
     }
     assert.equal(publicPayload.includes("safe-project"), false);
+    assert.equal(publicPayload.includes("Secret Project"), false);
     assert.equal(publicPayload.includes("must not be copied into a prompt or body"), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -1061,6 +1061,69 @@ test("Task 4 initial failed reauth and unsupported snapshots cannot become last-
   }
 });
 
+test("Cursor official refresh clears a legacy billing-cycle expiry without claiming entitlement evidence", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-cursor-entitlement-"));
+  try {
+    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+    const handler = createLocalApiHandler({
+      queuePath: path.join(trackerDir, "queue.jsonl"),
+      trackerDataDir: trackerDir,
+    });
+    const auth = await call(handler, "/api/local-auth");
+    const headers = {
+      "content-type": "application/json",
+      "x-tokentracker-local-auth": readJsonResponse(auth).token,
+      origin: "http://127.0.0.1:7680",
+    };
+    const base = {
+      id: "cursor-legacy-expiry",
+      source: "cursor",
+      provider_id: "cursor",
+      plan_id: "cursor_pro",
+      plan_label: "Pro",
+      quota_unit: "percent",
+      total_quota: 100,
+      used_quota: 10,
+      remaining_quota: 90,
+      detection_method: "official_account",
+      detection_config: { official_account: { plan_name: "pro" } },
+      sync_status: "success",
+      provider_reported_at: "2026-08-20T01:00:00Z",
+    };
+    const created = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...base,
+        expires_at: "2026-09-22T05:18:33.402Z",
+        provider_reported_fields: ["total_quota", "used_quota", "remaining_quota", "expires_at"],
+      }),
+    });
+    assert.equal(created.statusCode, 200);
+
+    const refreshed = await call(handler, "/functions/tokentracker-token-plans", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...base,
+        used_quota: 0,
+        remaining_quota: 100,
+        expires_at: "",
+        detection_config: { official_account: { plan_name: "free" } },
+        provider_reported_fields: ["total_quota", "used_quota", "remaining_quota"],
+        provider_reported_at: "2026-08-31T01:00:00Z",
+      }),
+    });
+    assert.equal(refreshed.statusCode, 200);
+    const record = readJsonResponse(refreshed).record;
+    assert.equal(record.expires_at, "");
+    assert.equal(record.detection_config.official_account.plan_name, "free");
+    assert.deepEqual(record.provider_reported_fields, ["total_quota", "used_quota", "remaining_quota"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("Task 4 full quota windows require valid units and arithmetic without rewriting fractional values", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-task4-window-validation-"));
   try {

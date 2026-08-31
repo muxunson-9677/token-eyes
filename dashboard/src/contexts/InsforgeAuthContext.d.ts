@@ -7,6 +7,7 @@ export interface InsforgeAuthUser {
 
 export interface InsforgeAuthValue {
   enabled: boolean;
+  disabledReason: "missing_public_auth_credential" | "invalid_auth_base_url" | null;
   client: any;
   user: InsforgeAuthUser | null;
   signedIn: boolean;

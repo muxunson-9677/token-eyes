@@ -8,6 +8,7 @@ const authFixture = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/insforge-config", () => ({
+  getCloudInsforgeDisabledReason: () => authFixture.configured ? null : "missing_public_auth_credential",
   getOrCreateInsforgeClient: async () => authFixture.client,
   isCloudInsforgeConfigured: () => authFixture.configured,
 }));

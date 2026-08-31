@@ -52,7 +52,7 @@ function formatBalance(balance) {
 }
 
 function normalizedDaily(provider) {
-  const rows = Array.isArray(provider?.daily) ? provider.daily.slice(0, 7) : [];
+  const rows = Array.isArray(provider?.daily) ? provider.daily : [];
   return rows.map((row) => ({
     ...row,
     date: String(row?.date || ""),
@@ -60,20 +60,20 @@ function normalizedDaily(provider) {
     models: Array.isArray(row?.models) ? row.models : [],
     tokens: Math.max(0, number(row?.tokens)),
     request_count: row?.request_count == null ? null : Math.max(0, number(row.request_count)),
-    cost_usd: Math.max(0, number(row?.cost_usd)),
+    cost_usd: row?.cost_usd == null ? null : Math.max(0, number(row.cost_usd)),
   }));
 }
 
 function chartGeometry(daily) {
   if (daily.length === 0) return { points: [], line: "", area: "", max: 0 };
-  const observedMax = Math.max(...daily.map((day) => day.cost_usd));
+  const observedMax = Math.max(...daily.map((day) => number(day.cost_usd)));
   const max = observedMax > 0 ? observedMax : 1;
   const plotWidth = CHART_WIDTH - CHART_LEFT - CHART_RIGHT;
   const plotHeight = CHART_HEIGHT - CHART_TOP - CHART_BOTTOM;
   const points = daily.map((day, index) => ({
     ...day,
     x: CHART_LEFT + (daily.length === 1 ? plotWidth / 2 : (index / (daily.length - 1)) * plotWidth),
-    y: CHART_TOP + plotHeight - (day.cost_usd / max) * plotHeight,
+    y: CHART_TOP + plotHeight - (number(day.cost_usd) / max) * plotHeight,
   }));
   let line = `M ${points[0].x} ${points[0].y}`;
   for (let index = 1; index < points.length; index += 1) {
@@ -116,7 +116,7 @@ function DayTooltip({ day, currency, rate }) {
         <Breakdown title={copy("spend.usage.provider_api.tooltip.models")} rows={day.models} currency={currency} rate={rate} />
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 border-t border-oai-gray-100 pt-2 text-[10px] dark:border-oai-gray-800">
-        <div><span className="block text-oai-gray-400">{copy("spend.usage.provider_api.tooltip.cost")}</span><strong>{formatMoney(day.cost_usd, currency, rate)}</strong></div>
+        <div><span className="block text-oai-gray-400">{copy("spend.usage.provider_api.tooltip.cost")}</span><strong>{formatAttributedMoney(day.cost_usd, currency, rate)}</strong></div>
         <div><span className="block text-oai-gray-400">{copy("spend.usage.provider_api.tooltip.requests")}</span><strong>{day.request_count == null ? "—" : formatCount(day.request_count)}</strong></div>
         <div><span className="block text-oai-gray-400">{copy("spend.usage.provider_api.tooltip.tokens")}</span><strong>{formatCount(day.tokens)}</strong></div>
       </div>
@@ -167,7 +167,7 @@ function ProviderAreaChart({ provider, colorClass, currency, rate }) {
                   strokeWidth="2"
                   tabIndex="0"
                   role="button"
-                  aria-label={`${point.date} ${formatMoney(point.cost_usd, currency, rate)}`}
+                  aria-label={`${point.date} ${formatAttributedMoney(point.cost_usd, currency, rate)}`}
                   onMouseEnter={() => setActiveIndex(index)}
                   onFocus={() => setActiveIndex(index)}
                   onBlur={() => setActiveIndex(null)}
@@ -193,10 +193,12 @@ function Metric({ icon: Icon, label, value, tone }) {
   );
 }
 
-function ProviderCard({ provider, index, currency, rate, source }) {
+function ProviderCard({ provider, index, currency, rate, source, compact = false }) {
   const colorClass = PROVIDER_COLOR_CLASSES[index % PROVIDER_COLOR_CLASSES.length];
   const daily = normalizedDaily(provider);
-  const peak = daily.reduce((current, day) => day.cost_usd > (current?.cost_usd || -1) ? day : current, null);
+  const peak = daily
+    .filter((day) => day.cost_usd != null)
+    .reduce((current, day) => day.cost_usd > (current?.cost_usd ?? -1) ? day : current, null);
   const cached = source === "cache";
   const balance = cached ? null : formatBalance(provider.balance);
   const period = provider.period || { from: daily[0]?.date || "", to: daily.at(-1)?.date || "", days: daily.length };
@@ -205,7 +207,7 @@ function ProviderCard({ provider, index, currency, rate, source }) {
     : "";
 
   return (
-    <article data-testid="provider-api-card" className="tt-surface-nested min-w-0 rounded-2xl border border-oai-gray-200/80 p-4 dark:border-oai-gray-800 sm:p-5">
+    <article data-testid="provider-api-card" className={`tt-surface-nested min-w-0 rounded-xl border border-oai-gray-200/80 dark:border-oai-gray-800 ${compact ? "p-3" : "p-4 sm:p-5"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-oai-gray-100 text-sm font-semibold text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300">{index + 1}</span>
@@ -213,7 +215,7 @@ function ProviderCard({ provider, index, currency, rate, source }) {
             <ProviderIcon provider={provider.provider_id} size={28} />
           </span>
           <span className="min-w-0">
-            <strong className="block break-words text-lg text-oai-gray-950 dark:text-white">{provider.display_name || provider.provider_id}</strong>
+            <strong className={`block break-words text-oai-gray-950 dark:text-white ${compact ? "text-sm" : "text-lg"}`}>{provider.display_name || provider.provider_id}</strong>
             <span className="block break-words text-xs text-oai-gray-500 dark:text-oai-gray-400">{(!cached && provider.account_label) || copy("spend.usage.provider_api.account_unavailable")}</span>
           </span>
         </div>
@@ -230,10 +232,10 @@ function ProviderCard({ provider, index, currency, rate, source }) {
         <span className="rounded-lg bg-oai-gray-50 px-3 py-1.5 dark:bg-oai-gray-900">{copy("spend.usage.provider_api.model_count", { count: provider.models?.length || 0 })}</span>
       </div>
 
-      <ProviderAreaChart provider={provider} colorClass={colorClass} currency={currency} rate={rate} />
+      {!compact ? <ProviderAreaChart provider={provider} colorClass={colorClass} currency={currency} rate={rate} /> : null}
 
-      <div className="mt-3 grid divide-y divide-oai-gray-100 rounded-xl border border-oai-gray-100 sm:grid-cols-4 sm:divide-x sm:divide-y-0 dark:divide-oai-gray-800 dark:border-oai-gray-800">
-        <Metric icon={CircleDollarSign} label={copy("spend.usage.provider_api.total_cost")} value={formatMoney(provider.cost_usd, currency, rate)} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" />
+      <div className={`mt-3 grid divide-oai-gray-100 rounded-xl border border-oai-gray-100 dark:divide-oai-gray-800 dark:border-oai-gray-800 ${compact ? "grid-cols-2 divide-x divide-y" : "divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0"}`}>
+        <Metric icon={CircleDollarSign} label={copy("spend.usage.provider_api.total_cost")} value={formatAttributedMoney(provider.cost_usd, currency, rate)} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" />
         <Metric icon={MessageSquareText} label={copy("spend.usage.provider_api.requests")} value={provider.request_count == null ? "—" : formatCount(provider.request_count)} tone="bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400" />
         <Metric icon={Coins} label={copy("spend.usage.provider_api.tokens")} value={formatChineseTokenCount(provider.tokens || 0)} tone="bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400" />
         <Metric icon={TrendingUp} label={copy("spend.usage.provider_api.peak")} value={peak ? `${peak.date.slice(5)} · ${formatMoney(peak.cost_usd, currency, rate)}` : "—"} tone="bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400" />
@@ -248,6 +250,8 @@ function ProviderCard({ provider, index, currency, rate, source }) {
 }
 
 export function ProviderApiServiceList({
+  from,
+  to,
   timeZone,
   tzOffsetMinutes,
   baseUrl,
@@ -255,19 +259,21 @@ export function ProviderApiServiceList({
   guestAllowed = true,
   cacheKey,
   visibleProviderIds,
+  compact = false,
 }) {
   const { currency, rate } = useCurrency();
   const { providers, source, loading, error, refresh } = useRecentApiProviderStats({
     baseUrl,
     accessToken,
     guestAllowed,
+    from,
+    to,
     cacheKey,
     timeZone,
     tzOffsetMinutes,
     allowedSources: visibleProviderIds,
   });
-  const rows = (Array.isArray(providers?.providers) ? providers.providers : [])
-    .filter((provider) => number(provider?.cost_usd) > 0);
+  const rows = Array.isArray(providers?.providers) ? providers.providers : [];
 
   if (loading && rows.length === 0) {
     return <div className="flex min-h-52 items-center justify-center text-sm text-oai-gray-400" role="status">{copy("spend.usage.provider_api.loading")}</div>;
@@ -286,7 +292,7 @@ export function ProviderApiServiceList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className={compact ? "space-y-3" : "space-y-4"}>
       {error ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300" role="alert">
           <span>{copy("spend.usage.provider_api.error")}</span>
@@ -294,7 +300,7 @@ export function ProviderApiServiceList({
         </div>
       ) : null}
       {rows.map((provider, index) => (
-        <ProviderCard key={provider.provider_id} provider={provider} index={index} currency={currency} rate={rate} source={source} />
+        <ProviderCard key={provider.provider_id} provider={provider} index={index} currency={currency} rate={rate} source={source} compact={compact} />
       ))}
     </div>
   );

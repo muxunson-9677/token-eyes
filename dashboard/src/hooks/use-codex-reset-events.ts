@@ -27,9 +27,11 @@ import {
 } from "../lib/official-reset-celebration";
 
 const REFRESH_INTERVAL_MS = 60_000;
+type CodexResetDataState = "loading" | "current" | "cached" | "unavailable";
 
 interface CodexResetEventsContextValue {
   available: boolean;
+  dataState: CodexResetDataState;
   events: CodexResetEvent[];
   widgetEvents: CodexResetEvent[];
   history: CodexResetHistoryEvent[];
@@ -42,6 +44,7 @@ interface CodexResetEventsContextValue {
 
 const EMPTY_CONTEXT: CodexResetEventsContextValue = {
   available: false,
+  dataState: "unavailable",
   events: [],
   widgetEvents: [],
   history: [],
@@ -87,26 +90,36 @@ export function CodexResetEventsProvider({
 }) {
   const [response, setResponse] = useState<CodexResetEventsResponse | null>(null);
   const [available, setAvailable] = useState(false);
+  const [dataState, setDataState] = useState<CodexResetDataState>(
+    enabled ? "loading" : "unavailable",
+  );
+  const responseRef = useRef<CodexResetEventsResponse | null>(null);
   const requestRef = useRef<Promise<void> | null>(null);
+  const forcedRequestRef = useRef<Promise<void> | null>(null);
   const requestGenerationRef = useRef(0);
   const claimedNotificationsRef = useRef(new Set<string>());
 
-  const run = useCallback((request: () => Promise<CodexResetEventsResponse>) => {
+  const startRequest = useCallback((request: () => Promise<CodexResetEventsResponse>) => {
     if (!enabled) return Promise.resolve();
-    if (requestRef.current) return requestRef.current;
     const generation = requestGenerationRef.current;
     const pending = request()
       .then((next) => {
         if (generation !== requestGenerationRef.current) return;
+        responseRef.current = next;
         setResponse(next);
         setAvailable(true);
+        setDataState("current");
       })
       .catch(() => {
         if (generation !== requestGenerationRef.current) return;
         setAvailable(false);
+        setDataState(responseRef.current ? "cached" : "unavailable");
       })
       .finally(() => {
-        if (generation === requestGenerationRef.current) {
+        if (
+          generation === requestGenerationRef.current
+          && requestRef.current === pending
+        ) {
           requestRef.current = null;
         }
       });
@@ -114,20 +127,39 @@ export function CodexResetEventsProvider({
     return pending;
   }, [enabled]);
 
+  const run = useCallback((request: () => Promise<CodexResetEventsResponse>) => {
+    if (requestRef.current) return requestRef.current;
+    return startRequest(request);
+  }, [startRequest]);
+
   const refresh = useCallback(() => run(getCodexResetEvents), [run]);
   const checkNow = useCallback(
-    (force = false) => run(() => checkCodexResetEvents(force === true)),
-    [run],
+    (force = false) => {
+      if (!force) return run(() => checkCodexResetEvents(false));
+      if (forcedRequestRef.current) return forcedRequestRef.current;
+      requestGenerationRef.current += 1;
+      requestRef.current = null;
+      const forced = startRequest(() => checkCodexResetEvents(true)).finally(() => {
+        if (forcedRequestRef.current === forced) forcedRequestRef.current = null;
+      });
+      forcedRequestRef.current = forced;
+      return forced;
+    },
+    [run, startRequest],
   );
 
   useEffect(() => {
     requestGenerationRef.current += 1;
     requestRef.current = null;
+    forcedRequestRef.current = null;
     if (!enabled) {
+      responseRef.current = null;
       setResponse(null);
       setAvailable(false);
+      setDataState("unavailable");
       return undefined;
     }
+    if (!responseRef.current) setDataState("loading");
     void refresh();
     const interval = window.setInterval(() => {
       void refresh();
@@ -223,6 +255,7 @@ export function CodexResetEventsProvider({
 
   const value = useMemo<CodexResetEventsContextValue>(() => ({
     available,
+    dataState,
     events: response?.events || [],
     widgetEvents: response?.widget_events || response?.events || [],
     history: response?.history || [],
@@ -231,7 +264,7 @@ export function CodexResetEventsProvider({
     acknowledge,
     acknowledgeWidget,
     checkNow,
-  }), [acknowledge, acknowledgeWidget, available, checkNow, response]);
+  }), [acknowledge, acknowledgeWidget, available, checkNow, dataState, response]);
 
   return React.createElement(
     CodexResetEventsContext.Provider,

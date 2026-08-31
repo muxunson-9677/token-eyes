@@ -49,7 +49,7 @@ test("reads the safe Codex thread name without returning prompts, bodies, or pat
       JSON.stringify({
         timestamp: "2026-07-29T08:02:00.000Z",
         type: "event_msg",
-        payload: { type: "task_started" },
+        payload: { type: "task_started", turn_id: "turn-safe" },
       }),
     ].join("\n"), "utf8");
 
@@ -64,6 +64,7 @@ test("reads the safe Codex thread name without returning prompts, bodies, or pat
       projectId: result[0].projectId,
       sessionId: "019-safe-session",
       taskLabel: "执行代码修复",
+      taskId: "turn-safe",
       model: "gpt-5.6-sol",
       status: "running",
       updatedAt: "2026-07-29T08:02:00.000Z",
@@ -71,6 +72,20 @@ test("reads the safe Codex thread name without returning prompts, bodies, or pat
     assert.match(result[0].projectId, /^project-[a-f0-9]{12}$/u);
     const serialized = JSON.stringify(result);
     assert.doesNotMatch(serialized, /Users|Secret Project|private prompt|private first message|user_prompt|message|cwd/iu);
+    assert.equal(result[0].taskId, "turn-safe");
+
+    const widgetResult = await collectCodexLifecycleSessions({
+      homes: [root],
+      nowMs: Date.parse("2026-07-29T09:00:00.000Z"),
+      includeProjectLabels: true,
+    });
+    assert.equal(widgetResult[0].projectLabel, "Secret Project");
+    assert.equal(widgetResult[0].taskLabel, "执行代码修复");
+    assert.equal(widgetResult[0].model, "gpt-5.6-sol");
+    assert.equal(widgetResult[0].taskId, "turn-safe");
+    const rolloutPath = Symbol.for("token-eyes.codex-rollout-path");
+    assert.equal(widgetResult[0][rolloutPath], path.join(sessions, "rollout-safe.jsonl"));
+    assert.equal(Object.getOwnPropertyDescriptor(widgetResult[0], rolloutPath)?.enumerable, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -163,4 +178,15 @@ test("reads lifecycle evidence from bounded file slices instead of streaming who
   assert.match(source, /TAIL_READ_CHUNK_BYTES/u);
   assert.match(source, /readLatestLifecycleEvidence/u);
   assert.doesNotMatch(source, /for await\s*\(const line of lines\)/u);
+});
+
+test("reads only a bounded asynchronous tail of the Codex session title index", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "src", "lib", "codex-lifecycle-reader.js"),
+    "utf8",
+  );
+  assert.match(source, /SESSION_INDEX_READ_BYTES/u);
+  assert.match(source, /fs\.promises\.open\(path\.join\(home, "session_index\.jsonl"\), "r"\)/u);
+  assert.match(source, /Math\.min\(stat\.size, SESSION_INDEX_READ_BYTES\)/u);
+  assert.doesNotMatch(source, /fs\.readFileSync\(path\.join\(home, "session_index\.jsonl"\)/u);
 });

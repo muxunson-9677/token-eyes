@@ -28,6 +28,15 @@ test("Windows ships one independent desktop-widget route and Tauri window module
   assert.equal(fs.existsSync(path.join(ROOT, "src-tauri/src/widget_window.rs")), true);
 });
 
+test("Windows browser preview cannot expose a dead native widget action", () => {
+  const widgetsPage = read("dashboard/src/pages/WidgetsPage.jsx");
+  assert.match(widgetsPage, /window\.__TAURI_INTERNALS__\?\.invoke/u);
+  assert.match(widgetsPage, /if \(!available\)[\s\S]*widgets\.windows\.unavailable/u);
+  assert.match(widgetsPage, /typeof prefs\?\.visible === "boolean"/u);
+  assert.match(widgetsPage, /window\.addEventListener\("focus", syncWhenVisible\)/u);
+  assert.doesNotMatch(widgetsPage, /setVisible\(!visible\)/u);
+});
+
 test("widget reset acknowledgement has no automatic dismissal or navigation side effect", () => {
   const widget = read("dashboard/src/pages/DesktopWidgetPage.tsx");
   assert.doesNotMatch(widget, /setTimeout\s*\([^)]*(dismiss|acknowledge)/u);
@@ -187,7 +196,7 @@ test("widget view model accepts only contractual ISO and calendar dates", () => 
   ]);
   const expiryByPlan = Object.fromEntries(limits.map((limit) => [limit.planId, limit.expiresAt]));
 
-  assert.equal(expiryByPlan["codex:date-only"], "2028-02-29T00:00:00.000Z");
+  assert.equal(expiryByPlan["codex:date-only"], "2028-02-29");
   assert.equal(expiryByPlan["codex:zulu"], "2026-08-20T03:33:00.123Z");
   assert.equal(expiryByPlan["codex:offset-leap"], "2028-02-29T22:00:00.250Z");
   for (const planId of [

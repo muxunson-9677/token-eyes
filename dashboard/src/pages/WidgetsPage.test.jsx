@@ -66,6 +66,7 @@ afterEach(() => {
   }
   delete window.webkit;
   delete window.__TAURI__;
+  delete window.__TAURI_INTERNALS__;
 });
 
 describe("WidgetsPage menu bar configurator", () => {
@@ -188,6 +189,95 @@ describe("WidgetsPage Windows desktop widget", () => {
       .not.toBeNull();
   });
 
+  it("loads and refreshes the project model with the saved active-session window", async () => {
+    const user = userEvent.setup();
+    const widgetUrls = [];
+    const invoke = vi.fn(async (command) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: false,
+          activeSessionWindow: "3d",
+          selectedProjectIds: [],
+          selectedProjects: [],
+          selectedLimitIds: [],
+        };
+      }
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const body = href.includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : { projectStatus: { projects: [], recentProjects: [] }, limits: [] };
+      if (href.includes("/functions/tokentracker-desktop-widget")) widgetUrls.push(href);
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    await waitFor(() => expect(widgetUrls).toHaveLength(1));
+    expect(widgetUrls[0]).toContain("active_window=3d");
+
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.reference.refresh_data"),
+    }));
+    await waitFor(() => expect(widgetUrls).toHaveLength(2));
+    expect(widgetUrls[1]).toContain("active_window=3d");
+  });
+
+  it("uses the one-hour product default when legacy preferences have no active-session window", async () => {
+    const user = userEvent.setup();
+    const widgetUrls = [];
+    const invoke = vi.fn(async (command) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: false,
+          selectedProjectIds: [],
+          selectedProjects: [],
+          selectedLimitIds: [],
+        };
+      }
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const body = href.includes("/api/local-auth")
+        ? { token: "local-test-token" }
+        : { projectStatus: { projects: [], recentProjects: [] }, limits: [] };
+      if (href.includes("/functions/tokentracker-desktop-widget")) widgetUrls.push(href);
+      return {
+        ok: true,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers({ "content-type": "application/json" }),
+      };
+    });
+
+    render(<WidgetsPage />);
+
+    await waitFor(() => expect(widgetUrls).toHaveLength(1));
+    expect(widgetUrls[0]).toContain("active_window=1h");
+
+    await user.click(screen.getByRole("button", {
+      name: copy("widgets.reference.refresh_data"),
+    }));
+    await waitFor(() => expect(widgetUrls).toHaveLength(2));
+    expect(widgetUrls[1]).toContain("active_window=1h");
+  });
+
   it("plays a complete press-and-rebound animation on the visible widget toolbar controls", async () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -246,7 +336,7 @@ describe("WidgetsPage Windows desktop widget", () => {
       .toHaveClass("px-4", "sm:px-6", "lg:px-8");
   });
 
-  it("groups multiple sessions from the same project folder in the widget summary", async () => {
+  it("counts real project records instead of grouping flat recent-project rows by label", async () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     );
@@ -259,11 +349,18 @@ describe("WidgetsPage Windows desktop widget", () => {
         projectStatus: {
           green: 8,
           yellow: 2,
-          recentProjects: [
-            { id: "project-a", label: "Token Eyes", updatedAt: hoursAgo(2) },
-            { id: "project-b", label: "Website", updatedAt: hoursAgo(3) },
-            { id: "project-c", label: "Token Eyes", updatedAt: hoursAgo(26) },
-            { id: "project-d", label: "Token Eyes", updatedAt: hoursAgo(50) },
+          projects: [
+            {
+              id: "project-a", label: "Token Eyes", red: 0, yellow: 1, green: 1, unknown: 0,
+              sessions: [
+                { id: "session-a1", taskLabel: "修复桌面小组件", status: "yellow", state: "running", updatedAt: hoursAgo(2) },
+                { id: "session-a2", label: "复核会话分组", status: "green", state: "completed", updatedAt: hoursAgo(3) },
+              ],
+            },
+            {
+              id: "project-b", label: "Token Eyes", red: 0, yellow: 1, green: 0, unknown: 0,
+              sessions: [{ id: "session-b1", label: "另一项目", status: "yellow", state: "running", updatedAt: hoursAgo(26) }],
+            },
           ],
         },
         limits: [],
@@ -282,7 +379,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     });
   });
 
-  it("expands only the selected project folder's child sessions", async () => {
+  it("expands two producer-shaped sessions under their real project without fabricated facts", async () => {
     const user = userEvent.setup();
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -292,11 +389,17 @@ describe("WidgetsPage Windows desktop widget", () => {
       ok: true,
       text: async () => JSON.stringify({
         projectStatus: {
-          recentProjects: [
-            { id: "project-a", label: "Token Eyes", updatedAt: hoursAgo(2) },
-            { id: "project-b", label: "Website", updatedAt: hoursAgo(3) },
-            { id: "project-c", label: "Token Eyes", updatedAt: hoursAgo(26) },
-            { id: "project-d", label: "Token Eyes", updatedAt: hoursAgo(50) },
+          projects: [
+            {
+              id: "project-a", label: "Token Eyes", red: 0, yellow: 1, green: 1, unknown: 0,
+              sessions: [
+                { id: "session-a1", taskLabel: "修复桌面小组件", status: "yellow", state: "running", updatedAt: hoursAgo(2) },
+                { id: "session-a2", label: "复核会话分组", status: "green", state: "completed", updatedAt: hoursAgo(3) },
+              ],
+            },
+            {
+              id: "project-b", label: "Website", red: 0, yellow: 0, green: 0, unknown: 0, sessions: [],
+            },
           ],
         },
         limits: [],
@@ -309,10 +412,172 @@ describe("WidgetsPage Windows desktop widget", () => {
     const expand = await screen.findByTestId("widget-project-expand");
     await user.click(expand);
 
-    expect(screen.getAllByTestId("widget-project-session")).toHaveLength(3);
+    expect(screen.getAllByTestId("widget-project-session")).toHaveLength(2);
     expect(expand).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("会话 1");
-    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("活跃");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("修复桌面小组件");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent("复核会话分组");
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent(copy("widget.session_state.running"));
+    expect(screen.getByTestId("widget-project-sessions")).toHaveTextContent(copy("widget.session_state.completed"));
+    expect(screen.getByTestId("widget-project-sessions")).not.toHaveTextContent("会话 1");
+    expect(screen.queryByText(copy("widgets.reference.tag_core"))).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: copy("widgets.reference.recent_seven_days") })).not.toBeInTheDocument();
+    expect(screen.getAllByText(copy("widget.session.time_unknown")).length).toBeGreaterThan(0);
+  });
+
+  it("migrates legacy selected session ids to the owning project and keeps a saved empty project", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: ["session-a1", "saved-empty"],
+          selectedProjects: [
+            { id: "session-a1", label: "Legacy selected session" },
+            { id: "saved-empty", label: "Archived workspace", path: "D:\\Work\\Archived workspace" },
+          ],
+          selectedLimitIds: [],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        projectStatus: {
+          projects: [{
+            id: "project-a", label: "Token Eyes", red: 0, yellow: 1, green: 0, unknown: 0,
+            sessions: [{ id: "session-a1", label: "修复桌面小组件", status: "yellow", state: "running", updatedAt: new Date().toISOString() }],
+          }],
+          recentProjects: [],
+        },
+        limits: [],
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+
+    render(<WidgetsPage />);
+
+    await screen.findByText("Archived workspace");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({
+          selectedProjectIds: ["project-a", "saved-empty"],
+          selectedProjects: expect.arrayContaining([
+            expect.objectContaining({ id: "project-a", label: "Token Eyes" }),
+            expect.objectContaining({ id: "saved-empty", label: "Archived workspace" }),
+          ]),
+        }),
+      });
+    });
+    expect(document.querySelectorAll(".tt-widget-project-row")).toHaveLength(2);
+  });
+
+  it("migrates a legacy selected session through recent-project metadata after it leaves the active window", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          activeSessionWindow: "1h",
+          selectedProjectIds: ["session-old"],
+          selectedProjects: [{ id: "session-old", label: "Legacy selected session" }],
+          selectedLimitIds: [],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        projectStatus: {
+          projects: [],
+          recentProjects: [{
+            id: "project-a",
+            label: "Token Eyes",
+            updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            sessionIds: ["session-old"],
+          }],
+        },
+        limits: [],
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+
+    render(<WidgetsPage />);
+
+    await screen.findByText("Token Eyes");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({
+          selectedProjectIds: ["project-a"],
+          selectedProjects: [expect.objectContaining({ id: "project-a", label: "Token Eyes" })],
+        }),
+      });
+    });
+    expect(document.querySelectorAll(".tt-widget-project-row")).toHaveLength(1);
+  });
+
+  it("persists corrected selected-project metadata even when the project id array is already current", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    const invoke = vi.fn(async (command, payload) => {
+      if (command === "local_server_status") {
+        return { running: true, url: "http://127.0.0.1:7681" };
+      }
+      if (command === "get_desktop_widget_prefs") {
+        return {
+          visible: true,
+          selectedProjectIds: ["project-a"],
+          selectedProjects: [{ id: "session-a1", label: "Legacy selected session" }],
+          selectedLimitIds: [],
+        };
+      }
+      if (command === "set_desktop_widget_prefs") return payload?.prefs;
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        projectStatus: {
+          projects: [{
+            id: "project-a", label: "Token Eyes", red: 0, yellow: 1, green: 0, unknown: 0,
+            sessions: [{ id: "session-a1", label: "修复桌面小组件", status: "yellow", state: "running", updatedAt: new Date().toISOString() }],
+          }],
+          recentProjects: [],
+        },
+        limits: [],
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+
+    render(<WidgetsPage />);
+
+    await screen.findByText("Token Eyes");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("set_desktop_widget_prefs", {
+        prefs: expect.objectContaining({
+          selectedProjectIds: ["project-a"],
+          selectedProjects: [expect.objectContaining({ id: "project-a", label: "Token Eyes" })],
+        }),
+      });
+    });
+    expect(document.querySelectorAll(".tt-widget-project-row")).toHaveLength(1);
   });
 
   it("places the desktop-widget visibility action in the page header", async () => {
@@ -323,12 +588,130 @@ describe("WidgetsPage Windows desktop widget", () => {
     window.__TAURI__ = { core: { invoke } };
 
     render(<WidgetsPage />);
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     const heading = screen.getByTestId("widgets-heading");
     const toggle = await within(heading).findByRole("button", {
       name: copy("widgets.windows.show"),
     });
     expect(toggle).toBeEnabled();
+  });
+
+  it("shows an explicit disabled desktop-app explanation in a Windows browser preview", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+
+    render(<WidgetsPage />);
+
+    const heading = screen.getByTestId("widgets-heading");
+    expect(await within(heading).findByRole("button", {
+      name: copy("widgets.windows.unavailable"),
+    })).toBeDisabled();
+    expect(within(heading).queryByRole("button", {
+      name: copy("widgets.windows.show"),
+    })).not.toBeInTheDocument();
+  });
+
+  it("uses the Tauri internals bridge when that is the available native capability", async () => {
+    const invoke = vi.fn(async (command) => (
+      command === "get_desktop_widget_prefs" ? { visible: true } : undefined
+    ));
+    window.__TAURI_INTERNALS__ = { invoke };
+
+    render(<WidgetsPage />);
+
+    expect(await within(screen.getByTestId("widgets-heading")).findByRole("button", {
+      name: copy("widgets.windows.hide"),
+    })).toBeEnabled();
+    expect(invoke).toHaveBeenCalledWith("get_desktop_widget_prefs");
+  });
+
+  it("uses the native command result instead of assuming visibility changed", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.fn(async (command) => {
+      if (command === "get_desktop_widget_prefs") return { visible: false };
+      if (command === "show_desktop_widget") return { visible: false };
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+
+    render(<WidgetsPage />);
+
+    const heading = screen.getByTestId("widgets-heading");
+    await user.click(await within(heading).findByRole("button", {
+      name: copy("widgets.windows.show"),
+    }));
+    expect(invoke).toHaveBeenCalledWith("show_desktop_widget");
+    expect(within(heading).getByRole("button", { name: copy("widgets.windows.show") }))
+      .toBeEnabled();
+  });
+
+  it("re-reads native visibility when the main window regains focus", async () => {
+    let visible = false;
+    const invoke = vi.fn(async (command) => (
+      command === "get_desktop_widget_prefs" ? { visible } : undefined
+    ));
+    window.__TAURI__ = { core: { invoke } };
+
+    render(<WidgetsPage />);
+
+    const heading = screen.getByTestId("widgets-heading");
+    const initialToggle = await within(heading).findByRole("button", {
+      name: copy("widgets.windows.show"),
+    });
+    await waitFor(() => expect(initialToggle).toBeEnabled());
+    visible = true;
+    act(() => window.dispatchEvent(new Event("focus")));
+    expect(await within(heading).findByRole("button", {
+      name: copy("widgets.windows.hide"),
+    })).toBeEnabled();
+  });
+
+  it("does not let an older visibility reload overwrite a newer show command", async () => {
+    const user = userEvent.setup();
+    const pendingReads = [];
+    let deferVisibilityReads = false;
+    const invoke = vi.fn(async (command) => {
+      if (command === "get_desktop_widget_prefs") {
+        if (!deferVisibilityReads) return { visible: false };
+        return new Promise((resolve) => pendingReads.push(resolve));
+      }
+      if (command === "show_desktop_widget") return { visible: true };
+      return undefined;
+    });
+    window.__TAURI__ = { core: { invoke } };
+
+    render(<WidgetsPage />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const heading = screen.getByTestId("widgets-heading");
+    const show = await within(heading).findByRole("button", {
+      name: copy("widgets.windows.show"),
+    });
+    await waitFor(() => expect(show).toBeEnabled());
+    deferVisibilityReads = true;
+    act(() => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => expect(pendingReads).toHaveLength(1));
+
+    await act(async () => {
+      await user.click(show);
+    });
+    expect(within(heading).getByRole("button", {
+      name: copy("widgets.windows.hide"),
+    })).toBeEnabled();
+
+    await act(async () => {
+      pendingReads.splice(0).forEach((resolve) => resolve({ visible: false }));
+      await Promise.resolve();
+    });
+    expect(within(heading).getByRole("button", {
+      name: copy("widgets.windows.hide"),
+    })).toBeEnabled();
   });
 
   it("migrates two legacy quota-window selections into two configured widget plans", async () => {
@@ -486,8 +869,17 @@ describe("WidgetsPage Windows desktop widget", () => {
 
   it("shows and hides the independent widget without macOS-only settings", async () => {
     const user = userEvent.setup();
+    let visible = false;
     const invoke = vi.fn(async (command) => {
-      if (command === "get_desktop_widget_prefs") return { visible: false };
+      if (command === "get_desktop_widget_prefs") return { visible };
+      if (command === "show_desktop_widget") {
+        visible = true;
+        return { visible };
+      }
+      if (command === "hide_desktop_widget") {
+        visible = false;
+        return { visible };
+      }
       return undefined;
     });
     window.__TAURI__ = { core: { invoke } };
@@ -590,6 +982,8 @@ describe("WidgetsPage Windows desktop widget", () => {
         return {
           visible: true,
           selectedProjectIds: ["project-a"],
+          selectedProjects: [{ id: "project-a", label: "Token Eyes", path: "" }],
+          selectedLimitIds: [],
         };
       }
       if (command === "set_desktop_widget_prefs") return payload?.prefs;
@@ -867,7 +1261,7 @@ describe("WidgetsPage Windows desktop widget", () => {
               usedPercent: 42,
               resetAt: "2026-08-20T03:33:19.000Z",
               notes: "主力开发账号",
-              expiresAt: "2026-08-30T14:24:24.000Z",
+              expiresAt: "2100-08-30T14:24:24.000Z",
             },
             {
               id: "codex:plus:weekly",
@@ -894,7 +1288,7 @@ describe("WidgetsPage Windows desktop widget", () => {
               window: "Total Usage",
               usedPercent: 100,
               resetAt: "2026-08-22T04:17:12.000Z",
-              expiresAt: "2026-08-22T04:17:12.000Z",
+              expiresAt: "2100-08-22T04:17:12.000Z",
             },
             {
               id: "cursor:pro:auto_composer",
@@ -964,8 +1358,8 @@ describe("WidgetsPage Windows desktop widget", () => {
     expect(planCard).toHaveAttribute("data-layout-density", "content");
     expect(within(planCard).getAllByText(/重置时间:/u)).toHaveLength(2);
     expect(planCard.querySelectorAll('[data-align="end"]')).toHaveLength(2);
-    expect(within(planCard).getByText(/2026\/08\/30/u)).toBeInTheDocument();
-    expect(within(planCard).queryByText("2026-08-30T14:24:24.000Z")).not.toBeInTheDocument();
+    expect(within(planCard).getByText(/2100\/08\/30/u)).toBeInTheDocument();
+    expect(within(planCard).queryByText("2100-08-30T14:24:24.000Z")).not.toBeInTheDocument();
     expect(within(planCard).queryByText("主力开发账号")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("主力开发账号")).not.toBeInTheDocument();
     expect(plan).toBeChecked();
@@ -1005,5 +1399,74 @@ describe("WidgetsPage Windows desktop widget", () => {
         "codex:plus:weekly",
       ]);
     });
+  });
+
+  it("shows active plans directly and keeps expired and scheduled counts independently collapsible", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        projectStatus: { projects: [] },
+        limits: [
+          { id: "active:total", planId: "active", provider: "Codex", planLabel: "", accountLabel: "Active account", window: "Total Usage", expiresAt: "2100-01-01" },
+          { id: "expired-1:total", planId: "expired-1", provider: "Cursor", planLabel: "Expired one", accountLabel: "", window: "Total Usage", expiresAt: "2020-01-01" },
+          { id: "expired-2:total", planId: "expired-2", provider: "Codex", planLabel: "", accountLabel: "Expired account", window: "Total Usage", expiresAt: "2020-01-01T00:00:00.000Z" },
+          { id: "scheduled:total", planId: "scheduled", provider: "Claude", planLabel: "", accountLabel: "", window: "Total Usage", startsAt: "2100-01-01" },
+        ],
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+
+    render(<WidgetsPage />);
+
+    const activePlanButton = await screen.findByRole("button", { name: "Codex - Active account" });
+    expect(activePlanButton).toBeInTheDocument();
+    expect(activePlanButton.closest("article")).toHaveTextContent("2100/01/01 23:59");
+    expect(screen.getAllByTestId("widget-limit-plan-card")).toHaveLength(1);
+    const expiredToggle = screen.getByRole("button", {
+      name: copy("settings.token_plan.expired_group", { count: 2 }),
+    });
+    const scheduledToggle = screen.getByRole("button", {
+      name: copy("settings.token_plan.scheduled_group", { count: 1 }),
+    });
+    expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
+    expect(expiredToggle).toHaveAttribute("aria-controls", "widget-expired-limit-plan-panel");
+    expect(scheduledToggle).toHaveAttribute("aria-expanded", "false");
+    expect(scheduledToggle).toHaveAttribute("aria-controls", "widget-scheduled-limit-plan-panel");
+    expect(screen.queryByTestId("widget-expired-limit-plan-list")).not.toBeInTheDocument();
+
+    await user.click(expiredToggle);
+    const expiredList = screen.getByTestId("widget-expired-limit-plan-list");
+    expect(expiredToggle).toHaveAttribute("aria-expanded", "true");
+    expect(expiredList).toHaveAttribute("id", "widget-expired-limit-plan-panel");
+    expect(expiredList).toHaveClass("tt-widget-limit-plan-grid");
+    expect(within(expiredList).getByRole("button", { name: "Cursor - Expired one" }))
+      .toBeInTheDocument();
+    expect(within(expiredList).getByRole("button", { name: "Codex - Expired account" }))
+      .toBeInTheDocument();
+    expect(within(expiredList).getAllByText((content) => (
+      content.startsWith(`${copy("settings.token_plan.expired_at")}:`)
+    ))).toHaveLength(2);
+    expect(expiredList).toHaveTextContent("2020-01-01 23:59");
+    expect(expiredList).not.toHaveTextContent(
+      copy("settings.token_plan.validity_minutes", { minutes: 0 }),
+    );
+
+    await user.click(expiredToggle);
+    expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("widget-expired-limit-plan-list")).not.toBeInTheDocument();
+
+    await user.click(scheduledToggle);
+    expect(scheduledToggle).toHaveAttribute("aria-expanded", "true");
+    const scheduledList = screen.getByTestId("widget-scheduled-limit-plan-list");
+    expect(scheduledList).toHaveAttribute("id", "widget-scheduled-limit-plan-panel");
+    expect(scheduledList).toHaveClass("tt-widget-limit-plan-grid");
+    expect(within(scheduledList).getByText("Claude"))
+      .toBeInTheDocument();
+    expect(scheduledList).toHaveTextContent(`${copy("settings.token_plan.starts_at")}:`);
+    expect(scheduledList).toHaveTextContent("2100-01-01 00:00");
   });
 });

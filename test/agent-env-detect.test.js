@@ -229,3 +229,33 @@ test("detectAgentEnvironment keeps a selected install path and reports the resol
   }
 });
 
+test("detectAgentEnvironment uses the resolved default WorkBuddy home and reports database activity", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-agent-env-workbuddy-default-"));
+  try {
+    const workbuddyHome = path.join(tmp, ".workbuddy");
+    const databasePath = path.join(workbuddyHome, "workbuddy.db");
+    const activityTime = new Date("2026-08-26T07:08:57.000Z");
+    await fs.promises.mkdir(workbuddyHome, { recursive: true });
+    await fs.promises.writeFile(databasePath, "workbuddy-session-database", "utf8");
+    await fs.promises.utimes(databasePath, activityTime, activityTime);
+
+    const result = detectAgentEnvironment(
+      "workbuddy",
+      { dataDirectories: {} },
+      {
+        home: tmp,
+        platform: "win32",
+        env: {},
+        detectInstallation: () => ({ installed: true, executablePath: "workbuddy", currentVersion: null }),
+      },
+    );
+
+    assert.equal(result.configuredPath, workbuddyHome);
+    assert.equal(result.dataPath, workbuddyHome);
+    assert.equal(result.status, "detected");
+    assert.equal(result.evidence, "session_database");
+    assert.equal(result.latestActivityAt, activityTime.toISOString());
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});

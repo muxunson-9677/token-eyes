@@ -86,6 +86,7 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
       listHistory: () => [],
       listNotificationPending: () => [],
     };
+    const lifecycleCalls = [];
     const handler = createLocalApiHandler({
       queuePath,
       trackerDataDir: root,
@@ -102,14 +103,18 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
           },
         },
       }),
-      codexLifecycleProvider: async () => [{
-        agent: "codex",
-        projectId: "project-safe",
-        projectLabel: "Token Eyes",
-        sessionId: "session-safe",
-        status: "running",
-        updatedAt: "2026-07-29T06:30:00.000Z",
-      }],
+      codexLifecycleProvider: async (options) => {
+        lifecycleCalls.push(options);
+        return [{
+          agent: "codex",
+          projectId: "project-safe",
+          projectLabel: "Token Eyes",
+          sessionId: "session-safe",
+          taskLabel: "修复桌面小组件",
+          status: "running",
+          updatedAt: "2026-07-29T06:30:00.000Z",
+        }];
+      },
     });
     const res = response();
     const handled = await handler(
@@ -129,8 +134,11 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
     assert.equal(body.totals.tokens, 100);
     assert.equal(body.totals.models[0].name, "gpt-5");
     assert.equal(body.projectStatus.yellow, 1);
+    assert.equal(body.projectStatus.projects[0].label, "Token Eyes");
+    assert.equal(body.projectStatus.projects[0].sessions[0].label, "修复桌面小组件");
     assert.equal(body.limits[0].usedPercent, 21);
     assert.equal(body.pendingReset.id, "reset-safe");
+    assert.equal(lifecycleCalls[0].includeProjectLabels, true);
 
     const invalidWindowResponse = response();
     await handler(

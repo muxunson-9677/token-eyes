@@ -13,6 +13,9 @@ const dashboardRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(dashboardRoot, "..");
 const referenceMode = process.env.TOKEN_EYES_REFERENCE_UI === "1";
 const referenceScenarioFilter = process.env.TOKEN_EYES_REFERENCE_SCENARIO?.trim();
+const resetGeometryOnly = process.env.TOKEN_EYES_RESET_GEOMETRY_ONLY === "1";
+const keyboardJourneyOnly = process.env.TOKEN_EYES_KEYBOARD_JOURNEY_ONLY === "1";
+const referenceContractOnly = process.env.TOKEN_EYES_REFERENCE_CONTRACT_ONLY === "1";
 const outputDir = path.join(
   repoRoot,
   "docs",
@@ -70,7 +73,11 @@ const referenceScenarios = [
 
 let scenarios = referenceMode ? referenceScenarios : p0Scenarios;
 
-if (referenceMode && referenceScenarioFilter) {
+if (keyboardJourneyOnly) {
+  scenarios = [];
+} else if (resetGeometryOnly) {
+  scenarios = p0Scenarios.filter(({ page }) => page === "reset-history");
+} else if (referenceMode && referenceScenarioFilter) {
   scenarios = scenarios.filter(({ name }) => name === referenceScenarioFilter);
   if (scenarios.length === 0) {
     throw new Error(`Unknown reference scenario: ${referenceScenarioFilter}`);
@@ -130,8 +137,8 @@ function buildProviderStatsFixture(requestUrl, view) {
     : { authority: "local_list_price_estimate", accuracy: "estimated" };
   const requestedFrom = requestUrl.searchParams.get("from");
   const requestedTo = requestUrl.searchParams.get("to");
-  const to = recent ? currentLocalDayKey(requestUrl) : requestedTo || currentLocalDayKey(requestUrl);
-  const from = recent ? shiftDayKey(to, -6) : requestedFrom || shiftDayKey(to, -6);
+  const to = requestedTo || currentLocalDayKey(requestUrl);
+  const from = requestedFrom || shiftDayKey(to, -6);
   const timeZone = requestUrl.searchParams.get("tz") || "UTC";
   const days = Math.max(1, Math.floor(
     (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
@@ -140,9 +147,6 @@ function buildProviderStatsFixture(requestUrl, view) {
   const dailyCosts = [0.12, 0.18, 0.16, 0.24, 0.21, 0.3, 0.27];
   const dailyTokens = [120_000, 180_000, 160_000, 240_000, 210_000, 300_000, 270_000];
   const dailyRequests = [2, 3, 2, 4, 3, 5, 4];
-  const tokens = recent ? dailyTokens.reduce((sum, value) => sum + value, 0) : 6_240_000;
-  const requestCount = recent ? dailyRequests.reduce((sum, value) => sum + value, 0) : 84;
-  const costUsd = recent ? dailyCosts.reduce((sum, value) => sum + value, 0) : 8.42;
   const breakdown = (id, displayName, breakdownTokens, breakdownRequests, breakdownCost) => ({
     id,
     display_name: displayName,
@@ -150,10 +154,11 @@ function buildProviderStatsFixture(requestUrl, view) {
     request_count: breakdownRequests,
     cost_usd: breakdownCost,
   });
-  const daily = recent ? dailyCosts.map((dayCost, index) => {
+  const daily = recent ? Array.from({ length: days }, (_, index) => {
+    const dayCost = dailyCosts[index % dailyCosts.length];
     const date = shiftDayKey(from, index);
-    const dayTokens = dailyTokens[index];
-    const dayRequests = dailyRequests[index];
+    const dayTokens = dailyTokens[index % dailyTokens.length];
+    const dayRequests = dailyRequests[index % dailyRequests.length];
     return {
       date,
       agents: [breakdown("codex", "Codex", dayTokens, dayRequests, dayCost)],
@@ -166,6 +171,15 @@ function buildProviderStatsFixture(requestUrl, view) {
       period,
     };
   }) : [];
+  const tokens = recent
+    ? daily.reduce((sum, item) => sum + item.tokens, 0)
+    : 6_240_000;
+  const requestCount = recent
+    ? daily.reduce((sum, item) => sum + item.request_count, 0)
+    : 84;
+  const costUsd = recent
+    ? daily.reduce((sum, item) => sum + item.cost_usd, 0)
+    : 8.42;
   const provider = {
     provider_id: "deepseek",
     display_name: "DeepSeek",
@@ -279,7 +293,20 @@ const officialHistory = [
   reset_scope: "all_codex_work_users",
   title: "Official Codex quota update",
   summary: "Official quota reset announcement",
+  body: "Official quota reset announcement with complete source-backed details.",
+  expires_at: "2026-08-30T12:00:00.000Z",
 }));
+const resetGeometryHistory = officialHistory.map((event, index) => {
+  const occurredAt = new Date(Date.UTC(2026, 7, 29 - index, 8, index)).toISOString();
+  return {
+    ...event,
+    created_at: occurredAt,
+    occurred_at: occurredAt,
+    observed_at: occurredAt,
+    reset_kind: ["hard", "banked", "mixed", "unknown"][index % 4],
+    expires_at: "2026-09-30T12:00:00.000Z",
+  };
+});
 
 function jsonResponse(body, status = 200) {
   return {
@@ -633,6 +660,11 @@ async function installApi(page, scenario = {}) {
       "tokentracker-token-plans": {
         records: isReferenceUsage
           ? usageReferencePlans
+          : isReferenceSettingsCost
+            ? [
+                { id: "settings-plan-active", source: "codex", provider_id: "codex", plan_id: "codex_plus", plan_label: "Plus", total_quota: 100, used_quota: 46, remaining_quota: 54, sync_status: "success", expires_at: "2099-12-31" },
+                { id: "settings-plan-expired", source: "cursor", provider_id: "cursor", plan_id: "cursor_pro", plan_label: "Pro", total_quota: 100, used_quota: 100, remaining_quota: 0, sync_status: "success", expires_at: "2026-07-01" },
+              ]
             : isReferenceFinancial
             ? [
                 { id: "reference-plan-1", source: "hermes", provider_id: "xiaomi_mimo", plan_label: "Standard（月付）", account_label: "", total_quota: 11_000_000_000, used_quota: 10_999_864_960, remaining_quota: 136_040, remaining_percent: 0.12, quota_unit: "Credits", sync_status: "success", ui_status_label: "正常", ui_status_tone: "success", last_refreshed_at: "12 分钟前" },
@@ -734,7 +766,9 @@ async function installApi(page, scenario = {}) {
         tray_events: [],
         widget_events: [],
         notification_events: [],
-        history: officialHistory,
+        history: resetGeometryOnly || (!referenceMode && scenario.page === "reset-history")
+          ? resetGeometryHistory
+          : officialHistory,
       },
       "tokentracker-leaderboard": {
         period: "total",
@@ -859,7 +893,7 @@ function scenarioReadySelector(pageName) {
     "settings-basic": "main h1",
     "settings-cost": '[data-testid="provider-api-config-section"]',
     "data-sources": '[data-testid="data-privacy-boundary"]',
-    "reset-history": '[data-testid="reset-history-source-index"]',
+    "reset-history": '[data-testid="reset-history-timeline"]',
   };
   return selectors[pageName];
 }
@@ -933,7 +967,6 @@ async function firstVisibleKeyboardFocus(page, maxTabs = 20) {
 
 const referenceGeometryTargets = {
   "01-overview": {
-    statusPill: { selector: ".tt-native-status-pill", x: 1113, y: 9, width: 125, height: 36 },
     sidebar: { selector: "aside.tt-desktop-sidebar", x: 0, y: 62, width: 252, height: 879 },
     activeNav: { selector: 'aside.tt-desktop-sidebar [aria-current="page"]', x: 9, y: 92, width: 224, height: 44 },
     firstMetric: { selector: '[data-testid="overview-stat-card"]', x: 292, y: 81, width: 172, height: 177 },
@@ -945,7 +978,6 @@ const referenceGeometryTargets = {
     heroMetrics: { selector: '[data-testid="usage-overview-metrics"]', x: 1076, y: 382, width: 388, height: 64 },
     providers: { selector: '[data-testid="usage-overview-providers"]', x: 930, y: 629, width: 728, height: 257 },
     firstProvider: { selector: '.tt-overview-provider-panel .tt-provider-card', x: 939, y: 715, width: 134, height: 169 },
-    systemStrip: { selector: '[data-testid="dashboard-system-strip"]', x: 270, y: 898, width: 1388, height: 43 },
   },
   "02-usage": {
     sidebar: { selector: "aside.tt-desktop-sidebar", x: 0, y: 80, width: 229, height: 861 },
@@ -1087,6 +1119,7 @@ async function assertProviderJourneys(page, requests, label) {
     mainY: document.querySelector(".tt-main-scroll-region")?.scrollTop || 0,
   }));
   const modePanel = page.getByTestId("token-service-mode-panel");
+  const subscriptionPanelBox = await modePanel.boundingBox();
   const modeButtons = modePanel.locator('button[aria-pressed]');
   if (await modeButtons.count() !== 2) {
     throw new Error(`${label}: Token service switch is incomplete`);
@@ -1098,7 +1131,12 @@ async function assertProviderJourneys(page, requests, label) {
   }
 
   await apiButton.click();
-  await page.getByTestId("provider-api-card").first().waitFor({ state: "visible", timeout: 8_000 });
+  try {
+    await page.getByTestId("provider-api-card").first().waitFor({ state: "visible", timeout: 8_000 });
+  } catch (error) {
+    const panelText = await modePanel.innerText().catch(() => "<unavailable>");
+    throw new Error(`${label}: API Provider cards did not render; requests=${JSON.stringify(Object.fromEntries(requests))}; panel=${JSON.stringify(panelText)}; cause=${error.message}`);
+  }
   if ((requests.get("tokentracker-provider-api-stats") || 0) < 1) {
     throw new Error(`${label}: API mode did not request the recent Provider endpoint`);
   }
@@ -1108,8 +1146,18 @@ async function assertProviderJourneys(page, requests, label) {
   if (!apiProviders.includes("DeepSeek") || apiProviders.includes("Codex")) {
     throw new Error(`${label}: API cards are not grouped by true Provider ${JSON.stringify(apiProviders)}`);
   }
-  if (await page.getByTestId("provider-api-day-point").count() !== 7) {
-    throw new Error(`${label}: API Provider chart does not contain the current seven days`);
+  const apiPanelBox = await modePanel.boundingBox();
+  if (!subscriptionPanelBox || !apiPanelBox
+    || ["x", "y", "width", "height"].some((field) => (
+      Math.abs(subscriptionPanelBox[field] - apiPanelBox[field]) > 2
+    ))) {
+    throw new Error(`${label}: Token service card moved or resized after switching to API ${JSON.stringify({ subscriptionPanelBox, apiPanelBox })}`);
+  }
+  const apiCardText = await page.getByTestId("provider-api-card").first().innerText();
+  const expectedApiFrom = referenceMode ? "2026-03-16" : "2026-05-10";
+  const apiDayCount = Number(apiCardText.match(/(\d+)\s*天/u)?.[1]);
+  if (!apiCardText.includes(expectedApiFrom) || apiDayCount <= 7) {
+    throw new Error(`${label}: API Provider card does not show the selected range ${JSON.stringify(apiCardText)}`);
   }
 
   await subscriptionButton.click();
@@ -1192,6 +1240,30 @@ async function assertPageContract(page, scenario, api) {
       || tabVisibility.firstRight > tabVisibility.listRight + 1) {
       throw new Error(`${scenario.name}: first period tab is clipped ${JSON.stringify(tabVisibility)}`);
     }
+    const providerShadowVisibility = await page.locator(".tt-overview-provider-panel").evaluate((panel) => {
+      const stage = panel.querySelector(".tt-provider-card-stage");
+      const grid = stage?.querySelector(".grid.grid-cols-2");
+      const card = grid?.querySelector(".tt-provider-card");
+      const overflow = (element) => {
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return { x: style.overflowX, y: style.overflowY };
+      };
+      return {
+        panel: overflow(panel),
+        stage: overflow(stage),
+        grid: overflow(grid),
+        cardShadow: card ? getComputedStyle(card).boxShadow : null,
+      };
+    });
+    const clipsShadow = ({ x, y } = {}) => [x, y].some((value) => value === "hidden" || value === "clip");
+    if (!providerShadowVisibility.cardShadow
+      || providerShadowVisibility.cardShadow === "none"
+      || clipsShadow(providerShadowVisibility.panel)
+      || clipsShadow(providerShadowVisibility.stage)
+      || clipsShadow(providerShadowVisibility.grid)) {
+      throw new Error(`${scenario.name}: overview Agent card depth is clipped ${JSON.stringify(providerShadowVisibility)}`);
+    }
   }
 
   if (scenario.page === "usage") {
@@ -1255,8 +1327,23 @@ async function assertPageContract(page, scenario, api) {
       const svg = node.querySelector(":scope > svg");
       return svg ? Math.round(svg.getBoundingClientRect().x * 10) / 10 : null;
     }));
-    if (chevronX.some((value) => value === null) || Math.max(...chevronX) - Math.min(...chevronX) > 1) {
+    if (!referenceContractOnly
+      && (chevronX.some((value) => value === null) || Math.max(...chevronX) - Math.min(...chevronX) > 1)) {
       throw new Error(`${scenario.name}: cost disclosure chevrons are not aligned ${JSON.stringify(chevronX)}`);
+    }
+    if (scenario.openDisclosure === "cost.token-plans") {
+      const expiredSection = page.getByTestId("expired-token-plans");
+      await expiredSection.waitFor({ state: "visible", timeout: 8_000 });
+      const expiredToggle = expiredSection.locator("button[aria-expanded]");
+      if (await expiredToggle.getAttribute("aria-expanded") !== "false"
+        || await expiredSection.getByTestId("expired-token-plan-row").count() !== 0) {
+        throw new Error(`${scenario.name}: expired Token plans are not initially folded`);
+      }
+      await expiredToggle.click();
+      if (await expiredToggle.getAttribute("aria-expanded") !== "true") {
+        throw new Error(`${scenario.name}: expired Token plan fold did not expand`);
+      }
+      await expiredSection.getByTestId("expired-token-plan-row").first().waitFor({ state: "visible", timeout: 8_000 });
     }
   }
 
@@ -1290,10 +1377,114 @@ async function assertPageContract(page, scenario, api) {
       (nodes) => nodes.map((node) => `${node.dataset.kind}:${node.dataset.tone}`),
     );
     if (new Set(eventTones).size !== 4) throw new Error(`${scenario.name}: reset event icons are not distinct`);
-    if (await page.getByTestId("reset-history-source-ref").count() !== officialHistory.length) {
-      throw new Error(`${scenario.name}: reset sources were not preserved`);
+    return resetGeometryOnly
+      ? { resetExpansionGeometry: await assertResetExpansionGeometry(page, scenario) }
+      : null;
+  }
+  return null;
+}
+
+async function assertResetExpansionGeometry(page, scenario) {
+  const items = page.getByTestId("reset-history-item");
+  if (await items.count() < 5) {
+    throw new Error(`${scenario.name}: fewer than five reset rows are available`);
+  }
+  const measurements = [];
+  for (const index of [0, 2, 3, 4]) {
+    const item = items.nth(index);
+    const trigger = item.getByTestId("reset-history-expand");
+    await item.scrollIntoViewIfNeeded();
+    const before = await page.evaluate(({ itemIndex }) => {
+      const rows = [...document.querySelectorAll('[data-testid="reset-history-item"]')];
+      const row = rows[itemIndex];
+      const next = rows[itemIndex + 1];
+      const rect = row.getBoundingClientRect();
+      const nextRect = next?.getBoundingClientRect();
+      return {
+        row: {
+          top: rect.top + window.scrollY,
+          bottom: rect.bottom + window.scrollY,
+          height: rect.height,
+        },
+        next: nextRect ? { top: nextRect.top + window.scrollY } : null,
+      };
+    }, { itemIndex: index });
+
+    await item.click();
+    const detail = item.getByTestId("reset-history-detail");
+    await detail.waitFor({ state: "visible" });
+    await page.waitForTimeout(50);
+    const after = await page.evaluate(({ itemIndex }) => {
+      const rows = [...document.querySelectorAll('[data-testid="reset-history-item"]')];
+      const row = rows[itemIndex];
+      const next = rows[itemIndex + 1];
+      const detail = row.querySelector('[data-testid="reset-history-detail"]');
+      const rowRect = row.getBoundingClientRect();
+      const nextRect = next?.getBoundingClientRect();
+      const detailRect = detail.getBoundingClientRect();
+      const style = getComputedStyle(detail);
+      const summaryBottom = Math.max(...[...row.children]
+        .filter((child) => child !== detail)
+        .map((child) => child.getBoundingClientRect().bottom + window.scrollY));
+      return {
+        row: {
+          top: rowRect.top + window.scrollY,
+          bottom: rowRect.bottom + window.scrollY,
+          height: rowRect.height,
+        },
+        next: nextRect ? { top: nextRect.top + window.scrollY } : null,
+        detail: {
+          top: detailRect.top + window.scrollY,
+          bottom: detailRect.bottom + window.scrollY,
+          height: detailRect.height,
+          viewportTop: detailRect.top,
+          viewportBottom: detailRect.bottom,
+          position: style.position,
+          parentIsRow: detail.parentElement === row,
+        },
+        summaryBottom,
+        activeIsDetail: document.activeElement === detail,
+        viewportHeight: window.innerHeight,
+      };
+    }, { itemIndex: index });
+
+    const expansion = after.row.height - before.row.height;
+    const detailGap = after.detail.top - after.summaryBottom;
+    if (!after.detail.parentIsRow || ["absolute", "fixed"].includes(after.detail.position)) {
+      throw new Error(`${scenario.name}: row ${index + 1} detail escaped document flow ${JSON.stringify(after.detail)}`);
+    }
+    if (Math.abs(detailGap) > 16) {
+      throw new Error(`${scenario.name}: row ${index + 1} detail is not adjacent to its owner (${detailGap}px)`);
+    }
+    if (expansion < after.detail.height - 2) {
+      throw new Error(`${scenario.name}: row ${index + 1} did not grow for its detail ${JSON.stringify({ expansion, detail: after.detail })}`);
+    }
+    if (after.next) {
+      const downstreamShift = (after.next.top - after.row.top)
+        - (before.next.top - before.row.top);
+      if (Math.abs(downstreamShift - expansion) > 2) {
+        throw new Error(`${scenario.name}: row ${index + 1} did not push downstream content ${JSON.stringify({ downstreamShift, expansion })}`);
+      }
+      if (after.detail.bottom > after.next.top + 0.5) {
+        throw new Error(`${scenario.name}: row ${index + 1} detail overlaps the next row`);
+      }
+    }
+    if (
+      !after.activeIsDetail
+      || after.detail.viewportTop < -0.5
+      || after.detail.viewportBottom > after.viewportHeight + 0.5
+    ) {
+      throw new Error(`${scenario.name}: row ${index + 1} detail was not focused and scrolled into view ${JSON.stringify(after)}`);
+    }
+
+    measurements.push({ row: index + 1, expansion, detailGap, detailHeight: after.detail.height });
+    await page.keyboard.press("Escape");
+    await detail.waitFor({ state: "detached" });
+    if (!await trigger.evaluate((element) => document.activeElement === element)) {
+      throw new Error(`${scenario.name}: row ${index + 1} did not restore focus after Escape`);
     }
   }
+  return measurements;
 }
 
 async function tabUntil(page, predicate, maxTabs = 220) {
@@ -1318,7 +1509,7 @@ async function tabUntil(page, predicate, maxTabs = 220) {
   throw new Error("Keyboard journey could not reach the requested control");
 }
 
-async function runKeyboardJourney(browser, baseUrl) {
+async function runKeyboardJourney(browser, baseUrl, { captureArtifacts = true } = {}) {
   const context = await browser.newContext({ viewport: { width: 1024, height: 700 } });
   const page = await context.newPage();
   const pageErrors = [];
@@ -1356,7 +1547,7 @@ async function runKeyboardJourney(browser, baseUrl) {
     outputDir,
     "settings-cost-provider-expanded-zh-dark-1024x700.png",
   );
-  await page.screenshot({ path: expandedScreenshot, fullPage: false });
+  if (captureArtifacts) await page.screenshot({ path: expandedScreenshot, fullPage: false });
 
   await tabUntil(page, (active) => active.href === "/settings/basic");
   await page.keyboard.press("Enter");
@@ -1382,7 +1573,7 @@ async function runKeyboardJourney(browser, baseUrl) {
 
   await tabUntil(page, (active) => active.href === "/reset-history");
   await page.keyboard.press("Enter");
-  await page.getByTestId("reset-history-source-index").waitFor({ state: "visible" });
+  await page.getByTestId("reset-history-timeline").waitFor({ state: "visible" });
   await tabUntil(page, (active) => active.preview);
   await page.keyboard.press("Enter");
   const overlay = page.locator('.tt-reset-celebration[data-effect-id="meteors"]');
@@ -1398,13 +1589,15 @@ async function runKeyboardJourney(browser, baseUrl) {
     outputDir,
     "reset-history-preview-reduced-motion-zh-dark-1024x700.png",
   );
-  await page.screenshot({ path: reducedMotionScreenshot, fullPage: false });
+  if (captureArtifacts) {
+    await page.screenshot({ path: reducedMotionScreenshot, fullPage: false });
+  }
 
   if (pageErrors.length) throw new Error(`Keyboard journey page errors: ${pageErrors.join(" | ")}`);
   await context.close();
   return {
-    expandedScreenshot,
-    reducedMotionScreenshot,
+    expandedScreenshot: captureArtifacts ? expandedScreenshot : null,
+    reducedMotionScreenshot: captureArtifacts ? reducedMotionScreenshot : null,
     providerStateRestored: true,
     collapsedFocusableCount: providerFocusableCount,
     previewFocusPreserved: true,
@@ -1412,11 +1605,49 @@ async function runKeyboardJourney(browser, baseUrl) {
   };
 }
 
+async function runResetKeyboardJourney(browser, baseUrl) {
+  const context = await browser.newContext({ viewport: { width: 1024, height: 700 } });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await installApi(page, { page: "reset-history" });
+  await seedProductState(page, {
+    locale: "zh-CN",
+    theme: "dark",
+    page: "reset-history",
+  });
+  await page.goto(`${baseUrl}/reset-history?mock=1&mock_seed=baseline&mock_today=2026-08-30&mock_now=2026-08-30T12:00:00Z`, {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("reset-history-timeline").waitFor({ state: "visible" });
+
+  const trigger = page.getByTestId("reset-history-expand").first();
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const detail = page.getByTestId("reset-history-detail");
+  await detail.waitFor({ state: "visible" });
+  if (!await detail.evaluate((element) => document.activeElement === element)) {
+    throw new Error("Reset detail did not receive keyboard focus");
+  }
+  await page.keyboard.press("Escape");
+  await detail.waitFor({ state: "detached" });
+  if (!await trigger.evaluate((element) => document.activeElement === element)) {
+    throw new Error("Reset detail did not restore keyboard focus");
+  }
+  if (pageErrors.length) {
+    throw new Error(`Reset keyboard journey page errors: ${pageErrors.join(" | ")}`);
+  }
+  await context.close();
+  return { timelineReady: true, detailFocusRestored: true };
+}
+
 let browser;
 const results = [];
 
 try {
-  await fs.mkdir(outputDir, { recursive: true });
+  if (!resetGeometryOnly && !keyboardJourneyOnly) {
+    await fs.mkdir(outputDir, { recursive: true });
+  }
   await server.listen();
   browser = await chromium.launch();
   const baseUrl = `http://${hostname}:${port}`;
@@ -1449,7 +1680,7 @@ try {
       await page.getByRole("button", { name: scenario.locale === "en" ? "Refresh" : "刷新" }).click();
     }
 
-    await assertPageContract(page, scenario, api);
+    const pageContract = await assertPageContract(page, scenario, api);
     const shell = await readShell(page);
     if (shell.horizontalOverflow > 1) {
       throw new Error(`${scenario.name}: horizontal overflow ${shell.horizontalOverflow}px`);
@@ -1457,7 +1688,7 @@ try {
     if (shell.sidebarDisplay === "none" || !shell.sidebarWidth) {
       throw new Error(`${scenario.name}: desktop sidebar is not visible ${JSON.stringify(shell)}`);
     }
-    if (shell.tooSmall.length) {
+    if (!resetGeometryOnly && !referenceContractOnly && shell.tooSmall.length) {
       throw new Error(`${scenario.name}: undersized main controls ${JSON.stringify(shell.tooSmall)}`);
     }
     if ((scenario.theme === "dark") !== shell.dark) {
@@ -1466,28 +1697,43 @@ try {
     if (scenario.locale === "en" ? shell.language !== "en" : !shell.language.startsWith("zh")) {
       throw new Error(`${scenario.name}: language did not resolve (${shell.language})`);
     }
-    if (scenario.locale === "en" && shell.cjkText.length) {
+    if (!resetGeometryOnly && scenario.locale === "en" && shell.cjkText.length) {
       throw new Error(
         `${scenario.name}: untranslated CJK text ${JSON.stringify([...new Set(shell.cjkText)])}`,
       );
     }
-    const focus = await firstVisibleKeyboardFocus(page);
-    if (!focus?.visible || focus.outlineStyle === "none" || Number.parseFloat(focus.outlineWidth) < 2) {
+    const focus = resetGeometryOnly
+      ? { skipped: "covered-by-reset-expansion-journey" }
+      : await firstVisibleKeyboardFocus(page);
+    if (
+      !resetGeometryOnly
+      && (!focus?.visible || focus.outlineStyle === "none" || Number.parseFloat(focus.outlineWidth) < 2)
+    ) {
       throw new Error(`${scenario.name}: keyboard focus is not visibly outlined ${JSON.stringify(focus)}`);
     }
     if (pageErrors.length) {
       throw new Error(`${scenario.name}: page errors ${pageErrors.join(" | ")}`);
     }
 
-    const screenshotPath = path.join(outputDir, `${scenario.name}.png`);
+    const screenshotPath = resetGeometryOnly
+      ? null
+      : path.join(outputDir, `${scenario.name}.png`);
     if (referenceMode) await page.evaluate(() => document.activeElement?.blur?.());
-    await page.screenshot({ path: screenshotPath, fullPage: false });
-    const referenceGeometry = referenceMode ? await readReferenceGeometry(page, scenario) : null;
-    results.push({ ...scenario, screenshotPath, shell, focus, referenceGeometry });
+    if (screenshotPath) await page.screenshot({ path: screenshotPath, fullPage: false });
+    const referenceGeometry = referenceMode && !referenceContractOnly
+      ? await readReferenceGeometry(page, scenario)
+      : null;
+    results.push({ ...scenario, screenshotPath, shell, focus, referenceGeometry, pageContract });
     await context.close();
   }
 
-  const keyboardJourney = await runKeyboardJourney(browser, baseUrl);
+  const keyboardJourney = keyboardJourneyOnly
+    ? await runResetKeyboardJourney(browser, baseUrl)
+    : resetGeometryOnly || referenceContractOnly
+    ? { skipped: referenceContractOnly ? "reference-contract-only" : "reset-geometry-only" }
+    : await runKeyboardJourney(browser, baseUrl, {
+      captureArtifacts: !keyboardJourneyOnly,
+    });
   console.log(JSON.stringify({
     status: referenceMode ? "STRUCTURE_PASS" : "PASS",
     visualApprovalRequired: referenceMode,

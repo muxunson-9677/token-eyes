@@ -1,5 +1,9 @@
 "use strict";
 
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+
 /**
  * Provider API Balance Parser & Refresh Manager (02 - 供应商 API 余额后端)
  *
@@ -48,6 +52,91 @@ const ERROR_CODES = Object.freeze({
 const ALLOWED_CURRENCIES = new Set([
   "USD", "EUR", "GBP", "CNY", "JPY", "KRW", "AUD", "CAD", "CHF", "HKD", "SGD", "INR",
 ]);
+
+const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_MAX_BYTES = 256 * 1024;
+
+function balanceIdentityFingerprint(config) {
+  const identity = {
+    id: String(config?.id || "").trim(),
+    providerId: String(config?.providerId || "").trim().toLowerCase(),
+    apiKeyRef: String(config?.apiKeyRef || "").trim(),
+    requestUrl: String(config?.requestUrl || "").trim(),
+    requestMethod: String(config?.requestMethod || "GET").trim().toUpperCase(),
+    authType: String(config?.authType || "").trim().toLowerCase(),
+    authHeaderName: String(config?.authHeaderName || "").trim().toLowerCase(),
+  };
+  return crypto.createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+}
+
+function validStoredNumber(value) {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+}
+
+function sanitizeSnapshotEntry(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const identityHash = String(raw.identityHash || "");
+  const providerId = String(raw.providerId || "").trim().toLowerCase();
+  const lastSyncedAt = String(raw.lastSyncedAt || "").trim();
+  const currency = raw.currency == null ? null : parseCurrency(raw.currency);
+  if (!/^[a-f0-9]{64}$/u.test(identityHash) || !providerId) return null;
+  if (!lastSyncedAt || !Number.isFinite(Date.parse(lastSyncedAt))) return null;
+  if (!validStoredNumber(raw.balance)
+      || !validStoredNumber(raw.monthSpend)
+      || !validStoredNumber(raw.lifetimeSpend)) return null;
+  if (raw.currency != null && currency === null) return null;
+  return {
+    identityHash,
+    providerId,
+    balance: raw.balance ?? null,
+    monthSpend: raw.monthSpend ?? null,
+    lifetimeSpend: raw.lifetimeSpend ?? null,
+    currency,
+    lastSyncedAt,
+  };
+}
+
+function readBalanceSnapshot(snapshotPath) {
+  if (!snapshotPath) return new Map();
+  try {
+    const stat = fs.lstatSync(snapshotPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > SNAPSHOT_MAX_BYTES) return new Map();
+    const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
+    if (parsed?.version !== SNAPSHOT_VERSION || !parsed.entries || typeof parsed.entries !== "object") {
+      return new Map();
+    }
+    const entries = new Map();
+    for (const [configId, raw] of Object.entries(parsed.entries)) {
+      if (!/^[A-Za-z0-9_-]{1,128}$/u.test(configId)) continue;
+      const entry = sanitizeSnapshotEntry(raw);
+      if (entry) entries.set(configId, entry);
+    }
+    return entries;
+  } catch {
+    return new Map();
+  }
+}
+
+function writeBalanceSnapshot(snapshotPath, entries) {
+  if (!snapshotPath) return false;
+  const parent = path.dirname(snapshotPath);
+  const serialized = JSON.stringify({
+    version: SNAPSHOT_VERSION,
+    entries: Object.fromEntries(entries),
+  });
+  if (Buffer.byteLength(serialized, "utf8") > SNAPSHOT_MAX_BYTES) return false;
+  fs.mkdirSync(parent, { recursive: true });
+  const tempPath = path.join(parent, `.${path.basename(snapshotPath)}.${process.pid}.${crypto.randomUUID()}.tmp`);
+  try {
+    fs.writeFileSync(tempPath, serialized, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    try { fs.chmodSync(tempPath, 0o600); } catch { /* Windows ACLs are managed by the profile */ }
+    fs.renameSync(tempPath, snapshotPath);
+    return true;
+  } catch {
+    try { fs.unlinkSync(tempPath); } catch { /* best effort */ }
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Restricted dot-path getter
@@ -415,6 +504,8 @@ function createBalanceRefreshManager(options = {}) {
   const resolveOfficialConsoleBalance = typeof options.resolveOfficialConsoleBalance === "function"
     ? options.resolveOfficialConsoleBalance
     : () => null;
+  const snapshotPath = String(options.snapshotPath || "").trim();
+  const lastGoodEntries = readBalanceSnapshot(snapshotPath);
 
   // Concurrent refresh dedup: configId → Promise<ProviderAccountBalance>
   const pendingRefreshes = new Map();
@@ -422,6 +513,40 @@ function createBalanceRefreshManager(options = {}) {
   // Cache: configId → { balance, timestamp }
   const cache = new Map();
   const CACHE_TTL_MS = 30_000; // 30s cache to avoid hammering provider
+
+  function getLastGood(config) {
+    const entry = lastGoodEntries.get(String(config?.id || ""));
+    if (!entry || entry.identityHash !== balanceIdentityFingerprint(config)) return null;
+    return entry;
+  }
+
+  function staleOrError(config, fields) {
+    const entry = getLastGood(config);
+    if (!entry) return makeBalance(config, fields);
+    return makeBalance(config, {
+      status: STATUS_STALE,
+      balance: entry.balance,
+      monthSpend: entry.monthSpend,
+      lifetimeSpend: entry.lifetimeSpend,
+      currency: entry.currency,
+      errorCode: fields.errorCode,
+      errorMessage: fields.errorMessage,
+      lastSyncedAt: entry.lastSyncedAt,
+    });
+  }
+
+  function rememberLastGood(config, balance) {
+    lastGoodEntries.set(String(config.id), {
+      identityHash: balanceIdentityFingerprint(config),
+      providerId: String(config.providerId || "").trim().toLowerCase(),
+      balance: balance.balance ?? null,
+      monthSpend: balance.monthSpend ?? null,
+      lifetimeSpend: balance.lifetimeSpend ?? null,
+      currency: balance.currency ?? null,
+      lastSyncedAt: balance.lastSyncedAt,
+    });
+    writeBalanceSnapshot(snapshotPath, lastGoodEntries);
+  }
 
   /**
    * Refresh a single config's balance.
@@ -456,7 +581,7 @@ function createBalanceRefreshManager(options = {}) {
 
     const capabilities = getProviderFinancialCapabilities(config);
     if (capabilities.balance === "unsupported" && capabilities.tokenQuota === "token_plan") {
-      return makeBalance(config, {
+      return staleOrError(config, {
         status: STATUS_UNSUPPORTED,
         errorCode: ERROR_CODES.UNSUPPORTED_ENDPOINT,
         errorMessage: "该供应商没有可验证的公开现金余额查询接口",
@@ -501,7 +626,7 @@ function createBalanceRefreshManager(options = {}) {
 
     // Check if credential store is available
     if (!credentialStore || typeof credentialStore.isAvailable !== "function" || !credentialStore.isAvailable()) {
-      return makeBalance(config, {
+      return staleOrError(config, {
         status: STATUS_ERROR,
         errorCode: ERROR_CODES.CREDENTIAL_STORE_UNAVAILABLE,
         errorMessage: "安全凭据存储不可用",
@@ -512,7 +637,7 @@ function createBalanceRefreshManager(options = {}) {
     // Check if secret is configured
     const apiKeyRef = String(config.apiKeyRef || "").trim();
     if (!apiKeyRef) {
-      return makeBalance(config, {
+      return staleOrError(config, {
         status: STATUS_NOT_CONNECTED,
         errorCode: ERROR_CODES.CREDENTIAL_MISSING,
         errorMessage: "未配置 API Key",
@@ -523,7 +648,7 @@ function createBalanceRefreshManager(options = {}) {
     // Read secret from credential store
     const secret = credentialStore.readSecret(apiKeyRef);
     if (!secret) {
-      return makeBalance(config, {
+      return staleOrError(config, {
         status: STATUS_NOT_CONNECTED,
         errorCode: ERROR_CODES.CREDENTIAL_MISSING,
         errorMessage: "API Key 不存在或已被删除",
@@ -542,7 +667,7 @@ function createBalanceRefreshManager(options = {}) {
       // 01-密钥安全修复 (F1 错误脱敏): 把实际密钥作为 verbatim 脱敏目标传入，
       // 防止子进程/网络错误消息中出现的非 sk- 前缀密钥原文泄漏到 balance。
       const sanitized = sanitizeErrorMessage(err?.message || String(err), getCredentialRedactions(secret));
-      const balance = makeBalance(config, {
+      const balance = staleOrError(config, {
         status: STATUS_ERROR,
         errorCode: ERROR_CODES.PROVIDER_UNAVAILABLE,
         errorMessage: sanitized,
@@ -553,7 +678,7 @@ function createBalanceRefreshManager(options = {}) {
     }
 
     if (!result.ok) {
-      const balance = makeBalance(config, {
+      const balance = staleOrError(config, {
         status: result.error_code === ERROR_CODES.UNSUPPORTED_ENDPOINT
           ? STATUS_UNSUPPORTED
           : STATUS_ERROR,
@@ -570,7 +695,7 @@ function createBalanceRefreshManager(options = {}) {
     // Parse the response
     const parsed = parseBalanceResponse(result.data, config);
     if (parsed.error_code) {
-      const balance = makeBalance(config, {
+      const balance = staleOrError(config, {
         status: STATUS_ERROR,
         errorCode: parsed.error_code,
         errorMessage: "供应商响应解析失败",
@@ -593,16 +718,31 @@ function createBalanceRefreshManager(options = {}) {
     });
 
     cache.set(config.id, { balance, timestamp: Date.now() });
+    rememberLastGood(config, balance);
     return balance;
   }
 
   /**
    * Get cached balance for a config (without refreshing).
    */
-  function getCachedBalance(configId) {
+  function getCachedBalance(configOrId) {
+    const config = configOrId && typeof configOrId === "object" ? configOrId : null;
+    const configId = String(config?.id || configOrId || "");
     const cached = cache.get(configId);
-    if (!cached) return null;
-    return cached.balance;
+    if (cached) return cached.balance;
+    if (!config) return null;
+    const entry = getLastGood(config);
+    if (!entry) return null;
+    return makeBalance(config, {
+      status: STATUS_STALE,
+      balance: entry.balance,
+      monthSpend: entry.monthSpend,
+      lifetimeSpend: entry.lifetimeSpend,
+      currency: entry.currency,
+      errorCode: ERROR_CODES.PROVIDER_UNAVAILABLE,
+      errorMessage: "尚未完成本次刷新，当前显示的是上次成功余额。",
+      lastSyncedAt: entry.lastSyncedAt,
+    });
   }
 
   /**
@@ -616,10 +756,17 @@ function createBalanceRefreshManager(options = {}) {
     }
   }
 
+  function deleteSnapshot(configId) {
+    if (configId) lastGoodEntries.delete(String(configId));
+    else lastGoodEntries.clear();
+    writeBalanceSnapshot(snapshotPath, lastGoodEntries);
+  }
+
   return {
     refreshBalance,
     getCachedBalance,
     clearCache,
+    deleteSnapshot,
   };
 }
 
@@ -676,6 +823,7 @@ module.exports = {
   parseFinancialNumber,
   parseCurrency,
   createBalanceRefreshManager,
+  balanceIdentityFingerprint,
   makeBalance,
   makeErrorBalance,
 };

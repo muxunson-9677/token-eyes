@@ -450,6 +450,7 @@ export function LeaderboardPage({
   const navigate = useNavigate();
   const {
     enabled: cloudAuthEnabled,
+    disabledReason: cloudAuthDisabledReason,
     signedIn: cloudSignedIn,
     loading: authLoading,
     user: cloudUser,
@@ -635,7 +636,7 @@ export function LeaderboardPage({
     (async () => {
       const pendingPreload = readPendingLeaderboardPreloadState(leaderboardPreloadContextKey);
       const preloadedEntry = pendingPreload ? await pendingPreload : null;
-      const data = preloadedEntry?.data ?? await getLeaderboard({
+      const leaderboardRequest = {
         baseUrl: leaderboardBaseUrl,
         metric,
         period,
@@ -643,6 +644,10 @@ export function LeaderboardPage({
         limit: pageSize,
         offset: listOffset,
         ...(developerPreviewActive ? { mock: true } : {}),
+      };
+      const data = preloadedEntry?.data ?? await getLeaderboard({
+        ...leaderboardRequest,
+        ...(isManualRefresh ? { refresh: true } : {}),
       });
       if (isManualRefresh) {
         const remainingFeedbackMs = Math.max(0, 450 - (Date.now() - refreshStartedAt));
@@ -658,13 +663,34 @@ export function LeaderboardPage({
       });
       setListState({
         loading: false,
-        error: null,
+        error: data?.refresh_failed === true
+          ? copy("leaderboard.error.refresh_failed_cached")
+          : null,
         data,
         contextKey: leaderboardPreloadContextKey,
       });
       if (isManualRefresh) {
         manualRefreshRevisionRef.current = 0;
         setManualRefreshing(false);
+      } else if (data?.revalidating === true) {
+        const refreshedData = await getLeaderboard({
+          ...leaderboardRequest,
+          refresh: true,
+        });
+        if (!active) return;
+        publishLeaderboardPreloadState(refreshedData, {
+          activeContextKey: leaderboardPreloadContextKey,
+          contextKey: leaderboardPreloadContextKey,
+          source: "page-revalidation",
+        });
+        setListState({
+          loading: false,
+          error: refreshedData?.refresh_failed === true
+            ? copy("leaderboard.error.refresh_failed_cached")
+            : null,
+          data: refreshedData,
+          contextKey: leaderboardPreloadContextKey,
+        });
       }
     })().catch((err) => {
       if (!active) return;
@@ -1374,7 +1400,9 @@ export function LeaderboardPage({
             <div className="tt-leaderboard-signin-prompt mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
               <div>
                 <p className="text-oai-gray-500 dark:text-oai-gray-400">
-                  {copy("leaderboard.signin_prompt")}
+                  {cloudAuthDisabledReason === "missing_public_auth_credential"
+                    ? copy("leaderboard.signin_missing_public_credential")
+                    : copy("leaderboard.signin_prompt")}
                 </p>
               </div>
               <button

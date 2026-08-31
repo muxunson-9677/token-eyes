@@ -779,7 +779,9 @@ pub fn map_quota_fetch_result_to_status(
                     .find(|window| window.lane_id == "team_pool")
                     .map(|window| window.used),
                 reset_at: reset_at.clone(),
-                subscription_expires_at: reset_at,
+                // The usage bridge only reports a billing-cycle reset. It is
+                // not evidence that the paid entitlement remains active.
+                subscription_expires_at: None,
                 fetched_at: result.provider_reported_at.clone().unwrap_or_default(),
                 total_quota,
                 used_quota,
@@ -963,7 +965,9 @@ fn quota_dto_from_snapshot(snapshot: CursorQuotaSnapshot) -> CursorQuotaDto {
         api_usage_percent: api,
         team_pool_percent: team_pool,
         reset_at: snapshot.reset_at.clone(),
-        subscription_expires_at: snapshot.reset_at.clone(),
+        // `billingCycleEnd` resets usage lanes; Cursor does not expose a paid
+        // subscription end date in this response.
+        subscription_expires_at: None,
         fetched_at: snapshot.fetched_at.clone(),
         total_quota: headline_used.map(|_| PERCENT_SCALE),
         used_quota: headline_used,
@@ -2465,7 +2469,7 @@ mod tests {
     }
 
     #[test]
-    fn exposes_billing_cycle_end_as_subscription_validity() {
+    fn keeps_billing_cycle_end_as_quota_reset_not_subscription_validity() {
         let payload = serde_json::json!({
             "membershipType": "pro",
             "billingCycleEnd": "2026-08-22T04:17:12Z",
@@ -2477,10 +2481,13 @@ mod tests {
             parse_cursor_quota_snapshot(&payload, "auth0|user_validity").expect("snapshot");
         let quota = quota_dto_from_snapshot(snapshot);
 
+        assert_eq!(quota.reset_at.as_deref(), Some("2026-08-22T04:17:12Z"));
         assert_eq!(
-            quota.subscription_expires_at.as_deref(),
-            Some("2026-08-22T04:17:12Z")
+            quota.quota_windows[0].resets_at,
+            "2026-08-22T04:17:12Z"
         );
+        assert_eq!(quota.subscription_expires_at, None);
+        assert_eq!(quota.plan_name, "pro");
     }
 
     #[test]

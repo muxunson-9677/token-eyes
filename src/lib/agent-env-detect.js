@@ -171,6 +171,17 @@ function detectAgentEnvironment(agentId, config = {}, options = {}) {
     platform: options.platform || process.platform,
   });
 
+  const configuredOverride = adapter.pathOverrideKey
+    ? dataDirPaths.dataDirectories?.[adapter.pathOverrideKey] || ""
+    : "";
+  const resolvedAdapterPath = {
+    trae: dataDirPaths.traeHome,
+    codebuddy: dataDirPaths.codebuddyHome,
+    workbuddy: dataDirPaths.workbuddyHome,
+    gemini: dataDirPaths.geminiHome,
+    antigravity: dataDirPaths.antigravityHome,
+    opencode: dataDirPaths.opencodeHome,
+  }[agentId] || "";
   const detectedPath = agentId === "claude"
     ? path.dirname(dataDirPaths.claudeProjectsDir)
     : agentId === "codex"
@@ -181,7 +192,7 @@ function detectAgentEnvironment(agentId, config = {}, options = {}) {
           ? dataDirPaths.hermesPath || ""
           : agentId === "openclaw"
             ? dataDirPaths.openclawHome
-            : dataDirPaths.dataDirectories?.[adapter.pathOverrideKey] || "";
+            : configuredOverride || resolvedAdapterPath;
   const inspection = inspectDataDirectory(agentId, detectedPath);
   const installationDetector = options.detectInstallation || detectAgentInstallation;
   const installation = installationDetector(agentId, inspection.environment, detectedPath);

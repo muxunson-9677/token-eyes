@@ -267,6 +267,24 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
     feedPayload.announcements[0].published_at,
   );
   assert.equal(unread.body, feedPayload.announcements[0].body);
+  assert.deepEqual(h.service.getStatus(), {
+    enabled: true,
+    configured: null,
+    running: false,
+    last_checked_at: null,
+    last_successful_at: null,
+    next_check_at: null,
+    last_error_code: null,
+    failure_count: 0,
+    unread_count: 1,
+    feed_enabled: true,
+    feed_last_checked_at: new Date(BASE).toISOString(),
+    feed_generated_at: feedPayload.generated_at,
+    latest_published_at: feedPayload.announcements[0].published_at,
+    feed_stale: false,
+    feed_error_code: null,
+    backfill_error_code: null,
+  });
 
   const cached = await h.service.checkFeed();
   assert.equal(cached.skipped, "fresh");
@@ -280,6 +298,236 @@ test("signed feed uses a fixed URL, 5-minute cache, and conditional requests", a
     "Sun, 20 Jul 2026 08:00:00 GMT",
   );
   assert.equal(h.service.listUnread().length, 1);
+});
+
+test("manual force bypasses the five-minute feed cache", async () => {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const feedPayload = {
+    generated_at: new Date(BASE).toISOString(),
+    announcements: [],
+  };
+  let feedReads = 0;
+  const h = harness(async () => validSnapshot(BASE), {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async () => {
+      feedReads += 1;
+      return feedReads === 1
+        ? {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => createSignedCodexResetFeedEnvelope(feedPayload, keys.privateKey),
+        }
+        : { ok: false, status: 304, headers: { get: () => null } };
+    },
+  });
+
+  await h.service.checkFeed({ force: true });
+  await h.service.check({ reason: "manual", force: true });
+
+  assert.equal(feedReads, 2);
+});
+
+test("forced check queued during an ordinary check performs its own feed refresh", async () => {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const feedPayload = (generatedOffset, id) => ({
+    generated_at: new Date(BASE + generatedOffset).toISOString(),
+    announcements: [{
+      id,
+      type: "official_reset_announcement",
+      title: `Reset ${id}`,
+      summary: `Summary ${id}`,
+      source_url: `https://openai.com/reset/${id}`,
+      official_url: "https://chatgpt.com/codex",
+      published_at: new Date(BASE - 60_000 + generatedOffset).toISOString(),
+      expires_at: new Date(BASE + 24 * 60 * 60_000).toISOString(),
+    }],
+  });
+  const payloads = [
+    feedPayload(0, "cached"),
+    feedPayload(60_000, "forced"),
+  ];
+  let resolveOrdinary;
+  const ordinaryUsage = new Promise((resolve) => {
+    resolveOrdinary = resolve;
+  });
+  let usageReads = 0;
+  let feedReads = 0;
+  const h = harness(async () => {
+    usageReads += 1;
+    if (usageReads === 1) return ordinaryUsage;
+    return validSnapshot(BASE);
+  }, {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async () => {
+      feedReads += 1;
+      const payload = payloads.shift();
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => createSignedCodexResetFeedEnvelope(payload, keys.privateKey),
+      };
+    },
+  });
+  await h.service.checkFeed({ force: true });
+
+  const ordinary = h.service.check({ reason: "manual" });
+  const forced = h.service.check({ reason: "manual", force: true });
+  const duplicateForce = h.service.check({ reason: "manual", force: true });
+  assert.equal(feedReads, 1);
+
+  resolveOrdinary(validSnapshot(BASE));
+  const ordinaryResult = await ordinary;
+  const [forcedResult, duplicateResult] = await Promise.all([forced, duplicateForce]);
+
+  assert.equal(usageReads, 2);
+  assert.equal(feedReads, 2);
+  assert.equal(
+    ordinaryResult.status.feed_generated_at,
+    new Date(BASE).toISOString(),
+  );
+  assert.equal(
+    forcedResult.status.feed_generated_at,
+    new Date(BASE + 60_000).toISOString(),
+  );
+  assert.deepEqual(duplicateResult, forcedResult);
+  assert.deepEqual(
+    h.service.listHistory().map((event) => event.id),
+    ["official:forced"],
+  );
+});
+
+test("direct forced feed refresh queues behind an ordinary feed fetch without being swallowed", async () => {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const feedPayload = (generatedOffset, id) => ({
+    generated_at: new Date(BASE + generatedOffset).toISOString(),
+    announcements: [{
+      id,
+      type: "official_reset_announcement",
+      title: `Reset ${id}`,
+      summary: `Summary ${id}`,
+      source_url: `https://openai.com/reset/${id}`,
+      official_url: "https://chatgpt.com/codex",
+      published_at: new Date(BASE - 60_000 + generatedOffset).toISOString(),
+      expires_at: new Date(BASE + 24 * 60 * 60_000).toISOString(),
+    }],
+  });
+  const cachedPayload = feedPayload(0, "cached");
+  const ordinaryPayload = feedPayload(5 * 60_000, "ordinary");
+  const forcedPayload = feedPayload(6 * 60_000, "forced-direct");
+  let resolveOrdinaryFetch;
+  const ordinaryFetch = new Promise((resolve) => {
+    resolveOrdinaryFetch = resolve;
+  });
+  let feedReads = 0;
+  const responseFor = (payload) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    json: async () => createSignedCodexResetFeedEnvelope(payload, keys.privateKey),
+  });
+  const h = harness(async () => validSnapshot(BASE), {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async () => {
+      feedReads += 1;
+      if (feedReads === 1) return responseFor(cachedPayload);
+      if (feedReads === 2) return ordinaryFetch;
+      return responseFor(forcedPayload);
+    },
+  });
+  await h.service.checkFeed({ force: true });
+  h.setNow(BASE + 6 * 60_000);
+
+  const ordinary = h.service.checkFeed();
+  const forced = h.service.checkFeed({ force: true });
+  const duplicateForce = h.service.checkFeed({ force: true });
+  assert.equal(feedReads, 2);
+
+  resolveOrdinaryFetch(responseFor(ordinaryPayload));
+  const ordinaryResult = await ordinary;
+  const [forcedResult, duplicateResult] = await Promise.all([forced, duplicateForce]);
+
+  assert.equal(feedReads, 3);
+  assert.equal(ordinaryResult.status.feed_generated_at, ordinaryPayload.generated_at);
+  assert.equal(forcedResult.status.feed_generated_at, forcedPayload.generated_at);
+  assert.deepEqual(duplicateResult, forcedResult);
+  assert.deepEqual(
+    h.service.listHistory().map((event) => event.id),
+    ["official:forced-direct"],
+  );
+});
+
+test("signed feed accepts an identical generation but rejects older or conflicting peers", async () => {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const announcement = (id, publishedOffset) => ({
+    id,
+    type: "official_reset_announcement",
+    title: `Reset ${id}`,
+    summary: `Summary ${id}`,
+    source_url: `https://openai.com/reset/${id}`,
+    official_url: "https://chatgpt.com/codex",
+    published_at: new Date(BASE + publishedOffset).toISOString(),
+    expires_at: new Date(BASE + 24 * 60 * 60_000).toISOString(),
+  });
+  const newest = {
+    generated_at: new Date(BASE).toISOString(),
+    announcements: [
+      announcement("retained", -120_000),
+      announcement("newest-only", -60_000),
+    ],
+  };
+  const identical = JSON.parse(JSON.stringify(newest));
+  const rollbackCandidates = [
+    {
+      generated_at: new Date(BASE - 60_000).toISOString(),
+      announcements: [announcement("retained", -120_000)],
+    },
+    {
+      generated_at: newest.generated_at,
+      announcements: [announcement("retained", -120_000)],
+    },
+  ];
+  const payloads = [newest, identical, ...rollbackCandidates];
+  const h = harness(async () => validSnapshot(BASE), {
+    feedEnabled: true,
+    feedPublicKey: keys.publicKey,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => createSignedCodexResetFeedEnvelope(
+        payloads.shift(),
+        keys.privateKey,
+      ),
+    }),
+  });
+
+  await h.service.checkFeed({ force: true });
+  const expectedIds = h.service.listHistory().map((event) => event.id).sort();
+  assert.deepEqual(expectedIds, ["official:newest-only", "official:retained"]);
+
+  await h.service.checkFeed({ force: true });
+  assert.equal(h.service.getStatus().feed_generated_at, newest.generated_at);
+  assert.equal(h.service.getStatus().feed_error_code, null);
+  assert.deepEqual(
+    h.service.listHistory().map((event) => event.id).sort(),
+    expectedIds,
+  );
+
+  for (const candidate of rollbackCandidates) {
+    await h.service.checkFeed({ force: true });
+    assert.equal(h.service.getStatus().feed_generated_at, newest.generated_at);
+    assert.equal(h.service.getStatus().feed_error_code, "feed_rollback");
+    assert.deepEqual(
+      h.service.listHistory().map((event) => event.id).sort(),
+      expectedIds,
+      `must reject ${candidate.generated_at} without deleting trusted records`,
+    );
+  }
 });
 
 test("startup rematerializes cached official events when a newer app adds feed metadata", () => {
@@ -469,6 +717,11 @@ test("offline or invalid feed keeps prior unexpired events and never blocks quot
   assert.equal(quotaReads, 1);
   assert.equal(h.service.listUnread().some((event) => event.id === "official:official-reset"), true);
   assert.equal(h.service.getStatus().feed_error_code, "network_error");
+  assert.equal(h.service.getStatus().feed_stale, true);
+  assert.equal(
+    h.service.getStatus().feed_last_checked_at,
+    new Date(BASE + 31 * 60_000).toISOString(),
+  );
 
   h.setNow(BASE + 62 * 60_000);
   await h.service.checkFeed({ force: true });

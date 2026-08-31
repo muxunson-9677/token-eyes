@@ -1,5 +1,7 @@
 "use strict";
 
+const { isDeepStrictEqual } = require("node:util");
+
 const {
   acknowledgeCodexResetEvent,
   compactCodexResetEvents,
@@ -112,6 +114,12 @@ function safeHeader(value) {
     : null;
 }
 
+function sameFeedAnnouncements(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  const byId = (items) => items.slice().sort((a, b) => a.id.localeCompare(b.id));
+  return isDeepStrictEqual(byId(left), byId(right));
+}
+
 function officialEvent(announcement) {
   return {
     id: `official:${announcement.id}`,
@@ -160,7 +168,11 @@ function createCodexResetMonitorService({
   let timer = null;
   let feedTimer = null;
   let inFlight = null;
+  let inFlightForce = false;
+  let forcedCheckInFlight = null;
   let feedInFlight = null;
+  let feedInFlightForce = false;
+  let forcedFeedInFlight = null;
   let started = false;
   let failureCount = 0;
   let configured = null;
@@ -288,6 +300,7 @@ function createCodexResetMonitorService({
   }
 
   function getStatus() {
+    const latest = latestOfficialEvent();
     return {
       enabled,
       configured,
@@ -299,7 +312,10 @@ function createCodexResetMonitorService({
       failure_count: failureCount,
       unread_count: listUnread().length,
       feed_enabled: feedEnabled,
-      feed_last_checked_at: state.feed?.fetchedAt || null,
+      feed_last_checked_at: state.feed?.lastCheckedAt || state.feed?.fetchedAt || null,
+      feed_generated_at: state.feed?.generatedAt || null,
+      latest_published_at: latest?.occurredAt || latest?.createdAt || null,
+      feed_stale: Boolean(feedErrorCode && state.feed?.announcements),
       feed_error_code: feedErrorCode,
       backfill_error_code: backfillErrorCode,
     };
@@ -309,13 +325,32 @@ function createCodexResetMonitorService({
     if (!feedEnabled) {
       return Promise.resolve({ skipped: "disabled", status: getStatus() });
     }
-    if (feedInFlight) return feedInFlight;
+    if (feedInFlight) {
+      if (!force || feedInFlightForce) return feedInFlight;
+      if (forcedFeedInFlight) return forcedFeedInFlight;
+      const ordinaryFeed = feedInFlight;
+      const forcedFeed = ordinaryFeed
+        .then(() => checkFeed({ force: true }))
+        .finally(() => {
+          if (forcedFeedInFlight === forcedFeed) forcedFeedInFlight = null;
+        });
+      forcedFeedInFlight = forcedFeed;
+      return forcedFeed;
+    }
     if (!force && lastFeedAttemptAt && now() - lastFeedAttemptAt < FEED_CACHE_MS) {
       return Promise.resolve({ skipped: "fresh", status: getStatus() });
     }
 
+    feedInFlightForce = force;
     feedInFlight = (async () => {
       lastFeedAttemptAt = now();
+      persist({
+        ...state,
+        feed: {
+          ...(state.feed || {}),
+          lastCheckedAt: new Date(lastFeedAttemptAt).toISOString(),
+        },
+      });
       if (!feedPublicKey) {
         feedErrorCode = "verification_unavailable";
         return { status: getStatus() };
@@ -371,12 +406,42 @@ function createCodexResetMonitorService({
         return { status: getStatus() };
       }
 
+      const previousGeneratedAt = Date.parse(state.feed?.generatedAt || "");
+      const nextGeneratedAt = Date.parse(payload.generated_at);
+      if (Number.isFinite(previousGeneratedAt) && nextGeneratedAt < previousGeneratedAt) {
+        feedErrorCode = "feed_rollback";
+        return { status: getStatus() };
+      }
+
+      if (previousGeneratedAt === nextGeneratedAt) {
+        if (!sameFeedAnnouncements(state.feed?.announcements, payload.announcements)) {
+          feedErrorCode = "feed_rollback";
+          return { status: getStatus() };
+        }
+        persist({
+          ...state,
+          feed: {
+            ...state.feed,
+            fetchedAt: new Date(now()).toISOString(),
+            lastCheckedAt: new Date(lastFeedAttemptAt).toISOString(),
+            etag: safeHeader(response.headers?.get?.("etag")) || state.feed?.etag || null,
+            lastModified: safeHeader(response.headers?.get?.("last-modified"))
+              || state.feed?.lastModified
+              || null,
+          },
+        });
+        feedErrorCode = null;
+        return { status: getStatus() };
+      }
+
       const announcements = payload.announcements.map((item) => ({ ...item }));
       const nextState = {
         ...state,
         events: materializeOfficialFeedEvents(state.events, announcements, { nowMs: now() }),
         feed: {
           fetchedAt: new Date(now()).toISOString(),
+          lastCheckedAt: new Date(lastFeedAttemptAt).toISOString(),
+          generatedAt: payload.generated_at,
           etag: safeHeader(response.headers?.get?.("etag")),
           lastModified: safeHeader(response.headers?.get?.("last-modified")),
           announcements,
@@ -391,13 +456,25 @@ function createCodexResetMonitorService({
     }).finally(() => {
       scheduleFeed();
       feedInFlight = null;
+      feedInFlightForce = false;
     });
     return feedInFlight;
   }
 
   function check({ reason = "timer", force = false } = {}) {
     if (!enabled) return Promise.resolve({ skipped: "disabled", status: getStatus() });
-    if (inFlight) return inFlight;
+    if (inFlight) {
+      if (!force || inFlightForce) return inFlight;
+      if (forcedCheckInFlight) return forcedCheckInFlight;
+      const ordinaryCheck = inFlight;
+      const forcedCheck = ordinaryCheck
+        .then(() => check({ reason, force: true }))
+        .finally(() => {
+          if (forcedCheckInFlight === forcedCheck) forcedCheckInFlight = null;
+        });
+      forcedCheckInFlight = forcedCheck;
+      return forcedCheck;
+    }
 
     const lastSuccessfulMs = Date.parse(state.lastSuccessfulAt || "");
     if (
@@ -409,6 +486,7 @@ function createCodexResetMonitorService({
       return Promise.resolve({ skipped: "fresh", status: getStatus() });
     }
 
+    inFlightForce = force;
     inFlight = (async () => {
       try {
         const snapshot = await getCodexUsageLimits();
@@ -449,10 +527,11 @@ function createCodexResetMonitorService({
           FAILURE_BACKOFF_MS.length - 1,
         )]);
       }
-      await checkFeed();
+      await checkFeed({ force });
       return { status: getStatus() };
     })().finally(() => {
       inFlight = null;
+      inFlightForce = false;
     });
     return inFlight;
   }

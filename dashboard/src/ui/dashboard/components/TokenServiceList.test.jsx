@@ -136,6 +136,20 @@ describe("TokenServiceList", () => {
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
   });
 
+  it("folds a configured Cursor Pro card when the official account now reports free membership", () => {
+    render(<TokenServiceList plans={[plan("cursor-ended", 0, 100, {
+      provider_id: "cursor",
+      plan_id: "cursor_pro",
+      plan_label: "Pro",
+      expires_at: "2099-12-31",
+      detection_method: "official_account",
+      detection_config: { official_account: { plan_name: "free" } },
+    })]} />);
+
+    expect(screen.queryByTestId("token-service-row")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已过期 (1)" })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("keeps a future subscription in its own collapsed not-started group", async () => {
     const user = userEvent.setup();
     render(

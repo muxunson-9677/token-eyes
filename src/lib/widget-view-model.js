@@ -135,6 +135,12 @@ function safeIso(value) {
   return new Date(time).toISOString();
 }
 
+function safePlanBoundary(value) {
+  const raw = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return safeIso(raw) ? raw : null;
+  return safeIso(raw);
+}
+
 function sessionState(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (["approval", "waiting_approval"].includes(normalized)) return "waiting_approval";
@@ -184,14 +190,20 @@ function buildProjectStatus(sessions, selectedAgent, nowMs, activeSessionWindow)
   const recentProjects = [];
   for (const item of eligibleSessions) {
     const projectId = safeId(item?.projectId, "project");
-    if (recentProjectIds.has(projectId)) continue;
+    const sessionId = safeId(item?.sessionId, "session");
+    if (recentProjectIds.has(projectId)) {
+      const project = recentProjects.find((candidate) => candidate.id === projectId);
+      if (project && !project.sessionIds.includes(sessionId)) project.sessionIds.push(sessionId);
+      continue;
+    }
+    if (recentProjects.length >= MAX_RECENT_PROJECTS) continue;
     recentProjectIds.add(projectId);
     recentProjects.push({
       id: projectId,
       label: safeLabel(item?.projectLabel, projectId),
       updatedAt: safeIso(item?.updatedAt),
+      sessionIds: [sessionId],
     });
-    if (recentProjects.length >= MAX_RECENT_PROJECTS) break;
   }
   const activeSessions = eligibleSessions
     .filter((item) => Date.parse(item?.updatedAt || 0) >= nowMs - activeWindowMs)
@@ -218,7 +230,7 @@ function buildProjectStatus(sessions, selectedAgent, nowMs, activeSessionWindow)
     const sessionId = safeId(item?.sessionId, "session");
     project.sessions.push({
       id: sessionId,
-      label: optionalLabel(item?.sessionLabel),
+      label: optionalLabel(item?.sessionLabel || item?.taskLabel),
       status,
       state,
       updatedAt: safeIso(item?.updatedAt),
@@ -264,6 +276,8 @@ function buildLimits(limits, selectedAgent) {
       agent: agentKey(item?.agent) || "unknown",
       provider: safeLabel(item?.provider, "Unknown"),
       planLabel: safeLabel(item?.planLabel, ""),
+      catalogPlanId: safeId(item?.catalogPlanId, ""),
+      reportedPlanName: safeLabel(item?.reportedPlanName, ""),
       accountLabel: safeLabel(item?.accountLabel, ""),
       subscriptionAmount: finiteNonNegative(item?.subscriptionAmount),
       subscriptionCurrency: safeLabel(item?.subscriptionCurrency, "").toUpperCase(),
@@ -271,7 +285,8 @@ function buildLimits(limits, selectedAgent) {
       window: Object.hasOwn(WINDOW_ORDER, item?.window) ? item.window : "other",
       usedPercent: usedPercent(item?.usedPercent),
       resetAt: safeIso(item?.resetAt),
-      expiresAt: safeIso(item?.expiresAt),
+      startsAt: safePlanBoundary(item?.startsAt || item?.subscription_start_date || item?.starts_at || item?.start_date),
+      expiresAt: safePlanBoundary(item?.expiresAt),
       notes: safeNote(item?.notes),
       error: typeof item?.error === "string" ? safeLabel(item.error, "").slice(0, 120) : null,
     }))
@@ -425,11 +440,14 @@ function flattenTokenPlanRecords(records) {
     if (!record || typeof record !== "object") continue;
     const agent = agentKey(record.source || record.provider_id) || "unknown";
     const provider = providerName(record.provider_id || agent);
-    const planLabel = safeLabel(record.plan_label, provider);
+    const planLabel = optionalLabel(record.plan_label) || "";
+    const catalogPlanId = safeId(record.plan_id, "");
+    const reportedPlanName = optionalLabel(record?.detection_config?.official_account?.plan_name) || "";
     const accountLabel = tokenPlanAccountLabel(record);
     const subscriptionAmount = finiteNonNegative(record.subscription_amount);
     const subscriptionCurrency = safeLabel(record.subscription_currency, "").toUpperCase();
-    const expiresAt = safeIso(record.subscription_end_date || record.expires_at);
+    const startsAt = safePlanBoundary(record.subscription_start_date || record.starts_at || record.start_date);
+    const expiresAt = safePlanBoundary(record.subscription_end_date || record.expires_at);
     const notes = safeNote(record.notes);
     const planId = safeId(record.id, "plan");
     const windows = canonicalTokenPlanWindows(agent, record.quota_windows);
@@ -442,6 +460,8 @@ function flattenTokenPlanRecords(records) {
           agent,
           provider,
           planLabel,
+          catalogPlanId,
+          reportedPlanName,
           accountLabel,
           subscriptionAmount,
           subscriptionCurrency,
@@ -449,6 +469,7 @@ function flattenTokenPlanRecords(records) {
           window: planWindowName(agent, window?.kind),
           usedPercent: quotaWindowPercent(window),
           resetAt: limitResetIso(window?.resets_at || window?.reset_at),
+          startsAt,
           expiresAt,
           notes,
           error: null,
@@ -463,6 +484,8 @@ function flattenTokenPlanRecords(records) {
         agent,
         provider,
         planLabel,
+        catalogPlanId,
+        reportedPlanName,
         accountLabel,
         subscriptionAmount,
         subscriptionCurrency,
@@ -472,6 +495,7 @@ function flattenTokenPlanRecords(records) {
           ? usedPercent((used / total) * 100)
           : null,
         resetAt: null,
+        startsAt,
         expiresAt,
         notes,
         error: null,

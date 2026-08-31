@@ -39,6 +39,12 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
 const DEFAULT_MAX_REDIRECTS = 3;
 
+const APPROVED_PROVIDER_SYNTHETIC_DNS_HOSTS = new Set([
+  "api.deepseek.com",
+  "business.aliyuncs.com",
+  "open.volcengineapi.com",
+]);
+
 const ALLOWED_PROTOCOLS = new Set(["https:", "http:"]); // http only in test mode
 
 const MODEL_ENDPOINT_PATTERNS = [
@@ -103,6 +109,10 @@ const FINANCIAL_KEYWORD_REGEX = new RegExp(
   "(?:^|[/:._-])(" + FINANCIAL_KEYWORDS.join("|") + ")(?:[/:._-]|$)",
   "i"
 );
+
+function isApprovedProviderSyntheticDnsHost(value) {
+  return APPROVED_PROVIDER_SYNTHETIC_DNS_HOSTS.has(String(value || "").trim().toLowerCase());
+}
 
 // ---------------------------------------------------------------------------
 // URL / endpoint validation
@@ -601,6 +611,9 @@ async function executeWithRedirects(url, method, headers, opts, redirectCount = 
       dnsLookup: opts.dnsLookup,
       requestImpl: opts.requestImpl,
       secrets: opts.extraRedactions || [],
+      allowSyntheticDnsAddress({ hostname }) {
+        return isApprovedProviderSyntheticDnsHost(hostname);
+      },
     });
   } catch (error) {
     const sanitized = sanitizeErrorMessage(error?.message || String(error), opts.extraRedactions || []);
@@ -771,6 +784,7 @@ module.exports = {
   sanitizeErrorMessage,
   validateRedirectTarget,
   executeFinancialRequest,
+  isApprovedProviderSyntheticDnsHost,
   ERROR_CODES,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_MAX_RESPONSE_BYTES,

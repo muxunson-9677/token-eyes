@@ -16,14 +16,14 @@ vi.mock("../../../../lib/copy", () => ({
     "spend.usage.provider_api.loading": "Loading API providers",
     "spend.usage.provider_api.error": "Failed to load API providers",
     "spend.usage.provider_api.retry": "Retry",
-    "spend.usage.provider_api.empty": "No paid API providers in the last 7 days",
+    "spend.usage.provider_api.empty": "No API activity in this range",
     "spend.usage.provider_api.account_unavailable": "Account unavailable",
     "spend.usage.provider_api.agent_count": `${vars.count} Agents`,
     "spend.usage.provider_api.model_count": `${vars.count} models`,
     "spend.usage.provider_api.period": `${vars.days} days`,
     "spend.usage.provider_api.balance": "Balance",
     "spend.usage.provider_api.cost_axis": "Spend (USD)",
-    "spend.usage.provider_api.total_cost": "7-day spend",
+    "spend.usage.provider_api.total_cost": "Selected-range spend",
     "spend.usage.provider_api.requests": "Requests",
     "spend.usage.provider_api.tokens": "Tokens",
     "spend.usage.provider_api.peak": "Peak",
@@ -98,21 +98,32 @@ describe("ProviderApiServiceList", () => {
     useRecentApiProviderStats.mockReturnValue(DEFAULT_HOOK);
   });
 
-  it("renders only positive-cost Provider cards with identity, period, metrics, and reliable balance", () => {
+  it("keeps zero-cost API activity visible and follows the selected page range", () => {
     useRecentApiProviderStats.mockReturnValue({
       ...DEFAULT_HOOK,
-      providers: { providers: [provider(), provider({ provider_id: "glm", display_name: "GLM", cost_usd: 0 })] },
+      providers: {
+        providers: [
+          provider(),
+          provider({
+            provider_id: "glm",
+            display_name: "GLM",
+            cost_usd: null,
+            cost_basis: null,
+            daily: provider().daily.map((day) => ({ ...day, cost_usd: null, cost_basis: null })),
+          }),
+        ],
+      },
     });
 
     render(<ProviderApiServiceList from="2026-08-01" to="2026-08-27" visibleProviderIds={["hermes"]} />);
 
-    expect(useRecentApiProviderStats).toHaveBeenCalledWith(expect.not.objectContaining({
-      from: expect.anything(),
-      to: expect.anything(),
+    expect(useRecentApiProviderStats).toHaveBeenCalledWith(expect.objectContaining({
+      from: "2026-08-01",
+      to: "2026-08-27",
     }));
 
     const cards = screen.getAllByTestId("provider-api-card");
-    expect(cards).toHaveLength(1);
+    expect(cards).toHaveLength(2);
     expect(within(cards[0]).getByText("DeepSeek")).toBeInTheDocument();
     expect(within(cards[0]).getByText("finance@company.com")).toBeInTheDocument();
     expect(within(cards[0]).getByText("1 Agents")).toBeInTheDocument();
@@ -123,10 +134,11 @@ describe("ProviderApiServiceList", () => {
     expect(within(cards[0]).getByText("1,940")).toBeInTheDocument();
     expect(cards[0]).not.toHaveTextContent("Local list-price estimate");
     expect(cards[0].querySelector('img[src="/brand-logos/deepseek.png"]')).not.toBeNull();
-    expect(screen.queryByText("GLM")).not.toBeInTheDocument();
+    expect(within(cards[1]).getByText("GLM")).toBeInTheDocument();
+    expect(within(cards[1]).getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("draws a smooth seven-day area and exposes the complete focused-day breakdown", () => {
+  it("draws the complete selected-range area and exposes the focused-day breakdown", () => {
     useRecentApiProviderStats.mockReturnValue({ ...DEFAULT_HOOK, providers: { providers: [provider()] } });
     render(<ProviderApiServiceList from="2026-08-01" to="2026-08-27" />);
 
@@ -144,6 +156,31 @@ describe("ProviderApiServiceList", () => {
     expect(tooltip).toHaveTextContent("460");
     expect(tooltip).toHaveTextContent("4.60");
     expect(tooltip).not.toHaveTextContent("%");
+  });
+
+  it("does not truncate selected-range daily evidence after seven days", () => {
+    const fixture = provider({
+      period: { from: "2026-08-20", to: "2026-08-27", days: 8, time_zone: "UTC" },
+      daily: [
+        ...provider().daily,
+        {
+          ...provider().daily[0],
+          date: "2026-08-28",
+          cost_usd: 9.8,
+          tokens: 980,
+          request_count: 8,
+        },
+      ],
+    });
+    useRecentApiProviderStats.mockReturnValue({
+      ...DEFAULT_HOOK,
+      providers: { providers: [fixture] },
+    });
+
+    render(<ProviderApiServiceList from="2026-08-20" to="2026-08-28" />);
+
+    expect(screen.getAllByTestId("provider-api-day-point")).toHaveLength(8);
+    expect(screen.getByText("08-28 · $9.80")).toBeInTheDocument();
   });
 
   it("shows unavailable Agent and model cash attribution instead of fabricated zero spend", () => {

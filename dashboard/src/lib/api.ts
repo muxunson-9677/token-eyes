@@ -53,6 +53,9 @@ export interface CodexResetMonitorStatus {
   unread_count: number;
   feed_enabled: boolean;
   feed_last_checked_at: string | null;
+  feed_generated_at?: string | null;
+  latest_published_at?: string | null;
+  feed_stale?: boolean;
   feed_error_code: string | null;
   backfill_error_code: string | null;
 }
@@ -191,6 +194,7 @@ export interface DesktopWidgetViewModel {
     window: string;
     usedPercent: number | null;
     resetAt: string | null;
+    startsAt?: string | null;
     expiresAt: string | null;
     notes: string | null;
     error: string | null;
@@ -1018,11 +1022,13 @@ async function fetchLocalLeaderboardPublic({
   source,
   limit,
   offset,
+  refresh,
 }: AnyRecord) {
   const url = new URL(await buildLocalApiUrl("/functions/tokentracker-leaderboard-public"));
   for (const [key, value] of Object.entries({ period, metric, source, limit, offset })) {
     if (value != null && value !== "") url.searchParams.set(key, String(value));
   }
+  if (refresh === true) url.searchParams.set("refresh", "1");
   const response = await fetchLocalApi(url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
@@ -1041,6 +1047,7 @@ export async function getLeaderboard({
   offset,
   timeoutMs = 2_500,
   mock = false,
+  refresh = false,
 }: AnyRecord = {}) {
   if (mock || isMockEnabled()) {
     return getMockLeaderboard({ period, metric, source, limit, offset });
@@ -1057,6 +1064,7 @@ export async function getLeaderboard({
       source: safeSource,
       limit: 50,
       offset: 0,
+      refresh,
     });
   }
   if (!publicBaseUrl) throw new Error("Public feed base URL not configured");
@@ -1495,8 +1503,10 @@ export async function getProviderStats({
   return fetchLocalJson(PATHS.providerStats, { from, to, ...filterParams, ...tzParams }, { accessToken });
 }
 
-/** Current seven-UTC-day API-key Provider cards backed by positive official billed cost facts. */
+/** API-key Provider activity for the selected range, with official billed cost when available. */
 export async function getRecentApiProviderStats({
+  from,
+  to,
   sources,
   models,
   agentIds,
@@ -1506,6 +1516,8 @@ export async function getRecentApiProviderStats({
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
     return getMockProviderStats({
+      from,
+      to,
       seed: accessToken,
       timeZone,
       tzOffsetMinutes,
@@ -1517,7 +1529,7 @@ export async function getRecentApiProviderStats({
   }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildMultiFilterParams({ sources, models, agentIds });
-  return fetchLocalJson(PATHS.providerApiStats, { ...filterParams, ...tzParams }, { accessToken });
+  return fetchLocalJson(PATHS.providerApiStats, { from, to, ...filterParams, ...tzParams }, { accessToken });
 }
 
 /** O3: local-only, dimension-aware usage attribution. */

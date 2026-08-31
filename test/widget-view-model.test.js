@@ -154,7 +154,7 @@ test("keeps ordinary interruptions neutral and preserves exact alert states and 
         projectId: "project-a",
         projectLabel: "Token Eyes",
         sessionId: "019-interrupted",
-        sessionLabel: "执行代码修复",
+        taskLabel: "执行代码修复",
         status: "interrupted",
         updatedAt: "2026-07-29T08:20:00.000Z",
       },
@@ -232,6 +232,7 @@ test("returns compact empty states and does not expose raw paths or unknown fiel
       id: result.projectStatus.projects[0].id,
       label: "secret-project",
       updatedAt: "2026-07-29T08:00:00.000Z",
+      sessionIds: ["session-safe"],
     }],
     projects: [{
       id: result.projectStatus.projects[0].id,
@@ -292,6 +293,7 @@ test("offers stale sessions as recent project choices without marking them activ
     id: "project-old",
     label: "Old Project",
     updatedAt: new Date(NOW_MS - 61 * 60_000).toISOString(),
+    sessionIds: ["old-newer", "old-older"],
   });
   assert.equal(
     result.projectStatus.recentProjects.filter((project) => project.id === "project-old").length,
@@ -544,10 +546,11 @@ test("keeps the canonical Cursor quota lanes and plan identity for the widget", 
     id: "cursor-main",
     source: "cursor",
     provider_id: "cursor",
+    plan_id: "cursor_pro",
     plan_label: "Pro",
     detection_method: "official_account",
     detection_config: {
-      official_account: { display_name: "ezequielhuelsxw@outlook.com" },
+      official_account: { display_name: "ezequielhuelsxw@outlook.com", plan_name: "free" },
     },
     subscription_amount: 20,
     subscription_currency: "USD",
@@ -599,6 +602,11 @@ test("keeps the canonical Cursor quota lanes and plan identity for the widget", 
     },
   ]);
   assert.equal(new Set(limits.map((item) => item.id)).size, limits.length);
+  assert.equal(limits.every((item) => item.catalogPlanId === "cursor_pro"), true);
+  assert.equal(limits.every((item) => item.reportedPlanName === "free"), true);
+  const sanitized = buildWidgetViewModel({ limits }).limits;
+  assert.equal(sanitized.every((item) => item.catalogPlanId === "cursor_pro"), true);
+  assert.equal(sanitized.every((item) => item.reportedPlanName === "free"), true);
 });
 
 test("keeps reset time and plan expiry separate for every widget quota window", () => {
@@ -630,6 +638,70 @@ test("keeps reset time and plan expiry separate for every widget quota window", 
       expiresAt: "2026-09-01T00:00:00.000Z",
     },
   ]);
+});
+
+test("keeps an empty plan label for account fallback and carries the subscription start", () => {
+  const flattened = flattenUsageLimitsPayload({}, [{
+    id: "scheduled-plan",
+    source: "codex",
+    provider_id: "codex",
+    plan_label: "",
+    detection_method: "official_account",
+    detection_config: {
+      official_account: { display_name: "owner@example.com" },
+    },
+    subscription_start_date: "2026-09-01T00:00:00.000Z",
+    total_quota: 100,
+    used_quota: 0,
+  }]);
+
+  assert.equal(flattened[0].planLabel, "");
+  assert.equal(flattened[0].accountLabel, "owner@example.com");
+  assert.equal(flattened[0].startsAt, "2026-09-01T00:00:00.000Z");
+
+  const [sanitized] = buildWidgetViewModel({ limits: flattened }).limits;
+  assert.equal(sanitized.planLabel, "");
+  assert.equal(sanitized.accountLabel, "owner@example.com");
+  assert.equal(sanitized.startsAt, "2026-09-01T00:00:00.000Z");
+});
+
+test("preserves strict date-only plan boundaries while keeping timestamp semantics exact", () => {
+  const flattened = flattenUsageLimitsPayload({}, [{
+    id: "calendar-plan",
+    source: "codex",
+    provider_id: "codex",
+    subscription_start_date: "2026-09-01",
+    subscription_end_date: "2026-09-30",
+    total_quota: 100,
+    used_quota: 10,
+  }, {
+    id: "timestamp-plan",
+    source: "codex",
+    provider_id: "codex",
+    subscription_start_date: "2026-09-01T00:30:00+08:00",
+    subscription_end_date: "2026-09-30T23:30:00+08:00",
+    total_quota: 100,
+    used_quota: 10,
+  }]);
+
+  assert.deepEqual(flattened.map(({ startsAt, expiresAt }) => ({ startsAt, expiresAt })), [
+    { startsAt: "2026-09-01", expiresAt: "2026-09-30" },
+    {
+      startsAt: "2026-08-31T16:30:00.000Z",
+      expiresAt: "2026-09-30T15:30:00.000Z",
+    },
+  ]);
+  assert.deepEqual(
+    buildWidgetViewModel({ limits: flattened }).limits
+      .map(({ startsAt, expiresAt }) => ({ startsAt, expiresAt })),
+    [
+      { startsAt: "2026-09-01", expiresAt: "2026-09-30" },
+      {
+        startsAt: "2026-08-31T16:30:00.000Z",
+        expiresAt: "2026-09-30T15:30:00.000Z",
+      },
+    ],
+  );
 });
 
 test("normalizes official Unix reset timestamps without replacing them with the plan expiry", () => {

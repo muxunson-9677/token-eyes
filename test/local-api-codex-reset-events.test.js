@@ -106,6 +106,9 @@ function harness() {
       unread_count: 1,
       feed_enabled: true,
       feed_last_checked_at: "2026-07-20T08:00:00.000Z",
+      feed_generated_at: "2026-07-20T07:59:00.000Z",
+      latest_published_at: "2026-07-20T07:58:00.000Z",
+      feed_stale: false,
       feed_error_code: null,
       raw_response: "must-not-leak",
     }),
@@ -139,6 +142,9 @@ test("GET returns no-store sanitized official reset events without auth", async 
     assert.equal(res.headers["cache-control"], "no-store");
     const body = res.json();
     assert.equal(body.status.unread_count, 1);
+    assert.equal(body.status.feed_generated_at, "2026-07-20T07:59:00.000Z");
+    assert.equal(body.status.latest_published_at, "2026-07-20T07:58:00.000Z");
+    assert.equal(body.status.feed_stale, false);
     assert.equal(body.events[0].id, "official:reset-july");
     assert.equal(body.events[0].source_url, "https://x.com/thsottiaux/status/2078990367241046272");
     assert.equal(body.history.length, 1);

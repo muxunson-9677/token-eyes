@@ -560,21 +560,19 @@ function SpendUsagePageInner({
                     data-testid="usage-chart-token-services-layout"
                     className="mb-6 grid min-w-0 gap-4 lg:grid-cols-4 lg:items-stretch"
                   >
-                    {tokenServiceMode === "subscription" ? (
-                      <UsageTrendChartCard
-                        from={from}
-                        to={to}
-                        accessToken={accessToken}
-                        baseUrl={baseUrl}
-                        guestAllowed={guestAllowed}
-                        cacheKey={cacheKey}
-                        timeZone={timeZone}
-                        tzOffsetMinutes={tzOffsetMinutes}
-                        allowedSources={visibleProviderIds}
-                        onSettled={handleInitialTrendSettled}
-                        className="min-w-0 lg:col-span-3"
-                      />
-                    ) : null}
+                    <UsageTrendChartCard
+                      from={from}
+                      to={to}
+                      accessToken={accessToken}
+                      baseUrl={baseUrl}
+                      guestAllowed={guestAllowed}
+                      cacheKey={cacheKey}
+                      timeZone={timeZone}
+                      tzOffsetMinutes={tzOffsetMinutes}
+                      allowedSources={visibleProviderIds}
+                      onSettled={handleInitialTrendSettled}
+                      className="min-w-0 lg:col-span-3"
+                    />
                     <TokenServiceModePanel
                       mode={tokenServiceMode}
                       onModeChange={setTokenServiceMode}
@@ -590,10 +588,7 @@ function SpendUsagePageInner({
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
                       visibleProviderIds={visibleProviderIds}
-                      className={cn(
-                        "min-w-0",
-                        tokenServiceMode === "subscription" ? "lg:col-span-1" : "lg:col-span-4",
-                      )}
+                      className="min-w-0 lg:col-span-1"
                     />
                   </div>
 
@@ -678,7 +673,7 @@ function TokenServiceModePanel({
           </button>
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {subscriptionMode ? (
           <TokenServiceList
             plans={plans}
@@ -687,7 +682,7 @@ function TokenServiceModePanel({
             embedded
             hideHeader
           />
-        ) : <ProviderApiServiceList {...providerProps} />}
+        ) : <ProviderApiServiceList {...providerProps} compact />}
       </div>
     </aside>
   );

@@ -112,7 +112,7 @@ it("routes local function requests to the Tauri-reported loopback CLI API", asyn
   );
 });
 
-it("separates selected-range Provider statistics from the current seven-day API view", async () => {
+it("uses the selected page range for both Provider statistics views", async () => {
   setTauriRuntime(true);
   const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ ok: true, providers: [] }), {
     status: 200,
@@ -127,8 +127,9 @@ it("separates selected-range Provider statistics from the current seven-day API 
   expect(String(fetchMock.mock.calls[0][0])).toContain("from=2026-06-01");
   expect(String(fetchMock.mock.calls[0][0])).toContain("to=2026-06-30");
   expect(String(fetchMock.mock.calls[1][0])).toContain("/functions/tokentracker-provider-api-stats");
-  expect(String(fetchMock.mock.calls[1][0])).not.toContain("from=");
-  expect(String(fetchMock.mock.calls[1][0])).not.toContain("to=");
+  expect(String(fetchMock.mock.calls[1][0])).toContain("from=2020-01-01");
+  expect(String(fetchMock.mock.calls[1][0])).toContain("to=2030-12-31");
+  expect(String(fetchMock.mock.calls[1][0])).toContain("tz=UTC");
 });
 
 it("reads plan market state and authenticates the manual refresh mutation", async () => {

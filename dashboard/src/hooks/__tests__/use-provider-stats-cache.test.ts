@@ -17,7 +17,7 @@ function response(view: "range" | "recent_api_7d") {
     to: "2026-08-27",
     period: { from: "2026-08-21", to: "2026-08-27", days: 7, time_zone: "UTC" },
     totals_scope: recent
-      ? "api_key_attributed_official_billed_cost_positive"
+      ? "api_key_attributed_activity_with_official_cost_when_available"
       : "all_provider_attributed",
     providers: [{
       provider_id: "deepseek",
@@ -34,7 +34,7 @@ function response(view: "range" | "recent_api_7d") {
 }
 
 describe("Provider stats cache contract", () => {
-  it("keys the recent official-billing view by the current UTC day", () => {
+  it("keys an unbounded fallback view by the selected local day", () => {
     const instant = new Date("2026-08-27T17:22:00.000Z");
 
     expect(resolveProviderStatsDayKey({
@@ -42,7 +42,7 @@ describe("Provider stats cache contract", () => {
       timeZone: "Asia/Shanghai",
       offsetMinutes: 480,
       date: instant,
-    })).toBe("2026-08-27");
+    })).toBe("2026-08-28");
     expect(resolveProviderStatsDayKey({
       view: "range",
       timeZone: "Asia/Shanghai",
@@ -68,7 +68,7 @@ describe("Provider stats cache contract", () => {
     expect(isProviderStatsCachePayload(legacy, "range")).toBe(false);
   });
 
-  it("isolates range and recent caches while keeping page dates out of the recent key", () => {
+  it("isolates range and API activity caches by selected page dates", () => {
     const base = {
       cacheKey: "usage",
       baseUrl: "http://127.0.0.1:7680",
@@ -106,7 +106,7 @@ describe("Provider stats cache contract", () => {
     expect(range).toContain("providerStats.v2.range");
     expect(recentA).toContain("providerStats.v2.recent_api_7d");
     expect(range).not.toBe(recentA);
-    expect(recentA).toBe(recentB);
+    expect(recentA).not.toBe(recentB);
     expect(recentNextDay).not.toBe(recentA);
   });
 
@@ -134,6 +134,39 @@ describe("Provider stats cache contract", () => {
       "recent_api_7d",
       "2026-08-27",
     )).toEqual(entry);
+  });
+
+  it("accepts an API activity provider whose official cost is unavailable", () => {
+    const recent = response("recent_api_7d");
+    recent.providers[0] = {
+      ...recent.providers[0],
+      cost_basis: null,
+    };
+
+    expect(isProviderStatsCachePayload(recent, "recent_api_7d")).toBe(true);
+  });
+
+  it("accepts only a cache matching the selected API activity range", () => {
+    const entry = createProviderStatsCacheEntry(
+      response("recent_api_7d"),
+      "recent_api_7d",
+      "2026-08-27T03:00:00.000Z",
+    );
+
+    expect(parseProviderStatsCacheEntry(
+      JSON.stringify(entry),
+      "recent_api_7d",
+      "2026-08-30",
+      "2026-08-21",
+      "2026-08-27",
+    )).toEqual(entry);
+    expect(parseProviderStatsCacheEntry(
+      JSON.stringify(entry),
+      "recent_api_7d",
+      "2026-08-30",
+      "2026-08-22",
+      "2026-08-28",
+    )).toBeNull();
   });
 
   it("rejects a previous-day recent cache and an entry without a valid fetch timestamp", () => {

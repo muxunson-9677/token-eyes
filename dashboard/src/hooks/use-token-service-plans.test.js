@@ -241,7 +241,7 @@ describe("refreshConnectedTraePlans", () => {
 });
 
 describe("refreshConnectedCursorPlans", () => {
-  it("persists the official billing-cycle expiry as plan validity", async () => {
+  it("keeps the billing-cycle boundary on quota windows and clears the legacy fake plan expiry", async () => {
     verifyCursorConsoleSession.mockResolvedValue({
       state_code: "connected",
       session_ref: "token-plan/cursor/session/validity",
@@ -249,8 +249,15 @@ describe("refreshConnectedCursorPlans", () => {
         total_quota: 100,
         used_quota: 60,
         remaining_quota: 40,
-        subscription_expires_at: "2026-08-22T04:17:12Z",
-        quota_windows: [],
+        subscription_expires_at: null,
+        plan_name: "free",
+        quota_windows: [{
+          kind: "total",
+          total: 100,
+          used: 60,
+          remaining: 40,
+          resets_at: "2026-08-22T04:17:12Z",
+        }],
       },
     });
     saveTokenPlan.mockResolvedValue({ records: [] });
@@ -258,12 +265,21 @@ describe("refreshConnectedCursorPlans", () => {
     await refreshConnectedCursorPlans([{
       id: "cursor-validity",
       provider_id: "cursor",
+      expires_at: "2026-08-22T04:17:12Z",
+      provider_reported_fields: ["quota_windows", "expires_at"],
       detection_method: "official_account",
       detection_config: { official_account: { session_ref: "token-plan/cursor/session/validity" } },
     }]);
 
     expect(saveTokenPlan).toHaveBeenCalledWith(expect.objectContaining({
-      expires_at: "2026-08-22T04:17:12Z",
+      expires_at: "",
+      provider_reported_fields: expect.not.arrayContaining(["expires_at"]),
+      quota_windows: [expect.objectContaining({
+        resets_at: "2026-08-22T04:17:12Z",
+      })],
+      detection_config: expect.objectContaining({
+        official_account: expect.objectContaining({ plan_name: "free" }),
+      }),
     }), { notify: false });
   });
 

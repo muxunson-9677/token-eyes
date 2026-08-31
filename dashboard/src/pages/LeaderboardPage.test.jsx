@@ -32,6 +32,7 @@ const signOutMock = vi.hoisted(() => vi.fn());
 const developerPreviewGate = vi.hoisted(() => ({ enabled: false }));
 const insforgeAuthMock = vi.hoisted(() => ({
   enabled: true,
+  disabledReason: null,
   signedIn: true,
   loading: false,
   user: { id: "user-1" },
@@ -189,6 +190,7 @@ describe("LeaderboardPage window-session cache reuse", () => {
     signOutMock.mockReset();
     signOutMock.mockResolvedValue(undefined);
     insforgeAuthMock.enabled = true;
+    insforgeAuthMock.disabledReason = null;
     insforgeAuthMock.signedIn = true;
     insforgeAuthMock.loading = false;
     insforgeAuthMock.user = { id: "user-1" };
@@ -270,9 +272,84 @@ describe("LeaderboardPage window-session cache reuse", () => {
     expect(getLeaderboard).toHaveBeenLastCalledWith(expect.objectContaining({
       limit: 50,
       offset: 0,
+      refresh: true,
     }));
     resolveRefresh(refreshedData);
     await waitFor(() => expect(refreshButton).toBeEnabled());
+  });
+
+  it("renders the verified LKG first and then joins its explicit background revalidation", async () => {
+    const cachedData = {
+      ...preloadedData,
+      cache_state: "lkg",
+      revalidating: true,
+      entries: [{ ...preloadedData.entries[0], display_name: "Cached User" }],
+    };
+    const freshData = {
+      ...preloadedData,
+      cache_state: "live",
+      revalidating: false,
+      entries: [{ ...preloadedData.entries[0], display_name: "Fresh User" }],
+    };
+    let resolveRevalidation;
+    getLeaderboard
+      .mockResolvedValueOnce(cachedData)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRevalidation = resolve; }));
+
+    renderLeaderboard();
+
+    expect((await screen.findAllByText("Cached User")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(2));
+    act(() => resolveRevalidation(freshData));
+    expect((await screen.findAllByText("Fresh User")).length).toBeGreaterThan(0);
+    expect(getLeaderboard).toHaveBeenCalledTimes(2);
+    expect(getLeaderboard).toHaveBeenLastCalledWith(expect.objectContaining({ refresh: true }));
+  });
+
+  it("keeps cached rows visible and reports a manual 200 refresh failure", async () => {
+    const user = userEvent.setup();
+    const refreshFailedData = {
+      ...preloadedData,
+      cache_state: "lkg",
+      stale: true,
+      refresh_failed: true,
+      entries: [{ ...preloadedData.entries[0], display_name: "Cached User" }],
+    };
+    getLeaderboard.mockResolvedValueOnce(preloadedData).mockResolvedValueOnce(refreshFailedData);
+
+    renderLeaderboard();
+    await waitFor(() => expect(getLeaderboard).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: copy("usage.button.refresh") }));
+
+    expect((await screen.findAllByText("Cached User")).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("leaderboard-list-error")).toHaveTextContent(
+      copy("leaderboard.error.refresh_failed_cached"),
+    );
+    expect(screen.getByRole("button", { name: copy("usage.button.refresh") })).toBeEnabled();
+  });
+
+  it("keeps cached rows visible and reports a background 200 revalidation failure", async () => {
+    const cachedData = {
+      ...preloadedData,
+      cache_state: "lkg",
+      revalidating: true,
+      entries: [{ ...preloadedData.entries[0], display_name: "Cached User" }],
+    };
+    const refreshFailedData = {
+      ...cachedData,
+      revalidating: false,
+      stale: true,
+      refresh_failed: true,
+    };
+    getLeaderboard.mockResolvedValueOnce(cachedData).mockResolvedValueOnce(refreshFailedData);
+
+    renderLeaderboard();
+
+    expect((await screen.findAllByText("Cached User")).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("leaderboard-list-error")).toHaveTextContent(
+      copy("leaderboard.error.refresh_failed_cached"),
+    );
+    expect(getLeaderboard).toHaveBeenCalledTimes(2);
   });
 
   it("manual refresh also checks an existing participant's compact hash without polling", async () => {
@@ -788,6 +865,23 @@ describe("LeaderboardPage window-session cache reuse", () => {
     });
     expect(consumeLeaderboardLoginIntent()).toBe(true);
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
+  });
+
+  it("explains a build-time missing public auth credential without opening a broken signup form", async () => {
+    const user = userEvent.setup();
+    insforgeAuthMock.enabled = false;
+    insforgeAuthMock.disabledReason = "missing_public_auth_credential";
+    insforgeAuthMock.signedIn = false;
+    insforgeAuthMock.user = null;
+    getLeaderboard.mockResolvedValue(preloadedData);
+
+    renderLeaderboard("/leaderboard", { signedIn: false });
+
+    expect(await screen.findByText(copy("leaderboard.signin_missing_public_credential"))).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: copy("leaderboard.signin_unavailable") });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(openLoginModalMock).not.toHaveBeenCalled();
   });
 
   it("keeps email participation available when GitHub is not configured", async () => {

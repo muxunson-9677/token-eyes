@@ -231,6 +231,62 @@ describe("Codex reset events provider", () => {
     expect(api.checkCodexResetEvents).toHaveBeenCalledWith(false);
   });
 
+  it("retains last-known-good history but marks transport failure as cached", async () => {
+    const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
+    await act(async () => Promise.resolve());
+    expect(result.current.dataState).toBe("current");
+
+    api.checkCodexResetEvents.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await result.current.checkNow(false);
+    });
+
+    expect(result.current.history).toEqual(response.history);
+    expect(result.current.dataState).toBe("cached");
+    expect(result.current.available).toBe(false);
+  });
+
+  it("leaves initial loading and reports unavailable when the first request fails", async () => {
+    api.getCodexResetEvents.mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
+    expect(result.current.dataState).toBe("loading");
+
+    await act(async () => Promise.resolve());
+
+    expect(result.current.dataState).toBe("unavailable");
+    expect(result.current.history).toEqual([]);
+    expect(result.current.available).toBe(false);
+  });
+
+  it("starts a forced POST without waiting for an ordinary GET and ignores the late GET", async () => {
+    const initial = deferred<any>();
+    const forcedResponse = responseWithEvents([officialReset({ id: "forced-result" })]);
+    api.getCodexResetEvents.mockReturnValueOnce(initial.promise);
+    api.checkCodexResetEvents.mockResolvedValueOnce(forcedResponse);
+    const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
+    expect(api.getCodexResetEvents).toHaveBeenCalledOnce();
+
+    let forced!: Promise<void>;
+    act(() => {
+      forced = result.current.checkNow(true);
+    });
+    try {
+      await act(async () => Promise.resolve());
+      expect(api.checkCodexResetEvents).toHaveBeenCalledOnce();
+      expect(api.checkCodexResetEvents).toHaveBeenCalledWith(true);
+    } finally {
+      initial.resolve(response);
+      await act(async () => {
+        await initial.promise;
+        await forced;
+      });
+    }
+    expect(result.current.history).toEqual(forcedResponse.history);
+
+    await act(async () => Promise.resolve());
+    expect(result.current.history).toEqual(forcedResponse.history);
+  });
+
   it("acknowledges once and removes the event immediately", async () => {
     const { result } = renderHook(() => useCodexResetEvents(), { wrapper });
     await act(async () => Promise.resolve());

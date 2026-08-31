@@ -8,6 +8,7 @@ const LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FILES = 200;
 const MAX_SESSIONS = 100;
 const SESSION_META_READ_BYTES = 256 * 1024;
+const SESSION_INDEX_READ_BYTES = 2 * 1024 * 1024;
 const TAIL_READ_CHUNK_BYTES = 256 * 1024;
 const MAX_PARTIAL_LINE_BYTES = 1024 * 1024;
 const CODEX_ROLLOUT_PATH = Symbol.for("token-eyes.codex-rollout-path");
@@ -38,21 +39,32 @@ function safeTaskLabel(value) {
   return label.slice(0, 120) || null;
 }
 
-function readThreadNameIndex(home) {
-  let source;
-  try {
-    source = fs.readFileSync(path.join(home, "session_index.jsonl"), "utf8");
-  } catch {
-    return new Map();
-  }
+async function readThreadNameIndex(home) {
   const labels = new Map();
-  for (const line of source.split(/\n/u)) {
-    const id = /"id"\s*:\s*"((?:\\.|[^"\\])*)"/u.exec(line);
-    const threadName = /"thread_name"\s*:\s*"((?:\\.|[^"\\])*)"/u.exec(line);
-    if (!id || !threadName) continue;
-    const sessionId = decodeJsonStringFragment(id[1]);
-    const taskLabel = safeTaskLabel(decodeJsonStringFragment(threadName[1]));
-    if (sessionId && taskLabel) labels.set(sessionId, taskLabel);
+  let handle;
+  try {
+    handle = await fs.promises.open(path.join(home, "session_index.jsonl"), "r");
+    const stat = await handle.stat();
+    const bytesToRead = Math.min(stat.size, SESSION_INDEX_READ_BYTES);
+    if (bytesToRead <= 0) return labels;
+    const start = stat.size - bytesToRead;
+    const buffer = Buffer.allocUnsafe(bytesToRead);
+    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, start);
+    const lines = buffer.subarray(0, bytesRead).toString("utf8").split(/\n/u);
+    if (start > 0) lines.shift();
+    for (const line of lines) {
+      const id = /"id"\s*:\s*"((?:\\.|[^"\\])*)"/u.exec(line);
+      const threadName = /"thread_name"\s*:\s*"((?:\\.|[^"\\])*)"/u.exec(line);
+      if (!id || !threadName) continue;
+      const rawSessionId = decodeJsonStringFragment(id[1]);
+      const sessionId = rawSessionId ? safeSessionId(rawSessionId, "") : null;
+      const taskLabel = safeTaskLabel(decodeJsonStringFragment(threadName[1]));
+      if (sessionId && taskLabel) labels.set(sessionId, taskLabel);
+    }
+  } catch {
+    // Older Codex versions may not expose a session title index.
+  } finally {
+    await handle?.close().catch(() => {});
   }
   return labels;
 }
@@ -71,10 +83,12 @@ function safeSessionId(value, fallback) {
   return hashId("session", text || fallback);
 }
 
-function projectMetadata(cwd) {
+function projectMetadata(cwd, includeProjectLabel = false) {
   const text = String(cwd || "").trim().replace(/[\\/]+$/u, "");
+  const projectLabel = safeTaskLabel(text.split(/[\\/]/u).filter(Boolean).at(-1))?.slice(0, 80);
   return {
     projectId: hashId("project", text.toLowerCase()),
+    ...(includeProjectLabel && projectLabel ? { projectLabel } : {}),
   };
 }
 
@@ -239,7 +253,7 @@ async function readLatestModelEvidence(handle, fileSize) {
   return null;
 }
 
-async function readLifecycleFile(filePath) {
+async function readLifecycleFile(filePath, includeProjectLabel) {
   let handle;
   try {
     handle = await fs.promises.open(filePath, "r");
@@ -250,7 +264,7 @@ async function readLifecycleFile(filePath) {
       readLatestModelEvidence(handle, stat.size),
     ]);
     if (!meta || meta.threadSource !== "user" || !evidence) return null;
-    const project = projectMetadata(meta.cwd);
+    const project = projectMetadata(meta.cwd, includeProjectLabel);
     const sessionId = safeSessionId(meta.id, filePath);
     return attachRolloutPath({
       agent: "codex",
@@ -271,6 +285,7 @@ async function readLifecycleFile(filePath) {
 async function collectCodexLifecycleSessions({
   homes = [],
   nowMs = Date.now(),
+  includeProjectLabels = false,
 } = {}) {
   const cutoffMs = nowMs - LOOKBACK_MS;
   const files = [];
@@ -282,13 +297,13 @@ async function collectCodexLifecycleSessions({
 
   const sessions = [];
   for (const item of files.slice(0, MAX_FILES)) {
-    const session = await readLifecycleFile(item.filePath);
+    const session = await readLifecycleFile(item.filePath, includeProjectLabels === true);
     if (session) sessions.push(session);
     if (sessions.length >= MAX_SESSIONS) break;
   }
   const taskLabels = new Map();
   for (const home of resolvedHomes) {
-    for (const [sessionId, taskLabel] of readThreadNameIndex(home)) {
+    for (const [sessionId, taskLabel] of await readThreadNameIndex(home)) {
       if (!taskLabels.has(sessionId)) taskLabels.set(sessionId, taskLabel);
     }
   }

@@ -87,12 +87,17 @@ export function attachOfficialSessionLabels(plans, sessions = []) {
 
 function applyNativeQuotaToPlan(plan, status) {
   const now = new Date().toISOString();
+  const providerId = String(plan?.provider_id || "").trim().toLowerCase();
+  const nativeExpiry = status.quota.subscription_expires_at
+    || status.quota.expires_at
+    || "";
+  const cursorReportedFields = ["total_quota", "used_quota", "remaining_quota", "quota_windows"]
+    .filter((field) => Object.prototype.hasOwnProperty.call(status.quota, field)
+      && status.quota[field] !== null
+      && status.quota[field] !== undefined);
   return {
     ...plan,
-    expires_at: status.quota.subscription_expires_at
-      || status.quota.expires_at
-      || plan.expires_at
-      || "",
+    expires_at: providerId === "cursor" ? nativeExpiry : (nativeExpiry || plan.expires_at || ""),
     total_quota: Number(status.quota.total_quota || plan.total_quota || 0),
     used_quota: Number(status.quota.used_quota || 0),
     remaining_quota: Number(status.quota.remaining_quota || 0),
@@ -104,6 +109,7 @@ function applyNativeQuotaToPlan(plan, status) {
     last_synced_at: now,
     last_error_code: "",
     last_error_message: "",
+    ...(providerId === "cursor" ? { provider_reported_fields: cursorReportedFields } : {}),
     detection_config: {
       ...plan.detection_config,
       official_account: {

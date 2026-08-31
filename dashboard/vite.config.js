@@ -1305,11 +1305,31 @@ function localDataApiPlugin() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ROOT_DIR, "VITE_");
+  const rootPublicAuthEnv = mode === "test"
+    ? {}
+    : loadEnv(mode, REPO_ROOT, "NEXT_PUBLIC_INSFORGE_");
   const fallbackVersion = loadAppVersion();
   const define = {};
 
   if (!env.VITE_APP_VERSION && fallbackVersion) {
     define["import.meta.env.VITE_APP_VERSION"] = JSON.stringify(fallbackVersion);
+  }
+  if (
+    !env.VITE_INSFORGE_ANON_KEY
+    && !env.VITE_TOKENTRACKER_BACKEND_ANON_KEY
+    && rootPublicAuthEnv.NEXT_PUBLIC_INSFORGE_ANON_KEY
+  ) {
+    define["import.meta.env.VITE_INSFORGE_ANON_KEY"] = JSON.stringify(
+      rootPublicAuthEnv.NEXT_PUBLIC_INSFORGE_ANON_KEY,
+    );
+  }
+  if (
+    !env.VITE_INSFORGE_BASE_URL
+    && rootPublicAuthEnv.NEXT_PUBLIC_INSFORGE_URL
+  ) {
+    define["import.meta.env.VITE_INSFORGE_BASE_URL"] = JSON.stringify(
+      rootPublicAuthEnv.NEXT_PUBLIC_INSFORGE_URL,
+    );
   }
 
   // Build inputs. The Windows tray app's floating-pet page (pet.html) is an

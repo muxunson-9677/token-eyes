@@ -2625,16 +2625,16 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 }
 
 .tt-reference-route-reset-history .tt-reset-history-detail {
-  position: fixed;
-  z-index: 80;
+  grid-column: 2 / -1;
   display: grid;
   gap: 8px;
-  overflow: auto;
+  margin-top: 8px;
+  overflow: visible;
   border: 1px solid rgba(31, 43, 56, 0.12);
   border-radius: 14px;
   padding: 14px 16px 16px;
   background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 22px 52px rgba(22, 34, 48, 0.22);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.7), 0 8px 18px rgba(22, 34, 48, 0.08);
   cursor: default;
   backdrop-filter: blur(18px);
 }
@@ -2648,15 +2648,16 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 
 .tt-reference-route-reset-history .tt-reset-history-source-action {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  max-width: 100%;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   border: 1px solid rgba(13, 166, 112, 0.24);
   border-radius: 9px;
   background: rgba(13, 166, 112, 0.08);
   color: #078a5d;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
 }
 
 .tt-reference-route-reset-history .tt-reset-history-source-action svg {
@@ -2666,6 +2667,25 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 
 .tt-reference-route-reset-history .tt-reset-history-detail dl {
   margin: 0;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-detail-wide {
+  grid-column: 1 / -1;
+}
+
+.tt-reference-route-reset-history .tt-reset-history-kind-badge {
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(13, 166, 112, 0.1);
+  color: #078a5d;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .tt-reference-route-reset-history .tt-reset-history-detail h3 {
@@ -2707,6 +2727,59 @@ html.native-windows-app .tt-reference-route-reset-history .tt-main-work-surface 
 
 .tt-reference-route-reset-history .tt-reset-row-chevron.is-expanded {
   transform: rotate(90deg);
+}
+
+.tt-reset-history-freshness {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #dce6ee;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.tt-reset-history-freshness dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 6px 0 0;
+}
+
+.tt-reset-history-freshness dl div { min-width: 0; }
+.tt-reset-history-freshness dt { color: #7c8997; font-size: 10px; font-weight: 700; }
+.tt-reset-history-freshness dd { margin: 2px 0 0; color: #4c5a68; font-size: 11px; overflow-wrap: anywhere; }
+
+.tt-reset-history-freshness button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(13, 166, 112, 0.25);
+  border-radius: 10px;
+  padding: 7px 10px;
+  background: rgba(13, 166, 112, 0.08);
+  color: #078a5d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tt-reset-history-freshness button:disabled { cursor: wait; opacity: 0.65; }
+.tt-reset-history-freshness button svg { width: 14px; height: 14px; }
+
+:root.dark.tt-reference-route-reset-history .tt-reset-history-freshness {
+  border-color: var(--tt-page-border);
+  background: linear-gradient(145deg, rgba(42, 47, 56, 0.94), rgba(28, 32, 39, 0.96));
+}
+
+:root.dark.tt-reference-route-reset-history .tt-reset-history-freshness dd { color: #d5dde6; }
+
+@media (max-width: 760px) {
+  .tt-reset-history-freshness { flex-direction: column; }
+  .tt-reference-route-reset-history .tt-reset-history-detail-grid { grid-template-columns: 1fr; }
+  .tt-reference-route-reset-history .tt-reset-history-detail-wide { grid-column: 1; }
 }
 
 .tt-reference-route-reset-history [data-testid="reset-history-item"] time {
@@ -3319,7 +3392,8 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 .tt-widget-limits > header button:disabled { opacity: 0.6; }
 .tt-widget-limits > header button svg { width: 14px; height: 14px; }
 .tt-widget-plan-list { display: grid; gap: 10px; margin: 0 14px 14px; }
-.tt-widget-plan-list > .tt-token-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, 264px); grid-auto-rows: auto; align-items: stretch; justify-content: start; gap: 12px; }
+.tt-widget-plan-list > .tt-token-plan-grid,
+.tt-widget-limit-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, 264px); grid-auto-rows: auto; align-items: stretch; justify-content: start; gap: 12px; }
 .tt-widget-plan-card { position: relative; display: flex; min-width: 0; height: 100%; flex-direction: column; overflow: hidden; border: 1px solid rgba(198, 211, 226, 0.95); border-radius: 8px; outline: none; padding: 8px; background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(244, 247, 251, 0.96)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 8px 18px -12px rgba(33, 48, 67, 0.26), 0 2px 6px rgba(33, 48, 67, 0.05); }
 .tt-widget-plan-card[draggable="true"] { cursor: grab; }
 .tt-widget-plan-card[draggable="true"]:active { cursor: grabbing; }
@@ -9045,7 +9119,7 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
 .tt-reference-route-dashboard .tt-overview-provider-panel .tt-provider-card { width: 100%; min-width: 0; }
 .tt-reference-route-dashboard .tt-overview-usage.tt-overview-aligned-stack { height: auto; }
 .tt-reference-route-dashboard .tt-overview-provider-panel--expanded { position: relative; z-index: 40; }
-.tt-reference-route-dashboard .tt-provider-card-stage { position: relative; }
+.tt-reference-route-dashboard .tt-provider-card-stage { position: relative; overflow: visible; }
 .tt-reference-route-dashboard .tt-provider-expanded-region {
   box-sizing: border-box;
   position: absolute;
@@ -9079,18 +9153,6 @@ html.native-windows-app .tt-native-window-bar { display: none !important; }
     grid-template-rows: minmax(0, 620px) minmax(247px, auto);
   }
 
-  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel .grid.grid-cols-2 {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: clamp(122px, 15.75%, 129px);
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-  }
-
-  .tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel .grid.grid-cols-2::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 /* OV-06 trend-control centering contract */

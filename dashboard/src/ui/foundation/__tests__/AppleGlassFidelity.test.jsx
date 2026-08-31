@@ -53,10 +53,11 @@ describe("approved M/N material fidelity", () => {
     const card = ".tt-widget-plan-card";
     const header = ".tt-widget-plan-card__top";
     const check = ".tt-widget-plan-card .tt-widget-check";
+    const gridDeclarations = declarationsFromSelectorList(grid);
 
-    expect(declarations(grid)["align-items"]).toBe("stretch");
-    expect(declarations(grid)["grid-template-columns"]).toBe("repeat(auto-fill, 264px)");
-    expect(declarations(grid)["grid-auto-rows"]).toBe("auto");
+    expect(gridDeclarations["align-items"]).toBe("stretch");
+    expect(gridDeclarations["grid-template-columns"]).toBe("repeat(auto-fill, 264px)");
+    expect(gridDeclarations["grid-auto-rows"]).toBe("auto");
     expect(declarations(card).height).toBe("100%");
     expect(declarations(card).outline).toBe("none");
     expect(declarations(card)["box-shadow"]).not.toContain("0 7px");
@@ -331,11 +332,20 @@ describe("approved M/N material fidelity", () => {
 
     expect(declarations(providerPanel)["z-index"]).toBe("40");
     expect(declarations(providerStage).position).toBe("relative");
+    expect(declarations(providerStage).overflow).toBe("visible");
     expect(declarations(providerOverlay).position).toBe("absolute");
     expect(declarations(providerOverlay).top).toBe("calc(100% + 8px)");
     expect(declarations(providerOverlay).padding).toBe("14px 16px 16px");
     expect(declarations(providerOverlay)["overflow-x"]).toBe("hidden");
     expect(declarations(providerOverlay)["scrollbar-gutter"]).toBe("stable");
+  });
+
+  it("keeps overview provider card depth visible instead of clipping it in a desktop scroller", () => {
+    const providerGrid = ".tt-reference-route-dashboard .tt-overview-locked .tt-overview-provider-panel .grid.grid-cols-2";
+    const desktopGrid = mediaDeclarations("(min-width: 1081px)", providerGrid);
+    expect(desktopGrid["overflow-x"]).not.toBe("auto");
+    expect(desktopGrid["overflow-y"]).not.toBe("hidden");
+    expect(desktopGrid["grid-auto-flow"]).not.toBe("column");
   });
 
   it("defines the component-level materials from the approved prototypes", () => {

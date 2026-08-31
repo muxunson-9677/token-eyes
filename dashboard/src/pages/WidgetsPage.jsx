@@ -41,9 +41,19 @@ import { getDesktopWidgetViewModel, selectLocalDirectory } from "../lib/api.ts";
 import { selectDirectoryViaTauri } from "../lib/tauri-directory.js";
 import {
   mergeWidgetProjectOptions,
+  mergeWidgetStatusProjects,
+  migrateWidgetProjectSelectionIds,
   widgetProjectFromPath,
 } from "../lib/desktop-widget-projects.ts";
-import { groupWidgetLimits, widgetLimitGroupSelected } from "../lib/widget-limit-groups.js";
+import {
+  groupWidgetLimits,
+  splitWidgetLimitGroups,
+  widgetLimitGroupSelected,
+} from "../lib/widget-limit-groups.js";
+import {
+  tokenPlanExpiryTimestamp,
+  tokenPlanStartTimestamp,
+} from "../lib/token-plan-validity.js";
 
 const WIDGET_PRESS_TARGET = [
   "button:not(:disabled)",
@@ -86,6 +96,7 @@ const WIDGET_W = 264;
 const WIDGET_H = 124;
 const ROUNDED_FONT = "ui-rounded, -apple-system, system-ui";
 const ACTIVE_SESSION_WINDOWS = ["1h", "3h", "5h", "1d", "3d"];
+const DEFAULT_ACTIVE_SESSION_WINDOW = "1h";
 
 // Model accent palette — mirrors WidgetTheme.modelDot in
 // TokenTrackerBar/TokenTrackerWidget/Views/WidgetTheme.swift
@@ -486,54 +497,102 @@ function useClientPlatform() {
 
 function getTauriInvoke() {
   if (typeof window === "undefined") return null;
-  return window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || null;
+  return window.__TAURI__?.core?.invoke
+    || window.__TAURI__?.invoke
+    || window.__TAURI_INTERNALS__?.invoke
+    || null;
 }
 
 function WindowsWidgetToggle() {
+  const available = Boolean(getTauriInvoke());
   const [visible, setVisible] = useState(false);
-  const [busy, setBusy] = useState(true);
+  const [busy, setBusy] = useState(available);
+  const [error, setError] = useState(false);
+  const visibilityRequest = useRef(0);
+  const commandInFlight = useRef(false);
 
   useEffect(() => {
     const invoke = getTauriInvoke();
-    if (!invoke) {
-      setBusy(false);
-      return;
-    }
+    if (!invoke) return undefined;
     let mounted = true;
-    void invoke("get_desktop_widget_prefs")
-      .then((prefs) => {
-        if (mounted) setVisible(prefs?.visible === true);
-      })
-      .finally(() => {
-        if (mounted) setBusy(false);
-      });
+    const reload = async () => {
+      const request = ++visibilityRequest.current;
+      try {
+        const prefs = await invoke("get_desktop_widget_prefs");
+        if (mounted && request === visibilityRequest.current) {
+          setVisible(prefs?.visible === true);
+          setError(false);
+        }
+      } catch {
+        if (mounted && request === visibilityRequest.current) setError(true);
+      } finally {
+        if (mounted && request === visibilityRequest.current) setBusy(false);
+      }
+    };
+    const syncWhenVisible = () => {
+      if (document.visibilityState !== "hidden" && !commandInFlight.current) void reload();
+    };
+    void reload();
+    window.addEventListener("focus", syncWhenVisible);
+    document.addEventListener("visibilitychange", syncWhenVisible);
     return () => {
       mounted = false;
+      window.removeEventListener("focus", syncWhenVisible);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
     };
   }, []);
 
   const toggle = async () => {
     const invoke = getTauriInvoke();
     if (!invoke || busy) return;
+    commandInFlight.current = true;
+    const request = ++visibilityRequest.current;
     setBusy(true);
+    setError(false);
     try {
-      await invoke(visible ? "hide_desktop_widget" : "show_desktop_widget");
-      setVisible(!visible);
+      const prefs = await invoke(visible ? "hide_desktop_widget" : "show_desktop_widget");
+      if (request !== visibilityRequest.current) return;
+      if (typeof prefs?.visible === "boolean") {
+        setVisible(prefs.visible);
+      } else {
+        const restored = await invoke("get_desktop_widget_prefs");
+        if (request === visibilityRequest.current) setVisible(restored?.visible === true);
+      }
+    } catch {
+      if (request === visibilityRequest.current) setError(true);
     } finally {
-      setBusy(false);
+      commandInFlight.current = false;
+      if (request === visibilityRequest.current) setBusy(false);
     }
   };
 
+  if (!available) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={copy("widgets.windows.unavailable")}
+        className="inline-flex h-10 cursor-not-allowed items-center gap-2 rounded-[var(--tt-control-radius)] border border-oai-gray-200 bg-oai-gray-50 px-4 text-sm font-medium text-oai-gray-500 opacity-70 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-400"
+      >
+        <Monitor className="h-4 w-4" aria-hidden="true" />
+        {copy("widgets.windows.unavailable")}
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => void toggle()}
-      className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 disabled:cursor-wait disabled:opacity-60 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
-    >
-      <Monitor className="h-4 w-4" aria-hidden="true" />
-      {copy(visible ? "widgets.windows.hide" : "widgets.windows.show")}
-    </button>
+    <span className="inline-flex flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void toggle()}
+        className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white hover:bg-oai-gray-800 disabled:cursor-wait disabled:opacity-60 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+      >
+        <Monitor className="h-4 w-4" aria-hidden="true" />
+        {copy(visible ? "widgets.windows.hide" : "widgets.windows.show")}
+      </button>
+      {error ? <small role="alert" className="text-xs text-red-600 dark:text-red-400">{copy("widgets.windows.error")}</small> : null}
+    </span>
   );
 }
 
@@ -542,7 +601,7 @@ function WindowsWidgetProjectSettings() {
   const [recentProjects, setRecentProjects] = useState([]);
   const [draftIds, setDraftIds] = useState([]);
   const [draftProjects, setDraftProjects] = useState([]);
-  const [draftActiveSessionWindow, setDraftActiveSessionWindow] = useState("1h");
+  const [draftActiveSessionWindow, setDraftActiveSessionWindow] = useState(DEFAULT_ACTIVE_SESSION_WINDOW);
   const [limitOptions, setLimitOptions] = useState([]);
   const [draftLimitIds, setDraftLimitIds] = useState([]);
   const draggedLimitId = useRef(null);
@@ -558,10 +617,12 @@ function WindowsWidgetProjectSettings() {
     const invoke = getTauriInvoke();
     if (!invoke) return undefined;
     let mounted = true;
-    void Promise.all([
-      invoke("get_desktop_widget_prefs"),
-      getDesktopWidgetViewModel("all"),
-    ]).then(([nextPrefs, model]) => {
+    void invoke("get_desktop_widget_prefs").then(async (nextPrefs) => {
+      const activeSessionWindow = ACTIVE_SESSION_WINDOWS.includes(nextPrefs?.activeSessionWindow)
+        ? nextPrefs.activeSessionWindow
+        : DEFAULT_ACTIVE_SESSION_WINDOW;
+      return [nextPrefs, await getDesktopWidgetViewModel("all", activeSessionWindow)];
+    }).then(([nextPrefs, model]) => {
       if (!mounted) return;
       const detectedLimits = Array.isArray(model?.limits) ? model.limits : [];
       const detectedLimitIds = detectedLimits.map((limit) => String(limit.id || "")).filter(Boolean);
@@ -577,7 +638,7 @@ function WindowsWidgetProjectSettings() {
         ...(nextPrefs || {}),
         activeSessionWindow: ACTIVE_SESSION_WINDOWS.includes(nextPrefs?.activeSessionWindow)
           ? nextPrefs.activeSessionWindow
-          : "1h",
+          : DEFAULT_ACTIVE_SESSION_WINDOW,
         selectedProjectIds: Array.isArray(nextPrefs?.selectedProjectIds)
           ? nextPrefs.selectedProjectIds
           : [],
@@ -593,11 +654,14 @@ function WindowsWidgetProjectSettings() {
       setLimitOptions(orderedLimits);
       setDraftLimitIds(restored.selectedLimitIds);
       setRecentProjects(
-        (Array.isArray(model?.projectStatus?.recentProjects)
-          ? model.projectStatus.recentProjects
-          : Array.isArray(model?.projectStatus?.projects)
+        mergeWidgetProjectOptions([
+          ...(Array.isArray(model?.projectStatus?.projects)
             ? model.projectStatus.projects
-          : []).slice(0, 10),
+            : []),
+          ...(Array.isArray(model?.projectStatus?.recentProjects)
+            ? model.projectStatus.recentProjects
+            : []),
+        ], []).slice(0, 10),
       );
       setError(false);
     }).catch(() => {
@@ -900,7 +964,10 @@ function WindowsWidgetProjectSettings() {
               {visibleLimitOptions.length > 0 ? visibleLimitOptions.map((plan) => {
                 const id = String(plan.id || "");
                 const checked = widgetLimitGroupSelected(plan, draftLimitIds);
-                const label = [plan.provider, plan.planLabel].filter(Boolean).join(" - ");
+                const planName = plan.planLabel || plan.accountLabel || plan.provider;
+                const label = planName === plan.provider
+                  ? plan.provider
+                  : `${plan.provider} - ${planName}`;
                 return (
                   <div
                     key={id}
@@ -979,13 +1046,10 @@ function WindowsWidgetProjectSettings() {
   );
 }
 
-function formatProjectLastActive(project, index) {
-  if (project?.lastActiveLabel) return project.lastActiveLabel;
+function formatProjectLastActive(project) {
   const updatedAt = Date.parse(project?.updatedAt || "");
-  const fallbackDays = [0, 1, 2, 3, 5, 6, 30, 60][index] ?? 30;
-  const elapsedHours = Number.isFinite(updatedAt)
-    ? Math.max(0, Math.floor((Date.now() - updatedAt) / 3_600_000))
-    : fallbackDays * 24;
+  if (!Number.isFinite(updatedAt)) return copy("widget.session.time_unknown");
+  const elapsedHours = Math.max(0, Math.floor((Date.now() - updatedAt) / 3_600_000));
   const elapsedDays = Math.floor(elapsedHours / 24);
   const formatter = new Intl.RelativeTimeFormat("zh-CN", { numeric: "always" });
   if (elapsedHours < 24) return formatter.format(-elapsedHours, "hour");
@@ -995,8 +1059,8 @@ function formatProjectLastActive(project, index) {
 }
 
 function formatProjectCreatedAt(project) {
-  const timestamp = Date.parse(project?.createdAt || project?.updatedAt || "");
-  if (!Number.isFinite(timestamp)) return copy("widgets.reference.never_active");
+  const timestamp = Date.parse(project?.createdAt || "");
+  if (!Number.isFinite(timestamp)) return copy("widget.session.time_unknown");
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -1021,8 +1085,8 @@ function formatLimitResetAt(limit) {
 }
 
 function formatWidgetPlanValidity(value, now = new Date()) {
-  const timestamp = Date.parse(String(value || ""));
-  if (!Number.isFinite(timestamp)) return copy("settings.token_plan.validity_unset");
+  const timestamp = tokenPlanExpiryTimestamp(value);
+  if (timestamp === null) return copy("settings.token_plan.validity_unset");
 
   const totalMinutes = Math.max(0, Math.floor((timestamp - now.getTime()) / 60_000));
   const days = Math.floor(totalMinutes / (24 * 60));
@@ -1039,52 +1103,56 @@ function formatWidgetPlanValidity(value, now = new Date()) {
   return copy("settings.token_plan.validity_summary", { remaining, date: dateTime });
 }
 
-function widgetProjectStatus(project, index) {
-  return project.status || (index < 2 ? "active" : index < 4 ? "recovering" : "inactive");
+function formatWidgetPlanDate(value, boundary = "start") {
+  const timestamp = boundary === "end"
+    ? tokenPlanExpiryTimestamp(value)
+    : tokenPlanStartTimestamp(value);
+  if (timestamp === null) return copy("settings.token_plan.validity_unset");
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(timestamp).replaceAll("/", "-");
 }
 
-function widgetProjectGroupKey(project) {
-  return String(project?.path || project?.label || project?.id || "")
-    .trim()
-    .toLocaleLowerCase();
+const WIDGET_PROJECT_STATUSES = ["red", "yellow", "green", "unknown"];
+const WIDGET_SESSION_STATES = new Set([
+  "waiting_approval",
+  "error",
+  "running",
+  "completed",
+  "stopped",
+  "unknown",
+]);
+
+function widgetProjectStatus(project) {
+  const status = String(project?.status || "").toLowerCase();
+  if (WIDGET_PROJECT_STATUSES.includes(status)) return status;
+  for (const candidate of WIDGET_PROJECT_STATUSES) {
+    if (Number(project?.[candidate] || 0) > 0) return candidate;
+  }
+  for (const candidate of WIDGET_PROJECT_STATUSES) {
+    if (project?.sessions?.some((session) => String(session?.status || "").toLowerCase() === candidate)) {
+      return candidate;
+    }
+  }
+  return "unknown";
 }
 
-function groupWidgetProjectSessions(sessions) {
-  const grouped = new Map();
+function widgetProjectStatusTone(status) {
+  if (status === "green") return "active";
+  if (status === "yellow") return "recovering";
+  return "inactive";
+}
 
-  sessions.forEach((session) => {
-    const groupId = widgetProjectGroupKey(session);
-    const sessionId = String(session?.id || "");
-    const existing = grouped.get(groupId);
-
-    if (!existing) {
-      grouped.set(groupId, {
-        ...session,
-        groupId,
-        sessionIds: sessionId ? [sessionId] : [],
-        sessions: [session],
-      });
-      return;
-    }
-
-    if (sessionId && !existing.sessionIds.includes(sessionId)) {
-      existing.sessionIds.push(sessionId);
-    }
-    existing.sessions.push(session);
-
-    const currentUpdatedAt = Date.parse(existing.updatedAt || "");
-    const nextUpdatedAt = Date.parse(session?.updatedAt || "");
-    if (Number.isFinite(nextUpdatedAt) && (!Number.isFinite(currentUpdatedAt) || nextUpdatedAt > currentUpdatedAt)) {
-      const { groupId: preservedGroupId, sessionIds, sessions: preservedSessions } = existing;
-      Object.assign(existing, session, {
-        groupId: preservedGroupId,
-        sessionIds,
-        sessions: preservedSessions,
-      });
-    }
-  });
-
-  return [...grouped.values()];
+function widgetSessionStateLabel(session) {
+  const state = String(session?.state || "").toLowerCase();
+  if (WIDGET_SESSION_STATES.has(state)) return copy(`widget.session_state.${state}`);
+  const status = String(session?.status || "").toLowerCase();
+  return copy(`widget.status.${WIDGET_PROJECT_STATUSES.includes(status) ? status : "unknown"}`);
 }
 
 function widgetProjectTags(project) {
@@ -1093,16 +1161,7 @@ function widgetProjectTags(project) {
     : project?.tag
       ? [project.tag]
       : [];
-  if (savedTags.length) return savedTags;
-
-  const name = String(project?.label || project?.path || project?.id || "").toLowerCase();
-  if (name.includes("skin") || name.includes("theme")) return [copy("widgets.reference.tag_theme")];
-  if (name.includes("token") || name.includes("eye")) return [copy("widgets.reference.tag_core")];
-  if (name.includes("text") || name.includes("clash")) return [copy("widgets.reference.tag_tool")];
-  if (name.includes("card") || name.includes("mind") || name.includes("思维")) return [copy("widgets.reference.tag_card"), copy("widgets.reference.tag_design")];
-  if (name.includes("xls") || name.includes("excel") || name.includes("sheet")) return [copy("widgets.reference.tag_experiment")];
-  if (name.includes("pet") || name.includes("qiuzhi") || name.includes("生存")) return [copy("widgets.reference.tag_personal")];
-  return [copy("widgets.reference.tag_project")];
+  return savedTags;
 }
 
 function widgetProjectTagTone(tag) {
@@ -1138,6 +1197,21 @@ function selectedWidgetLimitIds(limits, selectedIds) {
     .flatMap((plan) => plan.windows.map((limit) => String(limit.id)));
 }
 
+function selectedWidgetProjects(projects, savedProjects, selectedIds) {
+  const byId = new Map(mergeWidgetProjectOptions(projects, savedProjects)
+    .map((project) => [project.id, project]));
+  return selectedIds.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function widgetProjectSelectionsEqual(left, right) {
+  if (!Array.isArray(left) || left.length !== right.length) return false;
+  return left.every((project, index) => (
+    String(project?.id || "") === String(right[index]?.id || "")
+    && String(project?.label || "") === String(right[index]?.label || "")
+    && String(project?.path || "") === String(right[index]?.path || "")
+  ));
+}
+
 function WidgetTablePagination() {
   return (
     <div className="tt-widget-table-pagination" aria-label={copy("widgets.reference.pagination")}>
@@ -1160,10 +1234,11 @@ function WindowsProjectManager({ onOpenSettings }) {
   const [dismissedProjectIds, setDismissedProjectIds] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
-  const [recentRange, setRecentRange] = useState("7d");
   const [batchOpen, setBatchOpen] = useState(false);
   const [expandedProjectIds, setExpandedProjectIds] = useState([]);
   const [limitPlanOrder, setLimitPlanOrder] = useState([]);
+  const [expiredPlansOpen, setExpiredPlansOpen] = useState(false);
+  const [scheduledPlansOpen, setScheduledPlansOpen] = useState(false);
   const draggedLimitPlanId = useRef(null);
 
   useEffect(() => {
@@ -1172,60 +1247,83 @@ function WindowsProjectManager({ onOpenSettings }) {
     const prefsPromise = invoke
       ? invoke("get_desktop_widget_prefs")
       : Promise.resolve(null);
-    void Promise.all([prefsPromise, getDesktopWidgetViewModel("all")])
+    void prefsPromise.then(async (savedPrefs) => {
+      const activeSessionWindow = ACTIVE_SESSION_WINDOWS.includes(savedPrefs?.activeSessionWindow)
+        ? savedPrefs.activeSessionWindow
+        : DEFAULT_ACTIVE_SESSION_WINDOW;
+      return [savedPrefs, await getDesktopWidgetViewModel("all", activeSessionWindow)];
+    })
       .then(([savedPrefs, nextModel]) => {
         if (!mounted) return;
-        const detectedSessions = Array.isArray(nextModel?.projectStatus?.recentProjects)
-          ? nextModel.projectStatus.recentProjects
-          : [];
-        const detectedSessionIds = new Set(detectedSessions.map((session) => String(session?.id || "")));
-        const sessions = [
-          ...detectedSessions,
-          ...(Array.isArray(savedPrefs?.selectedProjects) ? savedPrefs.selectedProjects : [])
-            .filter((project) => !detectedSessionIds.has(String(project?.id || ""))),
-        ];
-        const projects = groupWidgetProjectSessions(sessions);
+        const projects = mergeWidgetStatusProjects(
+          Array.isArray(nextModel?.projectStatus?.projects)
+            ? nextModel.projectStatus.projects
+            : [],
+          Array.isArray(nextModel?.projectStatus?.recentProjects)
+            ? nextModel.projectStatus.recentProjects
+            : [],
+          Array.isArray(savedPrefs?.selectedProjects) ? savedPrefs.selectedProjects : [],
+        );
         const limits = Array.isArray(nextModel?.limits) ? nextModel.limits : [];
         const fallbackPrefs = {
-          activeSessionWindow: "3d",
-          selectedProjectIds: projects.slice(0, 2).flatMap((project) => project.sessionIds),
-          selectedProjects: projects.slice(0, 2).flatMap((project) => project.sessions),
+          activeSessionWindow: DEFAULT_ACTIVE_SESSION_WINDOW,
+          selectedProjectIds: projects.slice(0, 2).map((project) => project.id),
+          selectedProjects: projects.slice(0, 2),
           selectedLimitIds: limits.map((limit) => String(limit.id)),
         };
-        const currentPrefs = savedPrefs || fallbackPrefs;
+        const currentPrefs = savedPrefs
+          ? {
+            ...savedPrefs,
+            activeSessionWindow: ACTIVE_SESSION_WINDOWS.includes(savedPrefs.activeSessionWindow)
+              ? savedPrefs.activeSessionWindow
+              : DEFAULT_ACTIVE_SESSION_WINDOW,
+          }
+          : fallbackPrefs;
+        const storedProjectIds = Array.isArray(currentPrefs.selectedProjectIds)
+          ? currentPrefs.selectedProjectIds
+          : fallbackPrefs.selectedProjectIds;
+        const restoredProjectIds = migrateWidgetProjectSelectionIds(projects, storedProjectIds);
+        const restoredSelectedProjects = selectedWidgetProjects(
+          projects,
+          Array.isArray(currentPrefs.selectedProjects) ? currentPrefs.selectedProjects : [],
+          restoredProjectIds,
+        );
         const storedLimitIds = Array.isArray(currentPrefs.selectedLimitIds)
           ? currentPrefs.selectedLimitIds
           : fallbackPrefs.selectedLimitIds;
         const restoredLimitIds = selectedWidgetLimitIds(limits, storedLimitIds);
-        const restoredPrefs = { ...currentPrefs, selectedLimitIds: restoredLimitIds };
-        setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
+        const restoredPrefs = {
+          ...currentPrefs,
+          selectedProjectIds: restoredProjectIds,
+          selectedProjects: restoredSelectedProjects,
+          selectedLimitIds: restoredLimitIds,
+        };
+        setModel(nextModel || { projectStatus: { projects: [], recentProjects: [] }, limits: [] });
         setPrefs(restoredPrefs);
         if (
           invoke
-          && Array.isArray(currentPrefs.selectedLimitIds)
-          && currentPrefs.selectedLimitIds.join("\u0000") !== restoredLimitIds.join("\u0000")
+          && (
+            storedProjectIds.join("\u0000") !== restoredProjectIds.join("\u0000")
+            || !widgetProjectSelectionsEqual(currentPrefs.selectedProjects, restoredSelectedProjects)
+            || storedLimitIds.join("\u0000") !== restoredLimitIds.join("\u0000")
+          )
         ) {
           void invoke("set_desktop_widget_prefs", { prefs: restoredPrefs });
         }
       })
       .catch(() => {
-        if (mounted) setModel({ projectStatus: { recentProjects: [] }, limits: [] });
+        if (mounted) setModel({ projectStatus: { projects: [], recentProjects: [] }, limits: [] });
       });
     return () => {
       mounted = false;
     };
   }, []);
 
-  const detectedSessions = Array.isArray(model?.projectStatus?.recentProjects)
-    ? model.projectStatus.recentProjects
-    : [];
-  const detectedSessionIds = new Set(detectedSessions.map((session) => String(session?.id || "")));
-  const sessions = [
-    ...detectedSessions,
-    ...(Array.isArray(prefs?.selectedProjects) ? prefs.selectedProjects : [])
-      .filter((project) => !detectedSessionIds.has(String(project?.id || ""))),
-  ];
-  const projects = groupWidgetProjectSessions(sessions);
+  const projects = mergeWidgetStatusProjects(
+    Array.isArray(model?.projectStatus?.projects) ? model.projectStatus.projects : [],
+    Array.isArray(model?.projectStatus?.recentProjects) ? model.projectStatus.recentProjects : [],
+    Array.isArray(prefs?.selectedProjects) ? prefs.selectedProjects : [],
+  );
   const limits = Array.isArray(model?.limits) ? model.limits : [];
   const limitPlans = groupWidgetLimits(limits);
 
@@ -1245,21 +1343,22 @@ function WindowsProjectManager({ onOpenSettings }) {
   const selectedLimitIds = selectedWidgetLimitIds(limits, storedSelectedLimitIds);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const displayedProjects = projects
-    .map((project, index) => ({ project, index, status: widgetProjectStatus(project, index) }))
+    .map((project, index) => ({ project, index, status: widgetProjectStatus(project) }))
     .filter(({ project, status }) => (
       (!normalizedQuery || String(project.label || "").toLocaleLowerCase().includes(normalizedQuery))
       && (statusFilter === "all" || status === statusFilter)
-      && !dismissedProjectIds.includes(project.groupId)
+      && !dismissedProjectIds.includes(project.id)
     ))
     .sort((left, right) => {
       if (sortOrder !== "recent") return 0;
       return Date.parse(right.project.updatedAt || "") - Date.parse(left.project.updatedAt || "");
     });
   const limitPlansById = new Map(limitPlans.map((plan) => [plan.id, plan]));
-  const displayedLimits = [
+  const orderedLimitPlans = [
     ...limitPlanOrder.map((id) => limitPlansById.get(id)).filter(Boolean),
     ...limitPlans.filter((plan) => !limitPlanOrder.includes(plan.id)),
   ];
+  const groupedLimitPlans = splitWidgetLimitGroups(orderedLimitPlans);
   const selectedLimitPlanCount = limitPlans.filter((plan) => (
     widgetLimitGroupSelected(plan, selectedLimitIds)
   )).length;
@@ -1272,17 +1371,15 @@ function WindowsProjectManager({ onOpenSettings }) {
 
   const toggleProject = (project) => {
     if (!prefs) return;
-    const projectSessionIds = project.sessionIds.length
-      ? project.sessionIds
-      : [String(project.id)];
-    const selected = projectSessionIds.every((id) => selectedProjectIds.includes(id));
+    const projectId = String(project.id);
+    const selected = selectedProjectIds.includes(projectId);
     const nextIds = selected
-      ? selectedProjectIds.filter((value) => !projectSessionIds.includes(value))
-      : [...new Set([...selectedProjectIds, ...projectSessionIds])];
+      ? selectedProjectIds.filter((value) => value !== projectId)
+      : [...selectedProjectIds, projectId];
     void persist({
       ...prefs,
       selectedProjectIds: nextIds,
-      selectedProjects: sessions.filter((item) => nextIds.includes(String(item.id))),
+      selectedProjects: selectedWidgetProjects(projects, prefs.selectedProjects, nextIds),
     });
   };
 
@@ -1313,7 +1410,7 @@ function WindowsProjectManager({ onOpenSettings }) {
 
   const persistLimitPlanOrder = () => {
     if (!prefs) return;
-    const orderedSelectedIds = displayedLimits
+    const orderedSelectedIds = orderedLimitPlans
       .flatMap((plan) => plan.windows.map((limit) => String(limit.id)))
       .filter((id) => selectedLimitIds.includes(id));
     void persist({ ...prefs, selectedLimitIds: orderedSelectedIds });
@@ -1321,24 +1418,22 @@ function WindowsProjectManager({ onOpenSettings }) {
 
   const removeProjectFromWidget = (project) => {
     if (!prefs) return;
-    const projectSessionIds = project.sessionIds.length
-      ? project.sessionIds
-      : [String(project.id)];
-    setDismissedProjectIds((current) => [...current, project.groupId]);
+    const projectId = String(project.id);
+    setDismissedProjectIds((current) => [...current, projectId]);
     setOpenMenu(null);
-    const nextIds = selectedProjectIds.filter((value) => !projectSessionIds.includes(value));
+    const nextIds = selectedProjectIds.filter((value) => value !== projectId);
     void persist({
       ...prefs,
       selectedProjectIds: nextIds,
-      selectedProjects: sessions.filter((item) => nextIds.includes(String(item.id))),
+      selectedProjects: selectedWidgetProjects(projects, prefs.selectedProjects, nextIds),
     });
   };
 
   const toggleProjectSessions = (project) => {
     setExpandedProjectIds((current) => (
-      current.includes(project.groupId)
-        ? current.filter((id) => id !== project.groupId)
-        : [...current, project.groupId]
+      current.includes(project.id)
+        ? current.filter((id) => id !== project.id)
+        : [...current, project.id]
     ));
   };
 
@@ -1355,18 +1450,126 @@ function WindowsProjectManager({ onOpenSettings }) {
     return Number.isFinite(updatedAt) && Date.now() - updatedAt < 7 * 24 * 60 * 60 * 1000;
   }).length;
   const selectedProjectCount = projects.filter((project) => (
-    project.sessionIds.some((id) => selectedProjectIds.includes(id))
+    selectedProjectIds.includes(project.id)
   )).length;
 
   const refreshPlans = async () => {
     if (refreshingPlans) return;
     setRefreshingPlans(true);
     try {
-      const nextModel = await getDesktopWidgetViewModel("all");
-      setModel(nextModel || { projectStatus: { recentProjects: [] }, limits: [] });
+      const activeSessionWindow = ACTIVE_SESSION_WINDOWS.includes(prefs?.activeSessionWindow)
+        ? prefs.activeSessionWindow
+        : DEFAULT_ACTIVE_SESSION_WINDOW;
+      const nextModel = await getDesktopWidgetViewModel("all", activeSessionWindow);
+      setModel(nextModel || { projectStatus: { projects: [], recentProjects: [] }, limits: [] });
     } finally {
       setRefreshingPlans(false);
     }
+  };
+
+  const renderLimitPlan = (plan, validityState = "active") => {
+    const selected = widgetLimitGroupSelected(plan, selectedLimitIds);
+    const agent = String(plan.agent || plan.provider || "").toLowerCase();
+    const providerName = plan.provider || agent;
+    const planName = plan.planLabel || plan.accountLabel || providerName;
+    const accessibleName = planName === providerName ? providerName : `${providerName} - ${planName}`;
+    let validitySummary = null;
+    if (validityState === "scheduled" && plan.startsAt) {
+      validitySummary = <div className="tt-token-plan-card-summary">
+        <span className="tt-token-plan-summary-expiry">
+          <CalendarDays aria-hidden />
+          <span>{copy("settings.token_plan.starts_at")}: {formatWidgetPlanDate(plan.startsAt, "start")}</span>
+        </span>
+      </div>;
+    } else if (validityState === "expired" && plan.expiresAt) {
+      validitySummary = <div className="tt-token-plan-card-summary">
+        <span className="tt-token-plan-summary-expiry">
+          <CalendarDays aria-hidden />
+          <span>{copy("settings.token_plan.expired_at")}: {formatWidgetPlanDate(plan.expiresAt, "end")}</span>
+        </span>
+      </div>;
+    } else if (validityState === "active" && plan.expiresAt) {
+      validitySummary = <div className="tt-token-plan-card-summary">
+        <span className="tt-token-plan-summary-expiry">
+          <CalendarDays aria-hidden />
+          <span>{formatWidgetPlanValidity(plan.expiresAt)}</span>
+        </span>
+      </div>;
+    }
+    return <article
+      className="tt-widget-plan-card tt-token-plan-card tt-token-plan-card--reference"
+      data-testid="widget-limit-plan-card"
+      data-plan-id={plan.id}
+      data-card-layout="cost-settings-token-plan"
+      data-layout-density="content"
+      draggable
+      onDragStart={(event) => {
+        draggedLimitPlanId.current = plan.id;
+        event.dataTransfer?.setData("text/plain", plan.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        moveLimitPlan(plan.id);
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(event) => event.preventDefault()}
+      onDragEnd={() => {
+        draggedLimitPlanId.current = null;
+        persistLimitPlanOrder();
+      }}
+      key={plan.id}
+    >
+      <div className="tt-widget-plan-card__top">
+        <GripVertical aria-hidden className="tt-widget-plan-card__drag" />
+        <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${agent}`)}>
+          <ProviderIcon provider={agent} size={14} className={`tt-widget-agent-logo is-${agent}`} />
+        </span>
+        <span className="tt-token-plan-copy">
+          <span className="tt-token-plan-full">
+            <span className="tt-token-plan-full-text"><span>{providerName}</span>{planName === providerName ? null : ` / ${planName}`}</span>
+          </span>
+          <span className="tt-token-plan-card-identity-meta">
+            <span className="tt-token-plan-card-account">{maskWidgetPlanEmail(plan.accountLabel) || "—"}</span>
+          </span>
+        </span>
+        <button
+          type="button"
+          aria-pressed={selected}
+          aria-label={accessibleName}
+          className={cn("tt-widget-check", "tt-widget-plan-card__check", selected && "is-checked")}
+          onClick={() => toggleLimit(plan)}
+        >
+          {selected ? <Check aria-hidden /> : null}
+        </button>
+      </div>
+      <div className="tt-token-plan-card-detail">
+        <div className="tt-token-plan-quota-windows">
+          <div>
+            {plan.windows.map((limit) => {
+              const windowUsed = Number(limit.usedPercent || 0);
+              const atLeastFull = [0, 1].includes(Math.sign(windowUsed - 100));
+              const nearFull = [0, 1].includes(Math.sign(windowUsed - 90));
+              const tone = atLeastFull ? "danger" : nearFull ? "warning" : "normal";
+              return <div className="tt-token-plan-quota-window" data-testid="widget-limit-quota-window" data-kind={limit.kind} key={limit.id}>
+                <div className="tt-token-plan-quota-window-head">
+                  <strong>{limit.kind === "total" ? null : <Clock3 aria-hidden />}{limit.window}</strong>
+                  <span className="tt-token-plan-quota-window-percent">{windowUsed}%</span>
+                </div>
+                <span className="tt-token-plan-progress" data-tone={tone}>
+                  <i style={{ width: `${Math.max(0, Math.min(100, windowUsed))}%` }} />
+                </span>
+                <small data-align="end">{formatLimitResetAt(limit)}</small>
+              </div>;
+            })}
+          </div>
+        </div>
+        {validitySummary}
+      </div>
+    </article>;
   };
 
   return (
@@ -1403,7 +1606,12 @@ function WindowsProjectManager({ onOpenSettings }) {
           <button type="button" className="tt-raised-control tt-pressable" aria-label={copy("widgets.reference.import_recent_projects")} onClick={() => {
             if (!prefs) return;
             setDismissedProjectIds([]);
-            void persist({ ...prefs, selectedProjectIds: projects.flatMap((project) => project.sessionIds), selectedProjects: sessions });
+            const nextIds = projects.map((project) => project.id);
+            void persist({
+              ...prefs,
+              selectedProjectIds: nextIds,
+              selectedProjects: selectedWidgetProjects(projects, prefs.selectedProjects, nextIds),
+            });
           }}><History aria-hidden />{copy("widgets.reference.restore_recent_projects")}</button>
           <label><Search aria-hidden /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy("widgets.reference.search_projects")} /></label>
           <span className="tt-widget-toolbar-spacer" />
@@ -1413,9 +1621,10 @@ function WindowsProjectManager({ onOpenSettings }) {
             onValueChange={setStatusFilter}
             options={[
               { value: "all", label: copy("widgets.reference.status_all") },
-              { value: "active", label: copy("widgets.reference.active_projects") },
-              { value: "recovering", label: copy("widgets.reference.active_range") },
-              { value: "inactive", label: copy("widgets.reference.never_active") },
+              { value: "red", label: copy("widget.status.red") },
+              { value: "yellow", label: copy("widget.status.yellow") },
+              { value: "green", label: copy("widget.status.green") },
+              { value: "unknown", label: copy("widget.status.unknown") },
             ]}
             leadingIcon={<Filter aria-hidden />}
             className="tt-widget-toolbar-select tt-raised-control tt-pressable"
@@ -1427,30 +1636,16 @@ function WindowsProjectManager({ onOpenSettings }) {
             options={[{ value: "recent", label: copy("widgets.reference.sort_recent_active") }]}
             className="tt-widget-toolbar-select tt-raised-control tt-pressable"
           />
-          <Select
-            ariaLabel={copy("widgets.reference.recent_seven_days")}
-            value={recentRange}
-            onValueChange={setRecentRange}
-            options={[
-              { value: "7d", label: copy("widgets.reference.recent_seven_days") },
-              { value: "3d", label: copy("widgets.reference.three_days") },
-              { value: "1d", label: copy("widgets.reference.one_day") },
-            ]}
-            leadingIcon={<CalendarDays aria-hidden />}
-            className="tt-widget-toolbar-select tt-raised-control tt-pressable"
-          />
         </div>
         <div className="tt-widget-project-table">
           <div className="tt-widget-project-head"><span /><span>{copy("widgets.reference.project_name")}</span><span>{copy("widgets.reference.project_tag")}</span><span>{copy("widgets.reference.status")}</span><span>{copy("widgets.reference.last_active")}</span><span>{copy("widgets.reference.created_at")}</span><span>{copy("widgets.reference.action")}</span></div>
           {displayedProjects.map(({ project, index, status }) => {
-            const checked = project.sessionIds.some((id) => {
-              return selectedProjectIds.includes(id);
-            });
+            const checked = selectedProjectIds.includes(project.id);
             const tags = widgetProjectTags(project);
-            const canExpand = project.sessions.length !== 0 && project.sessions.length !== 1;
-            const expanded = canExpand && expandedProjectIds.includes(project.groupId);
+            const canExpand = Boolean(project.sessions.length);
+            const expanded = canExpand && expandedProjectIds.includes(project.id);
             return (
-              <React.Fragment key={project.groupId}>
+              <React.Fragment key={project.id}>
                 <div className="tt-widget-project-row">
                   <button type="button" className={cn("tt-widget-check", checked && "is-checked")} onClick={() => toggleProject(project)} aria-label={project.label}>{checked ? <Check aria-hidden /> : null}</button>
                   <span className={cn("tt-widget-project-name", canExpand && "is-expandable")}>
@@ -1461,22 +1656,23 @@ function WindowsProjectManager({ onOpenSettings }) {
                     ) : <span className="tt-widget-project-name-static"><i data-tone={index % 6}>{String(project.label || "PR").slice(0, 3).toUpperCase()}</i><span>{project.label}</span></span>}
                   </span>
                   <span className="tt-widget-project-tag">{tags.map((tag) => <i key={tag} data-tone={widgetProjectTagTone(tag)}>{tag}</i>)}</span>
-                  <span className={cn("tt-widget-project-status", `is-${status}`)}><i />{status === "active" ? "活跃" : status === "recovering" ? "较活跃" : "未激活"}</span>
-                  <time>{formatProjectLastActive(project, index)}</time>
+                  <span className={cn("tt-widget-project-status", `is-${widgetProjectStatusTone(status)}`)}><i />{copy(`widget.status.${status}`)}</span>
+                  <time>{formatProjectLastActive(project)}</time>
                   <time className="tt-widget-project-created">{formatProjectCreatedAt(project)}</time>
                   <div className="tt-widget-row-actions">
-                    <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `project:${project.groupId}`} onClick={() => setOpenMenu((current) => current === `project:${project.groupId}` ? null : `project:${project.groupId}`)}><Ellipsis aria-hidden /></button>
-                    {openMenu === `project:${project.groupId}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeProjectFromWidget(project)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
+                    <button type="button" aria-label={copy("settings.token_plan.delete_short")} aria-expanded={openMenu === `project:${project.id}`} onClick={() => setOpenMenu((current) => current === `project:${project.id}` ? null : `project:${project.id}`)}><Ellipsis aria-hidden /></button>
+                    {openMenu === `project:${project.id}` ? <div role="menu"><button type="button" role="menuitem" onClick={() => removeProjectFromWidget(project)}><Trash2 aria-hidden />{copy("settings.token_plan.delete_short")}</button></div> : null}
                   </div>
                 </div>
                 {expanded ? <div className="tt-widget-project-sessions" data-testid="widget-project-sessions">
                   <div className="tt-widget-project-sessions-title">{copy("widgets.reference.project_sessions", { count: project.sessions.length })}</div>
                   {project.sessions.map((session, sessionIndex) => {
-                    const sessionStatus = widgetProjectStatus(session, sessionIndex);
-                    return <div className="tt-widget-project-session" data-testid="widget-project-session" key={session.id || `${project.groupId}:${sessionIndex}`}>
-                      <span>{copy("widgets.reference.session_name", { index: sessionIndex + 1 })}</span>
-                      <span className={cn("tt-widget-project-status", `is-${sessionStatus}`)}><i />{sessionStatus === "active" ? "活跃" : sessionStatus === "recovering" ? "较活跃" : "未激活"}</span>
-                      <time>{formatProjectLastActive(session, sessionIndex)}</time>
+                    const sessionStatus = widgetProjectStatus(session);
+                    const sessionTime = formatProjectLastActive(session);
+                    return <div className="tt-widget-project-session" data-testid="widget-project-session" key={session.id || `${project.id}:${sessionIndex}`}>
+                      <span>{session.label || copy("widget.session.untitled", { time: sessionTime })}</span>
+                      <span className={cn("tt-widget-project-status", `is-${widgetProjectStatusTone(sessionStatus)}`)}><i />{widgetSessionStateLabel(session)}</span>
+                      <time>{sessionTime}</time>
                     </div>;
                   })}
                 </div> : null}
@@ -1491,93 +1687,28 @@ function WindowsProjectManager({ onOpenSettings }) {
         <section className="tt-widget-limits tt-pressable-group" data-testid="widget-limits">
           <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitPlanCount, total: limitPlans.length })}</small></div></div><button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
           <div className="tt-widget-plan-list">
-            <div className="tt-token-plan-grid">
-              {displayedLimits.map((plan) => {
-                const selected = widgetLimitGroupSelected(plan, selectedLimitIds);
-                const agent = String(plan.agent || plan.provider || "").toLowerCase();
-                const planName = plan.planLabel || plan.provider;
-                return <article
-                  className="tt-widget-plan-card tt-token-plan-card tt-token-plan-card--reference"
-                  data-testid="widget-limit-plan-card"
-                  data-plan-id={plan.id}
-                  data-card-layout="cost-settings-token-plan"
-                  data-layout-density="content"
-                  draggable
-                  onDragStart={(event) => {
-                    draggedLimitPlanId.current = plan.id;
-                    event.dataTransfer?.setData("text/plain", plan.id);
-                    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    moveLimitPlan(plan.id);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-                  }}
-                  onDrop={(event) => event.preventDefault()}
-                  onDragEnd={() => {
-                    draggedLimitPlanId.current = null;
-                    persistLimitPlanOrder();
-                  }}
-                  key={plan.id}
-                >
-                  <div className="tt-widget-plan-card__top">
-                    <GripVertical aria-hidden className="tt-widget-plan-card__drag" />
-                    <span className={cn("tt-token-provider-mark", `tt-token-provider-mark--${agent}`)}>
-                      <ProviderIcon provider={agent} size={14} className={`tt-widget-agent-logo is-${agent}`} />
-                    </span>
-                    <span className="tt-token-plan-copy">
-                      <span className="tt-token-plan-full">
-                        <span className="tt-token-plan-full-text"><span>{plan.provider || agent}</span>{` / ${planName}`}</span>
-                      </span>
-                      <span className="tt-token-plan-card-identity-meta">
-                        <span className="tt-token-plan-card-account">{maskWidgetPlanEmail(plan.accountLabel) || "—"}</span>
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      aria-label={`${plan.provider || agent} - ${planName}`}
-                      className={cn("tt-widget-check", "tt-widget-plan-card__check", selected && "is-checked")}
-                      onClick={() => toggleLimit(plan)}
-                    >
-                      {selected ? <Check aria-hidden /> : null}
-                    </button>
-                  </div>
-                  <div className="tt-token-plan-card-detail">
-                    <div className="tt-token-plan-quota-windows">
-                      <div>
-                        {plan.windows.map((limit) => {
-                          const windowUsed = Number(limit.usedPercent || 0);
-                          const atLeastFull = [0, 1].includes(Math.sign(windowUsed - 100));
-                          const nearFull = [0, 1].includes(Math.sign(windowUsed - 90));
-                          const tone = atLeastFull ? "danger" : nearFull ? "warning" : "normal";
-                          return <div className="tt-token-plan-quota-window" data-testid="widget-limit-quota-window" data-kind={limit.kind} key={limit.id}>
-                            <div className="tt-token-plan-quota-window-head">
-                              <strong>{limit.kind === "total" ? null : <Clock3 aria-hidden />}{limit.window}</strong>
-                              <span className="tt-token-plan-quota-window-percent">{windowUsed}%</span>
-                            </div>
-                            <span className="tt-token-plan-progress" data-tone={tone}>
-                              <i style={{ width: `${Math.max(0, Math.min(100, windowUsed))}%` }} />
-                            </span>
-                            <small data-align="end">{formatLimitResetAt(limit)}</small>
-                          </div>;
-                        })}
-                      </div>
-                    </div>
-                    {plan.expiresAt ? <div className="tt-token-plan-card-summary">
-                      <span className="tt-token-plan-summary-expiry">
-                        <CalendarDays aria-hidden />
-                        <span>{formatWidgetPlanValidity(plan.expiresAt)}</span>
-                      </span>
-                    </div> : null}
-                  </div>
-                </article>;
-              })}
+            <div className="tt-token-plan-grid" data-testid="widget-active-limit-plan-list">
+              {groupedLimitPlans.active.map((plan) => renderLimitPlan(plan, "active"))}
             </div>
-            <footer><span className="tt-widget-table-count">{copy("widgets.reference.plan_count", { count: displayedLimits.length })}</span><WidgetTablePagination /></footer>
+            {groupedLimitPlans.scheduled.length ? <section className="tt-widget-limit-history" data-testid="widget-scheduled-limit-plans">
+              <button type="button" aria-expanded={scheduledPlansOpen} aria-controls="widget-scheduled-limit-plan-panel" className="tt-raised-control tt-pressable" onClick={() => setScheduledPlansOpen((open) => !open)}>
+                <span>{copy("settings.token_plan.scheduled_group", { count: groupedLimitPlans.scheduled.length })}</span>
+                <ChevronDown aria-hidden />
+              </button>
+              {scheduledPlansOpen ? <div id="widget-scheduled-limit-plan-panel" className="tt-token-plan-grid tt-widget-limit-plan-grid" data-testid="widget-scheduled-limit-plan-list">
+                {groupedLimitPlans.scheduled.map((plan) => renderLimitPlan(plan, "scheduled"))}
+              </div> : null}
+            </section> : null}
+            {groupedLimitPlans.expired.length ? <section className="tt-widget-limit-history" data-testid="widget-expired-limit-plans">
+              <button type="button" aria-expanded={expiredPlansOpen} aria-controls="widget-expired-limit-plan-panel" className="tt-raised-control tt-pressable" onClick={() => setExpiredPlansOpen((open) => !open)}>
+                <span>{copy("settings.token_plan.expired_group", { count: groupedLimitPlans.expired.length })}</span>
+                <ChevronDown aria-hidden />
+              </button>
+              {expiredPlansOpen ? <div id="widget-expired-limit-plan-panel" className="tt-token-plan-grid tt-widget-limit-plan-grid" data-testid="widget-expired-limit-plan-list">
+                {groupedLimitPlans.expired.map((plan) => renderLimitPlan(plan, "expired"))}
+              </div> : null}
+            </section> : null}
+            <footer><span className="tt-widget-table-count">{copy("widgets.reference.plan_count", { count: limitPlans.length })}</span><WidgetTablePagination /></footer>
           </div>
         </section>
       </div>

@@ -510,6 +510,14 @@ function projectNativeQuotaSnapshot(quota, now) {
   return projected;
 }
 
+function nativeEntitlementExpiry(providerId, quota, fallback = "") {
+  const source = quota && typeof quota === "object" ? quota : {};
+  const nativeExpiry = String(source.subscription_expires_at || source.expires_at || "").trim();
+  return String(providerId || "").trim().toLowerCase() === "cursor"
+    ? nativeExpiry
+    : (nativeExpiry || String(fallback || "").trim());
+}
+
 function projectNativeQuotaForLocal(quota, now) {
   return projectNativeQuotaSnapshot(quota, now);
 }
@@ -2540,7 +2548,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
             total_quota: Number(nativeStatus.quota.total_quota || selectedPlan?.total_quota || form.total_quota || 0),
             total_quota_display: selectedPlan?.total_quota_display || form.total_quota_display || "",
             quota_windows: nativeStatus.quota.quota_windows || [],
-            expires_at: form.expires_at || "",
+            expires_at: nativeEntitlementExpiry(providerId, nativeStatus.quota, form.expires_at),
             ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
             detection_method: "official_account",
             detection_config: {
@@ -3559,7 +3567,7 @@ export function TokenPlanSection({ listOnly = false, editorPlanId = "", onNaviga
                 total_quota: Number(nativeStatus.quota.total_quota || catalogPlan?.total_quota || plan.total_quota || 0),
                 total_quota_display: catalogPlan?.total_quota_display || plan.total_quota_display || "",
                 quota_windows: nativeStatus.quota.quota_windows || plan.quota_windows || [],
-                expires_at: plan.expires_at || "",
+                expires_at: nativeEntitlementExpiry(plan.provider_id, nativeStatus.quota, plan.expires_at),
                 ...projectNativeQuotaSnapshot(nativeStatus.quota, now),
                 detection_config: {
                   ...plan.detection_config,

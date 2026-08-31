@@ -21,6 +21,7 @@ const {
   sanitizeUrlForLogging,
   sanitizeErrorMessage,
   executeFinancialRequest,
+  isApprovedProviderSyntheticDnsHost,
 } = require("../src/lib/provider-api-executor");
 const { isSecretLikeValue, isSecretLikeHeaderName } = require("../src/lib/provider-api-configs");
 const {
@@ -231,6 +232,96 @@ test("safe outbound IP classifier rejects every non-public IPv4 class", () => {
   for (const address of unsafe) assert.equal(isPublicIpAddress(address), false, address);
   assert.equal(isPublicIpAddress("8.8.8.8"), true);
   assert.equal(isPublicIpAddress("93.184.216.34"), true);
+});
+
+test("only built-in provider financial hosts may use Clash synthetic DNS addresses", () => {
+  assert.equal(isApprovedProviderSyntheticDnsHost("api.deepseek.com"), true);
+  assert.equal(isApprovedProviderSyntheticDnsHost("open.volcengineapi.com"), true);
+  assert.equal(isApprovedProviderSyntheticDnsHost("business.aliyuncs.com"), true);
+  assert.equal(isApprovedProviderSyntheticDnsHost("quota.example.test"), false);
+  assert.equal(isApprovedProviderSyntheticDnsHost("api.deepseek.com.attacker.test"), false);
+});
+
+test("safe outbound permits only an explicitly approved Clash synthetic address and keeps DNS pinned", async () => {
+  const calls = [];
+  await safeOutboundRequest("https://api.deepseek.com/user/balance", {
+    allowSyntheticDnsAddress({ hostname, address, family }) {
+      return isApprovedProviderSyntheticDnsHost(hostname)
+        && family === 4
+        && address === "198.18.1.76";
+    },
+    dnsLookup(hostname, options, callback) {
+      assert.equal(hostname, "api.deepseek.com");
+      assert.deepEqual(options, { all: true, verbatim: true });
+      callback(null, [{ address: "198.18.1.76", family: 4 }]);
+    },
+    requestImpl: createInjectedRequest(() => ({ chunks: [Buffer.from("{}")] }), calls),
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].hostname, "api.deepseek.com");
+  assert.equal(calls[0].servername, "api.deepseek.com");
+  const pinned = await new Promise((resolve, reject) => {
+    calls[0].lookup("api.deepseek.com", { family: 4 }, (error, address, family) => {
+      if (error) reject(error);
+      else resolve({ address, family });
+    });
+  });
+  assert.deepEqual(pinned, { address: "198.18.1.76", family: 4 });
+});
+
+test("safe outbound rejects synthetic DNS by default and never permits mixed private records", async () => {
+  await assert.rejects(
+    resolveSafeOutboundTarget("https://quota.example.test/v1/balance", {
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [{ address: "198.18.0.10", family: 4 }]);
+      },
+    }),
+    (error) => error?.code === "unsafe_outbound_address"
+  );
+  await assert.rejects(
+    resolveSafeOutboundTarget("https://api.deepseek.com/user/balance", {
+      allowSyntheticDnsAddress({ address }) {
+        return address.startsWith("198.18.");
+      },
+      dnsLookup(_hostname, _options, callback) {
+        callback(null, [
+          { address: "198.18.1.76", family: 4 },
+          { address: "10.0.0.8", family: 4 },
+        ]);
+      },
+    }),
+    (error) => error?.code === "unsafe_outbound_address"
+  );
+});
+
+test("financial executor accepts Clash Fake-IP only for the exact built-in provider host", async () => {
+  const calls = [];
+  const result = await executeFinancialRequest(validConfig({
+    providerId: "deepseek",
+    requestUrl: "https://api.deepseek.com/user/balance",
+    balancePath: "balance_infos[*].total_balance",
+  }), "SYNTHETIC_DEEPSEEK_KEY", {
+    dnsLookup(_hostname, _options, callback) {
+      callback(null, [{ address: "198.18.1.76", family: 4 }]);
+    },
+    requestImpl: createInjectedRequest(() => ({
+      chunks: [Buffer.from(JSON.stringify({ balance_infos: [{ total_balance: "1", currency: "CNY" }] }))],
+    }), calls),
+  });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(calls[0].hostname, "api.deepseek.com");
+
+  const blocked = await executeFinancialRequest(validConfig({
+    requestUrl: "https://quota.example.test/v1/balance",
+  }), "SYNTHETIC_GENERIC_KEY", {
+    dnsLookup(_hostname, _options, callback) {
+      callback(null, [{ address: "198.18.0.9", family: 4 }]);
+    },
+    requestImpl: createInjectedRequest(() => ({ chunks: [Buffer.from("{}")] })),
+  });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.error_code, "invalid_config");
+  assert.match(blocked.error, /非公网地址/);
 });
 
 test("safe outbound IP classifier rejects non-public IPv6 and mapped private IPv4", () => {

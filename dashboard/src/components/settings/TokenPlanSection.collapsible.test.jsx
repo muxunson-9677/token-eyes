@@ -115,6 +115,14 @@ it("classifies active, attention, and expired plans and paginates ten cards at a
   expect(tokenPlanDisplayStatus({ ...RECORD, sync_status: "success", last_refresh_status: "failed" }, now)).toEqual({ kind: "attention", reasons: ["sync"] });
   expect(tokenPlanDisplayStatus({ ...RECORD, sync_status: "reauth_required" }, now)).toEqual({ kind: "attention", reasons: ["sync"] });
   expect(tokenPlanDisplayStatus({ ...RECORD, expires_at: "2026-08-14" }, now)).toEqual({ kind: "expired", reasons: ["expired"] });
+  expect(tokenPlanDisplayStatus({
+    ...RECORD,
+    provider_id: "cursor",
+    plan_id: "cursor_pro",
+    expires_at: "2099-12-31",
+    detection_method: "official_account",
+    detection_config: { official_account: { plan_name: "free" } },
+  }, now)).toEqual({ kind: "expired", reasons: ["expired"] });
 
   const plans = Array.from({ length: 11 }, (_, index) => ({ id: `plan-${index + 1}` }));
   expect(paginateTokenPlans(plans, 0)).toMatchObject({ page: 0, pageCount: 2, records: plans.slice(0, 10) });
@@ -237,7 +245,7 @@ it("matches the cost-and-quota card hierarchy with account, cost, detailed valid
       subscription_amount: 99,
       subscription_currency: "CNY",
       subscription_cycle: "monthly",
-      subscription_end_date: "2026-08-30T14:24:24.000Z",
+      subscription_end_date: "2099-08-30T14:24:24.000Z",
       quota_source: "provider_reported",
       quota_windows: [{ kind: "rolling_weekly", used: 32, remaining: 68, total: 100 }],
     }],
@@ -272,7 +280,7 @@ it("matches the cost-and-quota card hierarchy with account, cost, detailed valid
 
   const validity = within(card).getByTestId("token-plan-validity");
   expect(validity).toHaveTextContent(
-    new RegExp(`有效期：.+${formatLocalDateTime("2026-08-30T14:24:24.000Z").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+    new RegExp(`有效期：.+${formatLocalDateTime("2099-08-30T14:24:24.000Z").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
   );
   expect(validity).toHaveClass("tt-token-plan-summary-expiry--single-line");
 });
