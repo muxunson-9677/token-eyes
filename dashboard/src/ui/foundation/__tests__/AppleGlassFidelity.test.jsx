@@ -48,6 +48,13 @@ function mediaDeclarations(params, selector) {
 }
 
 describe("approved M/N material fidelity", () => {
+  it("keeps the Token service card footprint stable when API content is taller", () => {
+    const panel = '.tt-reference-route-spend-usage [data-testid="token-service-mode-panel"]';
+
+    expect(declarations(panel).contain).toBe("size");
+    expect(declarations(panel).overflow).toBe("hidden");
+  });
+
   it("keeps widget plan cards clean, content-height, equal within a row, and free of duplicated elevation", () => {
     const grid = ".tt-widget-plan-list > .tt-token-plan-grid";
     const card = ".tt-widget-plan-card";
