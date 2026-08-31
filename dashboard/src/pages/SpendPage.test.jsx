@@ -831,6 +831,19 @@ describe("SpendUsagePage (v2.0 IA split)", () => {
     expect(callArgs?.sources).toEqual(["claude"]);
   });
 
+  it("keeps DeepSeek Harness API usage visible even though it has no limits card", async () => {
+    useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: ["hermes"] });
+    const user = userEvent.setup();
+    render(<SpendUsagePage />);
+
+    const panel = await screen.findByTestId("token-service-mode-panel");
+    await user.click(within(panel).getByRole("button", { name: "API" }));
+
+    await waitFor(() => expect(getRecentApiProviderStats).toHaveBeenCalled());
+    const callArgs = getRecentApiProviderStats.mock.calls.at(-1)?.[0];
+    expect(callArgs?.sources).toEqual(["hermes", "deepseek-harness"]);
+  });
+
   it("shows no usage statistics when no provider is enabled in Limits display", async () => {
     useLimitsDisplayPrefs.mockReturnValue({ visibleOrdered: [] });
     render(<SpendUsagePage />);

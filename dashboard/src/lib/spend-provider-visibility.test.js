@@ -84,6 +84,14 @@ describe("spend provider visibility", () => {
       })).toEqual(["claude", "codex"]);
     });
 
+    it("accepts DeepSeek Harness as API usage without adding a limits card", () => {
+      expect(resolveEffectiveUsageSources({
+        sources: null,
+        agentIds: null,
+        visibleProviderIds: ["hermes", "deepseek-harness"],
+      })).toEqual(["hermes", "deepseek-harness"]);
+    });
+
     it("intersects agent scope with explicit source filter", () => {
       expect(resolveEffectiveUsageSources({
         sources: ["codex"],

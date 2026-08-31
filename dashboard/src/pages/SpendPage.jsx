@@ -71,6 +71,7 @@ const SPEND_USAGE_TABS = [
 
 const HEAVY_USAGE_PANELS_DEFER_MS = 150;
 const REQUEST_LOG_IDLE_TIMEOUT_MS = 500;
+const API_USAGE_ONLY_SOURCES = ["deepseek-harness"];
 
 function getErrorMessage(error) {
   const text = error instanceof Error
@@ -170,6 +171,12 @@ function SpendUsagePageInner({
   const visibleProviderIds = useMemo(
     () => normalizeVisibleProviderIds(visibleOrdered),
     [visibleOrdered],
+  );
+  const apiVisibleProviderIds = useMemo(
+    () => visibleProviderIds.length === 0
+      ? []
+      : [...visibleProviderIds, ...API_USAGE_ONLY_SOURCES],
+    [visibleProviderIds],
   );
 
   // Ticket-02: filter state from UsageFiltersContext
@@ -587,7 +594,7 @@ function SpendUsagePageInner({
                       cacheKey={cacheKey}
                       timeZone={timeZone}
                       tzOffsetMinutes={tzOffsetMinutes}
-                      visibleProviderIds={visibleProviderIds}
+                      visibleProviderIds={apiVisibleProviderIds}
                       className="min-w-0 lg:col-span-1"
                     />
                   </div>

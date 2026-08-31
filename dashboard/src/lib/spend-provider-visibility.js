@@ -1,5 +1,10 @@
 import { LIMIT_PROVIDER_IDS } from "./limits-providers.js";
 
+const USAGE_PROVIDER_IDS = [
+  ...LIMIT_PROVIDER_IDS,
+  "deepseek-harness",
+];
+
 const ZERO_COST_ROW = Object.freeze({
   api_usd: 0,
   subscription_usd: 0,
@@ -30,6 +35,24 @@ export function normalizeVisibleProviderIds(ids) {
   return result;
 }
 
+function normalizeUsageProviderIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const known = new Set(USAGE_PROVIDER_IDS);
+  const result = [];
+  for (const id of ids) {
+    const normalized = normalizeSource(id);
+    if (known.has(normalized) && !result.includes(normalized)) result.push(normalized);
+  }
+  return result;
+}
+
+function intersectUsageSources(selectedSources, visibleProviderIds) {
+  const visible = normalizeUsageProviderIds(visibleProviderIds);
+  if (!Array.isArray(selectedSources)) return visible;
+  const selected = new Set(selectedSources.map(normalizeSource));
+  return visible.filter((source) => selected.has(source));
+}
+
 /**
  * Compute the intersection of user-selected sources with the visible allowlist.
  * When selectedSources is null/undefined, returns the full allowlist (no user filter).
@@ -54,18 +77,18 @@ export function intersectVisibleSources(selectedSources, visibleProviderIds) {
  * @returns {string[]}
  */
 export function resolveEffectiveUsageSources({ sources, agentIds, visibleProviderIds }) {
-  const visible = normalizeVisibleProviderIds(visibleProviderIds);
+  const visible = normalizeUsageProviderIds(visibleProviderIds);
   if (visible.length === 0) return [];
 
   if (Array.isArray(agentIds) && agentIds.length > 0) {
-    const fromAgents = intersectVisibleSources(agentIds, visible);
+    const fromAgents = intersectUsageSources(agentIds, visible);
     if (Array.isArray(sources) && sources.length > 0) {
-      return intersectVisibleSources(sources, fromAgents);
+      return intersectUsageSources(sources, fromAgents);
     }
     return fromAgents;
   }
 
-  return intersectVisibleSources(sources, visible);
+  return intersectUsageSources(sources, visible);
 }
 
 /**
