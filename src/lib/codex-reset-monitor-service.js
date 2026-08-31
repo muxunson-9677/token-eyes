@@ -54,14 +54,11 @@ function materializeOfficialFeedEvents(
   );
   if (!Array.isArray(announcements)) return retainedEvents;
   const previousById = new Map(retainedEvents.map((event) => [event.id, event]));
-  const localEvents = retainedEvents.filter(
-    (event) => event.type !== "official_reset_announcement",
-  );
-  const officialEvents = announcements.filter(isConfirmedResetAnnouncement).map((announcement) => {
+  const mergedById = new Map(previousById);
+  announcements.filter(isConfirmedResetAnnouncement).forEach((announcement) => {
     const nextEvent = officialEvent(announcement);
     const previous = previousById.get(nextEvent.id);
-    if (!previous) return nextEvent;
-    return {
+    mergedById.set(nextEvent.id, previous ? {
       ...nextEvent,
       deliveredChannels: Array.isArray(previous.deliveredChannels)
         ? previous.deliveredChannels
@@ -69,9 +66,9 @@ function materializeOfficialFeedEvents(
       acknowledgedChannels: Array.isArray(previous.acknowledgedChannels)
         ? previous.acknowledgedChannels
         : [],
-    };
+    } : nextEvent);
   });
-  return compactCodexResetEvents([...localEvents, ...officialEvents], { nowMs });
+  return compactCodexResetEvents([...mergedById.values()], { nowMs });
 }
 
 function initializeState(value, { nowMs = Date.now() } = {}) {

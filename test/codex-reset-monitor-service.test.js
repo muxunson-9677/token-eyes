@@ -395,8 +395,8 @@ test("forced check queued during an ordinary check performs its own feed refresh
   );
   assert.deepEqual(duplicateResult, forcedResult);
   assert.deepEqual(
-    h.service.listHistory().map((event) => event.id),
-    ["official:forced"],
+    h.service.listHistory().map((event) => event.id).sort(),
+    ["official:cached", "official:forced"],
   );
 });
 
@@ -456,8 +456,8 @@ test("direct forced feed refresh queues behind an ordinary feed fetch without be
   assert.equal(forcedResult.status.feed_generated_at, forcedPayload.generated_at);
   assert.deepEqual(duplicateResult, forcedResult);
   assert.deepEqual(
-    h.service.listHistory().map((event) => event.id),
-    ["official:forced-direct"],
+    h.service.listHistory().map((event) => event.id).sort(),
+    ["official:cached", "official:forced-direct", "official:ordinary"],
   );
 });
 
