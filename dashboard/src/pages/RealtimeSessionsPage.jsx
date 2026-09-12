@@ -49,6 +49,7 @@ function formatTime(value) {
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : copy("value_realtime.data_unavailable");
 }
 function formatDuration(metric) {
+  if (metric?.value == null) return copy("value_realtime.data_unavailable");
   const value = Number(metric?.value);
   if (!Number.isFinite(value) || value < 0) return copy("value_realtime.data_unavailable");
   const minutes = Math.round(value);

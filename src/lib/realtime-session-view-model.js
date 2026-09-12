@@ -117,6 +117,12 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
     const hasValue = metricRows.some((row) => finiteNumber(row[key]) !== null);
     return metric(hasValue ? sum(metricRows, key) : null, "tokens", hasValue ? "exact" : "connected_no_exact_data", metricEvidence);
   }
+  function requestMetric(metricRows, metricEvidence = evidence) {
+    const known = metricRows.length > 0 && metricRows.every((row) => (
+      Number.isInteger(row.request_count) && row.request_count >= 0
+    ));
+    return metric(known ? sum(metricRows, "request_count") : null, "requests", known ? "exact" : "connected_no_exact_data", metricEvidence);
+  }
   const agentDayEvidence = buildEvidence(agentDayRows, null, agentDayRows.at(-1));
   const agentDayHasCost = agentDayRows.some((row) => finiteNumber(row.cost_usd) !== null);
   return {
@@ -141,7 +147,7 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
     cached_input_tokens: tokenMetric(rows, "cached_input_tokens"),
     cache_creation_input_tokens: tokenMetric(rows, "cache_creation_input_tokens"),
     reasoning_output_tokens: tokenMetric(rows, "reasoning_output_tokens"),
-    request_count: metric(rows.length ? rows.length : null, "requests", rows.length ? "partial" : "connected_no_exact_data", evidence),
+    request_count: requestMetric(rows),
     duration_minutes: durationMetric(rows, todayKey, evidence, lifecycle),
     api_equivalent_usd: metric(hasCost ? sum(rows, "cost_usd") : null, "USD", hasCost ? "estimated" : "connected_no_exact_data", evidence),
     activity_points: buildSessionActivityPoints(rows),
@@ -150,7 +156,7 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
         total_tokens: tokenMetric(agentDayRows, "total_tokens", agentDayEvidence),
         input_tokens: tokenMetric(agentDayRows, "input_tokens", agentDayEvidence),
         output_tokens: tokenMetric(agentDayRows, "output_tokens", agentDayEvidence),
-        request_count: metric(agentDayRows.length, "requests", "partial", agentDayEvidence),
+        request_count: requestMetric(agentDayRows, agentDayEvidence),
         api_equivalent_usd: metric(agentDayHasCost ? sum(agentDayRows, "cost_usd") : null, "USD", agentDayHasCost ? "estimated" : "connected_no_exact_data", agentDayEvidence),
       },
       agent_day_activity_points: buildSessionActivityPoints(agentDayRows),

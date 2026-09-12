@@ -232,6 +232,15 @@ describe("RealtimeSessionsPage", () => {
     expect(await screen.findByText(copy("realtime.tree.empty"))).toBeInTheDocument();
   });
 
+  it("does not display an unknown duration as zero minutes", async () => {
+    getRealtimeSessions.mockResolvedValue({ ...payload, sessions: [{ ...session, duration_minutes: metric(null) }] });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText("完善价值对比与实时会话");
+    const durationCell = screen.getByText(copy("realtime.duration")).closest("div");
+    expect(durationCell).toHaveTextContent(copy("value_realtime.data_unavailable"));
+    expect(durationCell).not.toHaveTextContent("0 分钟");
+  });
+
   it("focuses the newest running task when multiple conversations exist", async () => {
     getRealtimeSessions.mockResolvedValue({
       ...payload,

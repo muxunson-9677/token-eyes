@@ -108,7 +108,7 @@ test("realtime view retains the Codex session identifier from the live rollout i
     const running = realtime.sessions.find((session) => session.state === "running");
     assert.equal(running.source, "codex");
     assert.equal(running.total_tokens.value, 50);
-    assert.equal(running.request_count.value, 1);
+    assert.equal(running.request_count.value, null);
     assert.equal(running.duration_minutes.value, 16 * 60);
     assert.equal(running.duration_minutes.evidence_state, "exact");
     assert.match(running.task_ref, /^task-[a-f0-9]{12}$/u);
@@ -144,7 +144,7 @@ test("realtime view includes a late-UTC Codex rollout in the user's local day", 
     const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=Asia%2FShanghai&tz_offset_minutes=480");
     const running = realtime.sessions.find((session) => session.state === "running");
     assert.equal(running.total_tokens.value, 50);
-    assert.equal(running.request_count.value, 1);
+    assert.equal(running.request_count.value, null);
     assert.equal(realtime.summary.realtime_tokens.value, 50);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

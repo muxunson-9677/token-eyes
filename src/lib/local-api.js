@@ -6907,6 +6907,7 @@ function createLocalApiHandler({
       first_message_at: firstMessageAt,
       last_message_at: lastMessageAt,
       message_span_state: record?.message_span_state === "exact" ? "exact" : "unavailable",
+      request_count: providerRequestFact(record).count,
       input_tokens: publicFiniteNumber(record?.input_tokens),
       output_tokens: publicFiniteNumber(record?.output_tokens),
       cached_input_tokens: publicFiniteNumber(record?.cached_input_tokens),

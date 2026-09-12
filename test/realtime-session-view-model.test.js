@@ -199,9 +199,18 @@ test("aggregates safe token components and activity without exposing request con
   assert.equal(session.input_tokens.value, 70);
   assert.equal(session.output_tokens.value, 30);
   assert.equal(session.cached_input_tokens.value, 15);
-  assert.equal(session.request_count.value, 2);
+  assert.equal(session.request_count.value, null, "aggregate buckets are not request events");
   assert.deepEqual(result.activity_points.map((point) => point.total_tokens), [55, 60]);
   assert.equal(JSON.stringify(result).includes("secret"), false);
+});
+
+test("request counts require request-level evidence for every contributing row", () => {
+  for (const [counts, expected] of [[[1, 1], 2], [[1, null], null], [[0], 0]]) {
+    const result = buildRealtimeSessionViewModel({ usageRows: counts.map((request_count) => ({
+      source: "codex", session_id: "one", total_tokens: 10, request_count,
+    })) });
+    assert.equal(result.sessions[0].request_count.value, expected);
+  }
 });
 
 test("reports coverage as distinct known-price models instead of session count", () => {
