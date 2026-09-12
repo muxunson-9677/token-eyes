@@ -3460,6 +3460,37 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 .dark .tt-widget-plan-card .tt-token-plan-card-detail,
 .dark .tt-widget-plan-card .tt-token-plan-quota-window + .tt-token-plan-quota-window { border-color: rgba(100, 116, 139, 0.3); }
 
+:root.dark .tt-widget-summary article,
+:root.dark .tt-widget-projects,
+:root.dark .tt-widget-limits {
+  border-color: var(--tt-page-border);
+  background: var(--tt-page-surface);
+  color: var(--tt-page-ink);
+  box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+:root.dark .tt-widget-project-head,
+:root.dark .tt-widget-project-sessions,
+:root.dark .tt-widget-project-toolbar label {
+  background: var(--tt-page-surface);
+  color: var(--tt-page-muted);
+}
+:root.dark .tt-widget-project-table,
+:root.dark .tt-widget-project-row,
+:root.dark .tt-widget-project-sessions,
+:root.dark .tt-widget-project-session { border-color: var(--tt-page-border); }
+:root.dark .tt-widget-section-title small,
+:root.dark .tt-widgets-heading p,
+:root.dark .tt-widget-summary article div > span,
+:root.dark .tt-widget-summary article small,
+:root.dark .tt-widget-project-row time,
+:root.dark .tt-widget-project-session,
+:root.dark .tt-widget-project-session time,
+:root.dark .tt-widget-project-sessions-title,
+:root.dark .tt-widget-plan-list > footer,
+:root.dark .tt-widget-project-table footer,
+:root.dark .tt-widget-table-pagination select { color: var(--tt-page-muted); }
+:root.dark .tt-widget-project-created { color: var(--tt-page-muted) !important; }
+
 @media (max-width: 1180px) {
   .tt-widget-project-toolbar { height: auto; min-height: 56px; flex-wrap: wrap; padding: 5px 0; }
   .tt-widget-toolbar-spacer { display: none; }
