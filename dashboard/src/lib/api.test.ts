@@ -394,6 +394,24 @@ it("routes local sync requests to the Tauri-reported loopback CLI API", async ()
   );
 });
 
+it("reuses a just-completed first-run scan for background refresh but not manual refresh", async () => {
+  setTauriRuntime(true);
+  const fetchMock = vi.fn(async (url) => new Response(JSON.stringify(
+    String(url).endsWith("/api/local-auth") ? { token: "local-token" } : { ok: true },
+  ), { status: 200, headers: { "Content-Type": "application/json" } }));
+  vi.stubGlobal("fetch", fetchMock);
+  await triggerLocalSync();
+  const syncCount = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith("tokentracker-local-sync")).length;
+  await triggerLocalSync({ minIntervalMs: 30_000 });
+  expect(syncCount()).toBe(1);
+  await triggerLocalSync();
+  expect(syncCount()).toBe(2);
+  const later = Date.now() + 30_001;
+  vi.spyOn(Date, "now").mockReturnValue(later);
+  await triggerLocalSync({ minIntervalMs: 30_000 });
+  expect(syncCount()).toBe(3);
+});
+
 it("sends model pricing verification to the authenticated local API", async () => {
   setTauriRuntime(true);
   const fetchMock = vi.fn(async (url) => {

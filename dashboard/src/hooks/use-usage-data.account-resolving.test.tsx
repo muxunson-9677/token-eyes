@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchCloudUsageDaily,
@@ -63,6 +63,35 @@ describe("useUsageData — accountViewResolving gate (double-flash fix)", () => 
     expect(getUsageSummary).not.toHaveBeenCalled();
     expect(getUsageDaily).not.toHaveBeenCalled();
     expect(fetchCloudUsageSummary).not.toHaveBeenCalled();
+  });
+
+  it("aborts queued usage requests when navigating away", async () => {
+    vi.mocked(getUsageSummary).mockReturnValue(new Promise(() => {}) as any);
+    vi.mocked(getUsageDaily).mockReturnValue(new Promise(() => {}) as any);
+    const page = renderHook(() => useUsageData(baseProps), { wrapper: UsageFiltersProvider });
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalled());
+    const signal = vi.mocked(getUsageSummary).mock.calls[0][0]!.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(vi.mocked(getUsageDaily).mock.calls[0][0]!.signal).toBe(signal);
+    page.unmount();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("does not let a refresh captured before a range change cancel the new range", async () => {
+    vi.mocked(getUsageSummary).mockReturnValue(new Promise(() => {}) as any);
+    vi.mocked(getUsageDaily).mockReturnValue(new Promise(() => {}) as any);
+    const page = renderHook(({ from }) => useUsageData({ ...baseProps, from }), {
+      initialProps: { from: "2026-06-04" }, wrapper: UsageFiltersProvider,
+    });
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(1));
+    const previousRefresh = page.result.current.refresh;
+    page.rerender({ from: "2026-06-05" });
+    await waitFor(() => expect(getUsageSummary).toHaveBeenCalledTimes(2));
+    const currentSignal = vi.mocked(getUsageSummary).mock.calls[1][0]!.signal;
+    await act(async () => { void previousRefresh(); await Promise.resolve(); });
+    expect(getUsageSummary).toHaveBeenCalledTimes(2);
+    expect(currentSignal.aborted).toBe(false);
+    page.unmount();
   });
 
   it("does NOT paint a stale local cache while resolving (no local flash)", async () => {

@@ -115,10 +115,18 @@ export function useUsageData({
   }, [storageKey]);
 
   const isLocalMode = isLocalDashboardRuntime();
+  const requestRef = useRef<AbortController | null>(null);
+  const currentRefreshRef = useRef<((options?: any) => Promise<void>) | null>(null);
 
   const refresh = useCallback(async ({ background = false }: any = {}) => {
+    if (currentRefreshRef.current !== refresh) return;
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const { signal } = controller;
     const resolvedToken = await resolveAuthAccessToken(accessToken);
     const cloudToken = useCloud ? await resolveAuthAccessToken(accountAccessToken) : null;
+    if (signal.aborted) return;
     // 本地模式允许空 token；云端模式必须 resolve 到一个 JWT 字符串
     if (!resolvedToken && !mockEnabled && !isLocalMode && !useCloud) return;
     if (useCloud && !cloudToken) {
@@ -140,6 +148,7 @@ export function useUsageData({
       if (includeDaily) {
         const [dailyResult, summaryResult] = await Promise.allSettled([
           dailyFetcher({
+            signal,
             baseUrl,
             accessToken: tokenForFetch,
             from,
@@ -149,6 +158,7 @@ export function useUsageData({
             ...filterProps,
           }),
           summaryFetcher({
+            signal,
             baseUrl,
             accessToken: tokenForFetch,
             from,
@@ -165,6 +175,7 @@ export function useUsageData({
         summaryRes = summaryResult.value;
       } else {
         summaryRes = await summaryFetcher({
+          signal,
           baseUrl,
           accessToken: tokenForFetch,
           from,
@@ -176,6 +187,7 @@ export function useUsageData({
         });
       }
 
+      if (signal.aborted) return;
       let nextDaily = includeDaily && Array.isArray(dailyRes?.data) ? dailyRes.data : [];
       if (includeDaily) {
         nextDaily = fillDailyGaps(nextDaily, from, to, {
@@ -196,6 +208,7 @@ export function useUsageData({
       if (includeDaily && !nextSummary && !summaryRes) {
         try {
           const fallback = await summaryFetcher({
+            signal,
             baseUrl,
             accessToken: tokenForFetch,
             from,
@@ -216,6 +229,7 @@ export function useUsageData({
           // Ignore summary fallback errors when daily data is available.
         }
       }
+      if (signal.aborted) return;
       const nowIso = new Date().toISOString();
 
       setDaily(nextDaily);
@@ -238,6 +252,7 @@ export function useUsageData({
         clearCache();
       }
     } catch (e) {
+      if (signal.aborted) return;
       const err = e as any;
       const errorMessage = err?.message || String(err);
       if (cacheAllowed) {
@@ -266,7 +281,7 @@ export function useUsageData({
         setSource("edge");
       }
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [
     accessToken,
@@ -292,6 +307,14 @@ export function useUsageData({
     // is memoized — identity changes only when useCloud or filter values change).
     filterProps,
   ]);
+
+  useLayoutEffect(() => {
+    currentRefreshRef.current = accountViewResolving ? null : refresh;
+    return () => {
+      currentRefreshRef.current = null;
+      requestRef.current?.abort();
+    };
+  }, [refresh, accountViewResolving]);
 
   useLayoutEffect(() => {
     if (accountViewResolving) {
@@ -337,6 +360,7 @@ export function useUsageData({
       }
     }
     void refresh({ background: hasCachedData });
+    return () => requestRef.current?.abort();
   }, [
     accessToken,
     mockEnabled,

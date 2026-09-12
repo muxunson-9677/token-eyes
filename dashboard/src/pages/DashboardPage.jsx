@@ -848,7 +848,9 @@ export function DashboardPage({
   }, [selectedPeriod, customFrom, prevPeriod]);
 
   const refreshAll = useCallback(async ({ background = false } = {}) => {
+    if (!pageMountedRef.current) return;
     await Promise.all([refreshUsage({ background }), refreshUsageLimits()]);
+    if (!pageMountedRef.current) return;
     await Promise.allSettled([
       refreshTrend(),
       refreshModelBreakdown(),
@@ -884,11 +886,11 @@ export function DashboardPage({
   }, [isLocalMode, refreshAll]);
 
   const handleAutoRefresh = useCallback(async () => {
-    if (refreshInProgressRef.current) return;
+    if (refreshInProgressRef.current || !pageMountedRef.current) return;
     refreshInProgressRef.current = true;
     try {
       if (isLocalMode) {
-        await triggerLocalSync();
+        await triggerLocalSync({ minIntervalMs: 30_000 });
       }
       await refreshAll({ background: true });
     } catch (error) {
@@ -908,7 +910,7 @@ export function DashboardPage({
       lastBackgroundLocalSyncAtRef.current = now;
       void handleAutoRefresh();
     };
-    const initialTimer = window.setTimeout(refreshInBackground, 0);
+    const initialTimer = window.setTimeout(refreshInBackground, 500);
     const refreshOnFocus = () => refreshInBackground();
     window.addEventListener("focus", refreshOnFocus);
     return () => {

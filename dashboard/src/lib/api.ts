@@ -487,6 +487,7 @@ export async function getUsageSummary({
   tzOffsetMinutes,
   rolling = false,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
     return getMockUsageSummary({ from, to, seed: accessToken, rolling });
@@ -495,7 +496,7 @@ export async function getUsageSummary({
   const filterParams = buildFilterParams({ source, model });
   const multiParams = buildMultiFilterParams({ sources, models, agentIds });
   const rollingParams = rolling ? { rolling: "1" } : {};
-  return fetchLocalJson(PATHS.usageSummary, { from, to, ...filterParams, ...multiParams, ...tzParams, ...rollingParams }, { accessToken });
+  return fetchLocalJson(PATHS.usageSummary, { from, to, ...filterParams, ...multiParams, ...tzParams, ...rollingParams }, { accessToken, signal });
 }
 
 export async function getProjectUsageSummary({
@@ -1437,9 +1438,16 @@ export async function getUserStatus(_opts: AnyRecord = {}) {
   return fetchLocalJson(PATHS.userStatus);
 }
 
-export async function triggerLocalSync({ signal }: AnyRecord = {}) {
+let lastSuccessfulLocalSync: { url: string; at: number; payload: any } | null = null;
+
+export async function triggerLocalSync({ signal, minIntervalMs = 0 }: AnyRecord = {}) {
+  const url = await buildLocalApiUrl(`/functions/${PATHS.localSync}`);
+  const age = lastSuccessfulLocalSync ? Date.now() - lastSuccessfulLocalSync.at : Infinity;
+  if (lastSuccessfulLocalSync?.url === url && age >= 0 && age < minIntervalMs) {
+    return lastSuccessfulLocalSync.payload;
+  }
   const authHeaders = await getLocalApiAuthHeaders();
-  const response = await fetchLocalApi(await buildLocalApiUrl(`/functions/${PATHS.localSync}`), {
+  const response = await fetchLocalApi(url, {
     method: "POST",
     headers: { Accept: "application/json", ...authHeaders },
     cache: "no-store",
@@ -1455,6 +1463,7 @@ export async function triggerLocalSync({ signal }: AnyRecord = {}) {
     error.status = response.status;
     throw error;
   }
+  lastSuccessfulLocalSync = { url, at: Date.now(), payload };
   return payload;
 }
 
@@ -1601,13 +1610,14 @@ export async function getUsageDaily({
   timeZone,
   tzOffsetMinutes,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   if (isMockEnabled()) {
     return getMockUsageDaily({ from, to, seed: accessToken });
   }
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildFilterParams({ source, model });
-  return fetchLocalJson(PATHS.usageDaily, { from, to, ...filterParams, ...tzParams }, { accessToken });
+  return fetchLocalJson(PATHS.usageDaily, { from, to, ...filterParams, ...tzParams }, { accessToken, signal });
 }
 
 export async function getUsageHourly({
@@ -1844,6 +1854,7 @@ export async function fetchCloudUsageSummary({
   tzOffsetMinutes,
   rolling = false,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildFilterParams({ source, model });
@@ -1852,6 +1863,7 @@ export async function fetchCloudUsageSummary({
     ACCOUNT_PATHS.summary,
     { from, to, ...filterParams, ...tzParams, ...rollingParams },
     accessToken,
+    { signal },
   );
 }
 
@@ -1863,6 +1875,7 @@ export async function fetchCloudUsageDaily({
   timeZone,
   tzOffsetMinutes,
   accessToken,
+  signal,
 }: AnyRecord = {}) {
   const tzParams = buildTimeZoneParams({ timeZone, tzOffsetMinutes });
   const filterParams = buildFilterParams({ source, model });
@@ -1870,6 +1883,7 @@ export async function fetchCloudUsageDaily({
     ACCOUNT_PATHS.daily,
     { from, to, ...filterParams, ...tzParams },
     accessToken,
+    { signal },
   );
 }
 
