@@ -201,6 +201,7 @@ const state = {
   // negativeCache prevents re-walking the LiteLLM map for models we've already
   // determined are unknown. Cleared on every reload.
   negativeCache: new Set(),
+  lookupCache: new Map(),
 };
 
 function defaultCachePath() {
@@ -224,6 +225,7 @@ async function ensurePricingLoaded(opts = {}) {
       state.source_updated_at = loaded.source_updated_at || null;
       state.loaded = true;
       state.negativeCache.clear();
+      state.lookupCache.clear();
       return state;
     } finally {
       state.loadingPromise = null;
@@ -245,6 +247,7 @@ function resetPricingForTests() {
   state.cached_at = seedSnapshotMetadata?.cached_at || null;
   state.source_updated_at = seedSnapshotMetadata?.source_updated_at || null;
   state.negativeCache.clear();
+  state.lookupCache.clear();
 }
 
 function pricingRates(value) {
@@ -278,11 +281,19 @@ function resolveModelPricing(model, opts = {}) {
   } else if (typeof opts.source === "string") {
     lookupSource = opts.source.toLowerCase();
   }
-  const result = lookupPricing(model, {
-    curated: curatedOverrides,
-    litellm: state.litellmPerMillionMap,
-    source: lookupSource,
-  });
+  const lookupKey = JSON.stringify([lookupSource, model]);
+  let result = state.lookupCache.get(lookupKey);
+  if (!result) {
+    result = lookupPricing(model, {
+      curated: curatedOverrides,
+      litellm: state.litellmPerMillionMap,
+      source: lookupSource,
+    });
+    state.lookupCache.set(lookupKey, result);
+    if (state.lookupCache.size > 512) {
+      state.lookupCache.delete(state.lookupCache.keys().next().value);
+    }
+  }
   if (!result.hit) return { hit: false, pricing: ZERO_PRICING, provenance: null };
 
   const nowMs = Number.isFinite(opts?.nowMs) ? opts.nowMs : Date.now();
