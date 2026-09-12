@@ -91,6 +91,13 @@ test("uses the exact startup, success, freshness, and failure schedules", async 
   assert.equal(reads.length, 1);
 });
 
+test("successful transport cannot make an old signed feed fresh", () => {
+  const h = harness(async () => validSnapshot(BASE), {
+    loadState: () => ({ feed: { generatedAt: new Date(BASE - 2 * 86_400_000).toISOString(), fetchedAt: new Date(BASE).toISOString(), announcements: [] } }),
+  });
+  assert.equal(h.service.getStatus().feed_stale, true);
+});
+
 test("backfills 30 days of rollout resets without making them notification pending", async () => {
   const calls = [];
   const h = harness(async () => validSnapshot(BASE), {
@@ -224,8 +231,8 @@ test("a newer packaged reviewed snapshot supplies current reset history while th
 
   await h.service.checkFeed({ force: true });
   assert.equal(h.service.getStatus().feed_generated_at, reviewedFeed.generated_at);
-  assert.equal(h.service.getStatus().feed_error_code, null);
-  assert.equal(h.service.getStatus().feed_stale, false);
+  assert.equal(h.service.getStatus().feed_error_code, "feed_rollback");
+  assert.equal(h.service.getStatus().feed_stale, true);
 });
 
 test("acknowledging the newest official reset never promotes older history into the banner", () => {

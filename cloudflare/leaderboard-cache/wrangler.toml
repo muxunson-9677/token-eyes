@@ -26,6 +26,9 @@ new_sqlite_classes = ["LeaderboardRefreshCoordinator"]
 [env.staging]
 name = "token-eyes-leaderboard-cache-staging"
 
+[env.staging.triggers]
+crons = ["5 16 * * *", "15 * * * *"]
+
 [env.staging.vars]
 PUBLIC_FEED_ORIGIN = "https://token-eyes-leaderboard-cache-staging.token-eyes-labs.workers.dev"
 LEADERBOARD_SIGNING_KEY_ID = "token-eyes-static-staging-01"

@@ -1,7 +1,7 @@
 import React from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   isTokenPlanExpired,
   TokenPlanSection,
@@ -43,6 +43,8 @@ const RECORD = {
   notes: "只在展开后出现的备注",
   sync_status: "success",
 };
+
+afterEach(() => vi.useRealTimers());
 
 function formatLocalDateTime(value) {
   const date = new Date(value);
@@ -444,7 +446,9 @@ it("refreshes a masked Cursor email on startup when full-email mode is already e
   expect(screen.getByRole("button", { name: "隐藏邮箱" })).toBeInTheDocument();
 });
 
-it("renders complete quota and subscription details immediately inside each plan card", async () => {
+it("renders complete quota and subscription details immediately inside an active plan card", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-08-15T12:00:00Z"));
   getTokenPlans.mockResolvedValue({
     records: [{
       ...RECORD,

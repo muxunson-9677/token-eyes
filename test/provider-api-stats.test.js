@@ -260,6 +260,17 @@ test("provider-stats joins exact official Provider/day costs without inventing A
   }
 });
 
+test("API activity preserves the cumulative range after day 180", async () => {
+  await withProviderFixture([apiRow({ hour_start: "2026-03-16T00:00:00.000Z" })], async (call) => {
+    const body = await call("/functions/tokentracker-provider-api-stats?from=2026-03-16&to=2026-09-12&tz=UTC");
+    assert.deepEqual(body.period, { from: "2026-03-16", to: "2026-09-12", days: 181, time_zone: "UTC" });
+    assert.equal(body.providers[0].tokens, 1_000_000);
+    const month = await call("/functions/tokentracker-provider-api-stats?from=2026-09-01&to=2026-09-30&tz=UTC");
+    assert.equal(month.period.to, "2026-09-30");
+    assert.equal(month.period.from, "2026-09-01");
+  }, { nowIso: "2026-09-12T12:00:00.000Z" });
+});
+
 test("provider-stats merges agents by true Provider and splits one agent across Providers", async () => {
   const secret = "sk-provider-stats-must-not-leak";
   await withProviderFixture([

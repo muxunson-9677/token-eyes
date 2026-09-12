@@ -25,6 +25,35 @@ async function call(handler, endpoint) {
   return (await callResponse(handler, endpoint)).body;
 }
 
+test("realtime pricing reads configuration per request, not once per usage row", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-pricing-"));
+  const originalRead = fs.readFileSync;
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    const configPath = path.join(root, "config.json");
+    fs.writeFileSync(configPath, "{}");
+    fs.writeFileSync(queuePath, Array.from({ length: 100 }, (_, i) => JSON.stringify({
+      source: "hermes", model: `model-${i}`, hour_start: "2026-08-21T08:00:00Z",
+      input_tokens: 10, total_tokens: 10,
+    })).join("\n"));
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-08-21T08:30:00Z"), codexLifecycleProvider: async () => [],
+      tokenOnlyDirectoryStatesProvider: () => ({}),
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    let reads = 0;
+    fs.readFileSync = function (file, ...args) {
+      if (String(file) === configPath) reads += 1;
+      return originalRead.call(this, file, ...args);
+    };
+    await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+    assert.ok(reads < 20, `configuration read ${reads} times for 100 rows`);
+  } finally {
+    fs.readFileSync = originalRead;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("realtime range clamps future months and returns its actual local date window", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-range-"));
   try {
@@ -284,6 +313,35 @@ test("realtime endpoint returns a privacy-safe, explicit evidence payload", asyn
     assert.equal(publicPayload.includes("Secret Project"), false);
     assert.equal(publicPayload.includes("must not be copied into a prompt or body"), false);
   } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("slow quota does not block realtime and its eventual result is reused", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-slow-quota-"));
+  let release;
+  let reads = 0;
+  const pending = new Promise((resolve) => { release = resolve; });
+  try {
+    const handler = createLocalApiHandler({
+      queuePath: path.join(root, "queue.jsonl"),
+      trackerDataDir: root,
+      codexLifecycleProvider: async () => [],
+      workbuddyQuotaProvider: () => { reads += 1; return pending; },
+    });
+    const timeout = setTimeout(() => release({ signed_in: false, groups: [] }), 2000);
+    const started = Date.now();
+    const first = await call(handler, "/functions/tokentracker-realtime-sessions?range=today");
+    clearTimeout(timeout);
+    assert.ok(Date.now() - started < 1500, "local sessions must not await remote quota");
+    assert.equal(first.native_resources[0].evidence_state, "unavailable");
+    release({ signed_in: true, groups: [{ id: "activity", used: 120, total: 300, remain: 180 }] });
+    await new Promise((resolve) => setImmediate(resolve));
+    const second = await call(handler, "/functions/tokentracker-realtime-sessions?range=today");
+    assert.equal(second.native_resources[0].value, 180);
+    assert.equal(reads, 1);
+  } finally {
+    release({ signed_in: false, groups: [] });
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

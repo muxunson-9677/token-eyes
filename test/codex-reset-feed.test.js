@@ -64,6 +64,13 @@ test("verifies exact signed bytes before parsing and returns the validated paylo
   );
 });
 
+test("day-only official announcements cannot claim an exact time", () => {
+  const day = announcement({ published_at: "2026-07-20T00:00:00.000Z", published_precision: "day" });
+  assert.equal(validateCodexResetFeedPayload(payload([day]), { nowMs: NOW }).announcements[0].published_precision, "day");
+  assert.throws(() => validateCodexResetFeedPayload(payload([{ ...day, published_at: "2026-07-20T01:00:00.000Z" }]), { nowMs: NOW }), /precision/);
+  assert.throws(() => validateCodexResetFeedPayload(payload([{ ...day, published_precision: "guess" }]), { nowMs: NOW }), /precision/);
+});
+
 test("rejects malformed Base64URL, bad signatures, and unsupported envelopes", () => {
   const malformed = envelope();
   malformed.payload_b64 += "=";

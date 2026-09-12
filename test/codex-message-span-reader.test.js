@@ -40,6 +40,34 @@ function responseItemUserMessage(timestamp, content) {
   });
 }
 
+test("unchanged message spans reuse metadata but an appended message invalidates it", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-span-cache-"));
+  const fileName = "rollout-cache.jsonl";
+  const original = fs.createReadStream;
+  let reads = 0;
+  try {
+    writeRollout(home, fileName, [
+      JSON.stringify({ type: "session_meta", payload: { id: "cache-session" } }),
+      userMessageTimestampFirst("2026-08-21T06:00:00.000Z", "private"),
+    ]);
+    fs.createReadStream = (...args) => { reads += 1; return original(...args); };
+    const options = { homes: [home], from: "2026-08-21", to: "2026-08-21", timeZoneContext: { timeZone: "UTC", offsetMinutes: 0 } };
+    const first = await collectCodexMessageSpans(options);
+    assert.equal(first[0].messageCount, 1);
+    first[0].messageCount = 999;
+    const second = await collectCodexMessageSpans(options);
+    assert.equal(second[0].messageCount, 1);
+    assert.equal(reads, 1, "unchanged files must not be rescanned");
+    fs.appendFileSync(path.join(home, "sessions", "2026", "08", "21", fileName), userMessageTimestampFirst("2026-08-21T07:00:00.000Z", "private") + "\n");
+    const changed = await collectCodexMessageSpans(options);
+    assert.equal(changed[0].messageCount, 2);
+    assert.equal(reads, 2);
+  } finally {
+    fs.createReadStream = original;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("counts response-item user messages without exposing their content", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-message-span-response-item-"));
   const sentinel = "PRIVATE_RESPONSE_ITEM_SENTINEL";

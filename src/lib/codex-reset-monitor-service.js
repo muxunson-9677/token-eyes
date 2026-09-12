@@ -165,6 +165,7 @@ function officialEvent(announcement, source = "signed_feed") {
     window: null,
     createdAt: announcement.published_at,
     occurredAt: announcement.published_at,
+    ...(announcement.published_precision === "day" ? { publishedPrecision: "day" } : {}),
     resetAt: null,
     officialUrl: announcement.official_url,
     sourceUrl: announcement.source_url,
@@ -354,7 +355,8 @@ function createCodexResetMonitorService({
       feed_last_checked_at: state.feed?.lastCheckedAt || state.feed?.fetchedAt || null,
       feed_generated_at: state.feed?.generatedAt || null,
       latest_published_at: latest?.occurredAt || latest?.createdAt || null,
-      feed_stale: Boolean(feedErrorCode && state.feed?.announcements),
+      ...(latest?.publishedPrecision === "day" ? { latest_published_precision: "day" } : {}),
+      feed_stale: Boolean(state.feed && (feedErrorCode || now() - Date.parse(state.feed.generatedAt || "") > 24 * 60 * 60_000)),
       feed_error_code: feedErrorCode,
       backfill_error_code: backfillErrorCode,
     };
@@ -448,30 +450,12 @@ function createCodexResetMonitorService({
       const previousGeneratedAt = Date.parse(state.feed?.generatedAt || "");
       const nextGeneratedAt = Date.parse(payload.generated_at);
       if (Number.isFinite(previousGeneratedAt) && nextGeneratedAt < previousGeneratedAt) {
-        if (state.feed?.source === "packaged_reviewed") {
-          persist({
-            ...state,
-            feed: {
-              ...state.feed,
-              fetchedAt: new Date(now()).toISOString(),
-              lastCheckedAt: new Date(lastFeedAttemptAt).toISOString(),
-              etag: safeHeader(response.headers?.get?.("etag")),
-              lastModified: safeHeader(response.headers?.get?.("last-modified")),
-            },
-          });
-          feedErrorCode = null;
-          return { status: getStatus() };
-        }
         feedErrorCode = "feed_rollback";
         return { status: getStatus() };
       }
 
       if (previousGeneratedAt === nextGeneratedAt) {
         if (!sameFeedAnnouncements(state.feed?.announcements, payload.announcements)) {
-          if (state.feed?.source === "packaged_reviewed") {
-            feedErrorCode = null;
-            return { status: getStatus() };
-          }
           feedErrorCode = "feed_rollback";
           return { status: getStatus() };
         }

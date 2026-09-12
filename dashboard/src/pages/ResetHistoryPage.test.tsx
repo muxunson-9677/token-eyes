@@ -41,7 +41,11 @@ vi.mock("../lib/local-api-url", async (importOriginal) => ({
   isTauriRuntime: () => true,
 }));
 
-import { ResetHistoryPage } from "./ResetHistoryPage";
+import { ResetHistoryPage, formatResetDateTime } from "./ResetHistoryPage";
+
+it("does not invent a time for date-only official announcements", () => {
+  expect(formatResetDateTime("2026-09-07T00:00:00.000Z", "day")).not.toMatch(/\d{2}:\d{2}/);
+});
 
 const TEST_NOW = new Date("2026-08-14T12:00:00.000Z");
 

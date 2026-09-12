@@ -132,6 +132,12 @@ function validateAnnouncement(item, { nowMs, allowExpired = false }) {
   }
 
   const publishedAt = requireIso(item.published_at, "announcement published_at");
+  if (item.published_precision !== undefined && item.published_precision !== "day") {
+    throw new TypeError("announcement published precision is invalid");
+  }
+  if (item.published_precision === "day" && !item.published_at.endsWith("T00:00:00.000Z")) {
+    throw new TypeError("day precision requires a canonical date anchor");
+  }
   const expiresAt = requireIso(item.expires_at, "announcement expires_at");
   if (expiresAt <= publishedAt) {
     throw new TypeError("announcement expiry must follow publication");

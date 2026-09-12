@@ -45,16 +45,15 @@ function finishResetControlPress(event: React.AnimationEvent<HTMLElement>) {
   event.currentTarget.classList.remove("tt-reset-control-click-bounce");
 }
 
-export function formatResetDateTime(iso: string) {
+export function formatResetDateTime(iso: string, precision?: "day") {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
   return new Intl.DateTimeFormat(getCopyLocale(), {
-    timeZone: RESET_HISTORY_TIME_ZONE,
+    timeZone: precision === "day" ? "UTC" : RESET_HISTORY_TIME_ZONE,
     year: "numeric",
     month: "long",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    ...(precision === "day" ? {} : { hour: "2-digit" as const, minute: "2-digit" as const }),
     hour12: false,
   }).format(date);
 }
@@ -136,6 +135,8 @@ function ResetStatisticsSummary({
   isLoading: boolean;
 }) {
   const unavailableValue = copy("reset_history.stats.insufficient");
+  const hasDateOnly = events.some((event) => event.published_precision === "day");
+  const intervalUnavailable = hasDateOnly ? copy("reset_history.stats.date_only") : unavailableValue;
   const chronological = [...events].sort(
     (left, right) => Date.parse(left.occurred_at) - Date.parse(right.occurred_at),
   );
@@ -179,8 +180,8 @@ function ResetStatisticsSummary({
     },
     {
       label: copy("reset_history.stats.average"),
-      value: formatResetInterval(statistics.averageIntervalMs),
-      detail: intervals.length > 0
+      value: hasDateOnly ? copy("reset_history.stats.date_only_value") : formatResetInterval(statistics.averageIntervalMs),
+      detail: hasDateOnly ? intervalUnavailable : intervals.length > 0
         ? copy("reset_history.stats.average_detail", { count: intervals.length })
         : unavailableValue,
       Icon: Timer,
@@ -188,8 +189,8 @@ function ResetStatisticsSummary({
     },
     {
       label: copy("reset_history.stats.shortest"),
-      value: formatResetInterval(statistics.shortestIntervalMs),
-      detail: shortest
+      value: hasDateOnly ? copy("reset_history.stats.date_only_value") : formatResetInterval(statistics.shortestIntervalMs),
+      detail: hasDateOnly ? intervalUnavailable : shortest
         ? copy("reset_history.stats.occurred_detail", { date: formatResetStatDate(shortest.end.occurred_at) })
         : unavailableValue,
       Icon: ArrowDownToLine,
@@ -197,8 +198,8 @@ function ResetStatisticsSummary({
     },
     {
       label: copy("reset_history.stats.longest"),
-      value: formatResetInterval(statistics.longestIntervalMs),
-      detail: longest
+      value: hasDateOnly ? copy("reset_history.stats.date_only_value") : formatResetInterval(statistics.longestIntervalMs),
+      detail: hasDateOnly ? intervalUnavailable : longest
         ? copy("reset_history.stats.range_detail", {
           start: formatResetStatDate(longest.start.occurred_at),
           end: formatResetStatDate(longest.end.occurred_at),
@@ -425,7 +426,7 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
         className="col-start-2 text-xs tabular-nums text-oai-gray-500 dark:text-oai-gray-400 sm:col-start-3 sm:row-start-1 sm:pt-1"
       >
         {isLatest ? <span className="tt-reset-latest-badge">{copy("reset_history.latest")}</span> : null}
-        {formatResetDateTime(event.occurred_at)}
+        {formatResetDateTime(event.occurred_at, event.published_precision)}
         <button
           ref={triggerRef}
           type="button"
@@ -464,7 +465,8 @@ function ResetRecord({ event, isLatest = false }: { event: TimelineEvent; isLate
               <dt>{copy("reset_history.detail_published")}</dt>
               <dd>
                 <time dateTime={event.occurred_at}>
-                  {formatResetDateTime(event.occurred_at)} · {event.occurred_at}
+                  {formatResetDateTime(event.occurred_at, event.published_precision)}
+                  {event.published_precision === "day" ? ` · ${copy("reset_history.time_not_published")}` : ` · ${event.occurred_at}`}
                 </time>
               </dd>
             </div>
@@ -571,10 +573,10 @@ export function ResetHistoryPage() {
     }
   }
 
-  function freshnessTime(value: string | null | undefined, testId: string) {
+  function freshnessTime(value: string | null | undefined, testId: string, precision?: "day") {
     return value ? (
       <time data-testid={testId} dateTime={value}>
-        {formatResetDateTime(value)} · {value}
+        {formatResetDateTime(value, precision)} · {precision === "day" ? copy("reset_history.time_not_published") : value}
       </time>
     ) : <span data-testid={testId}>{copy("reset_history.freshness.unknown")}</span>;
   }
@@ -637,7 +639,7 @@ export function ResetHistoryPage() {
                 </div>
                 <div>
                   <dt>{copy("reset_history.freshness.latest_published")}</dt>
-                  <dd>{freshnessTime(status?.latest_published_at, "reset-history-latest-published")}</dd>
+                  <dd>{freshnessTime(status?.latest_published_at, "reset-history-latest-published", status?.latest_published_precision)}</dd>
                 </div>
               </dl>
             </div>

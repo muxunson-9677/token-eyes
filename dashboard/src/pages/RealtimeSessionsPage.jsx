@@ -30,7 +30,7 @@ function compact(metric) {
 }
 function finiteValue(value) { return typeof value === "number" && Number.isFinite(value) ? value : null; }
 function stateLabel(state) {
-  const key = ["running", "idle", "completed", "interrupted", "error", "waiting_approval"].includes(state) ? state : "idle";
+  const key = ["running", "idle", "completed", "interrupted", "error", "waiting_approval", "recent_activity"].includes(state) ? state : "unknown";
   return copy(`realtime.state.${key}`);
 }
 function historyLabel(agent) {
@@ -180,7 +180,7 @@ function SessionStrip({ agents, selectedSource, onSelect }) {
           ? [compact(agent.total_tokens), money(agent.api_equivalent_usd)]
           : [missingHistoryMetric(agent)];
       return <button type="button" key={agent.source} className="vr-card rt-session-mini tt-pressable tt-product-focusable" aria-pressed={selected} onClick={() => onSelect(agentSource)}>
-        <div className="rt-mini-head"><div className="rt-mini-name" title={agent.agent_label || agent.source}><i className={`rt-provider-avatar ${providerTone(agent.runtime_state)}`}><ProviderIcon provider={agent.source} size={14} /></i><span>{agent.agent_label || agent.source}</span></div><span className={`rt-mini-state${agent.runtime_state === "running" ? " rt-mini-state--running" : " rt-mini-state--idle"}`} title={historyDetail(agent)}>{stateLabel(agent.runtime_state === "running" ? "running" : "idle")}</span></div>
+        <div className="rt-mini-head"><div className="rt-mini-name" title={agent.agent_label || agent.source}><i className={`rt-provider-avatar ${providerTone(agent.runtime_state)}`}><ProviderIcon provider={agent.source} size={14} /></i><span>{agent.agent_label || agent.source}</span></div><span className={`rt-mini-state${agent.runtime_state === "running" ? " rt-mini-state--running" : " rt-mini-state--idle"}`} title={historyDetail(agent)}>{stateLabel(agent.runtime_state)}</span></div>
         <div className={`rt-mini-data${agent.source === "workbuddy" ? " rt-mini-data--workbuddy" : ""}`} title={metrics.join(" · ")}>{metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>
       </button>;
     }) : <div className="vr-empty">{copy("realtime.empty")}</div>}</div>

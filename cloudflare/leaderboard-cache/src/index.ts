@@ -1,3 +1,5 @@
+import { collectResetAnnouncements, signedEnvelope, verifiedExistingAnnouncements } from './codex-reset-collector';
+
 interface Env {
   PUBLIC_FEED_ORIGIN: string;
   LEADERBOARD_PUBLISHER_SECRET?: string;
@@ -171,6 +173,7 @@ async function writePublicObject(
   objectKey: string,
   body: string | Uint8Array,
   metadata: Omit<StoredPublicObject, "body">,
+  expectedETag?: string,
 ) {
   if (!env.LEADERBOARD_REFRESH_COORDINATOR) {
     return { response: zeroDollarGateResponse("Zero-dollar object store is not configured", 503), unchanged: false };
@@ -184,6 +187,7 @@ async function writePublicObject(
           "Content-Type": metadata.contentType,
           "X-Object-Cache-Control": metadata.cacheControl,
           "X-Object-Content-Sha256": metadata.contentSha256,
+          ...(expectedETag ? {'If-Match':expectedETag} : {}),
           ...(metadata.generatedAt ? { "X-Object-Generated-At": metadata.generatedAt } : {}),
         },
         body,
@@ -513,7 +517,7 @@ async function publishLeaderboardAvatar(request: Request, env: Env, hashValue: s
   });
 }
 
-async function publishStaticFeed(request: Request, env: Env, feed: "plan-market" | "codex-reset", cache: CacheLike) {
+async function publishStaticFeed(request: Request, env: Env, feed: "plan-market" | "codex-reset", cache: CacheLike, expectedETag?: string) {
   const suppliedSecret = request.headers.get("x-leaderboard-publisher-secret") || "";
   const expectedSecret = env.LEADERBOARD_PUBLISHER_SECRET || "";
   if (!suppliedSecret || !expectedSecret || !equalSecret(suppliedSecret, expectedSecret)) {
@@ -551,7 +555,7 @@ async function publishStaticFeed(request: Request, env: Env, feed: "plan-market"
     contentType: "application/json; charset=utf-8",
     cacheControl: "public, max-age=300, stale-if-error=86400",
     contentSha256,
-  });
+  }, expectedETag);
   if (write.response) return write.response;
   if (!write.unchanged) {
     await cache.delete?.(new Request(new URL(`/${objectKey}`, env.PUBLIC_FEED_ORIGIN)));
@@ -560,6 +564,39 @@ async function publishStaticFeed(request: Request, env: Env, feed: "plan-market"
     status: 200,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
+}
+
+export async function runResetRefresh(env: Env, cache: CacheLike) {
+  if (env.LEADERBOARD_PUBLISHING_PAUSED === 'true') throw new Error('Publishing is paused');
+  if (!env.LEADERBOARD_REFRESH_COORDINATOR || !env.LEADERBOARD_SIGNING_PRIVATE_KEY_B64 || !env.LEADERBOARD_PUBLISHER_SECRET) {
+    throw new Error('Reset collector is not configured');
+  }
+  const id = env.LEADERBOARD_REFRESH_COORDINATOR.idFromName('global');
+  const stored = await env.LEADERBOARD_REFRESH_COORDINATOR.get(id).fetch(
+    new Request('https://coordinator/objects/v1/codex-reset/feed.json'),
+  );
+  // Do not replace missing/unreadable history with an empty list.
+  if (!stored.ok) throw new Error('Stored reset feed is unavailable');
+  const storedEnvelope = await stored.json() as {payload_b64:string;signature_b64:string};
+  const existing = await verifiedExistingAnnouncements(storedEnvelope, env.LEADERBOARD_SIGNING_PRIVATE_KEY_B64);
+  const previousPayload = JSON.parse(new TextDecoder().decode(standardBase64Bytes(
+    storedEnvelope.payload_b64.replace(/-/g, '+').replace(/_/g, '/'),
+  )));
+  const scan = {checkedPostIds: Array.isArray(previousPayload.checked_post_ids) ? previousPayload.checked_post_ids.filter((id:unknown) => typeof id === 'string' && /^[0-9]+$/.test(id)) : [], complete:true};
+  const now = Date.now();
+  const pending = Array.isArray(previousPayload.pending_announcements) ? previousPayload.pending_announcements : [];
+  const collected = await collectResetAnnouncements([...existing, ...pending], now, scan);
+  const announcements = scan.complete ? collected : existing;
+  const generatedAt = scan.complete ? now : Date.parse(previousPayload.generated_at);
+  const existingIds = new Set(existing.map(item => item.id));
+  const pendingAnnouncements = scan.complete ? [] : collected.filter(item => !existingIds.has(item.id));
+  const envelope = await signedEnvelope(announcements, env.LEADERBOARD_SIGNING_PRIVATE_KEY_B64, generatedAt, scan.checkedPostIds, pendingAnnouncements);
+  const result = await publishStaticFeed(new Request('https://collector/internal/static-feed/codex-reset', {
+    method: 'PUT', headers: {'x-leaderboard-publisher-secret': env.LEADERBOARD_PUBLISHER_SECRET},
+    body: JSON.stringify(envelope),
+  }), env, 'codex-reset', cache, stored.headers.get('ETag') || undefined);
+  if (!result.ok) throw new Error('Reset feed publication failed');
+  return {ok:true, complete:scan.complete, announcements:announcements.length, generated_at:new Date(generatedAt).toISOString(), latest:announcements[0]?.published_at ?? null};
 }
 
 export async function runScheduledRefresh(
@@ -743,6 +780,11 @@ export class LeaderboardRefreshCoordinator {
         if (!budget.allowed) return zeroDollarGateResponse("Zero-dollar Durable Object daily hard stop reached");
         if (!unchanged) {
           const body = new Uint8Array(await request.arrayBuffer());
+          const expected = request.headers.get('If-Match');
+          if (expected) {
+            const current = await this.state.storage.get<StoredPublicObject>(storageKey);
+            if (expected !== `"${current?.contentSha256}"`) return new Response('Feed changed during collection', {status:412});
+          }
           await this.state.storage.put(storageKey, {
             body,
             contentType,
@@ -898,6 +940,18 @@ async function servePublicObject(request: Request, env: Env, dependencies: Handl
 export function createHandler(dependencies: HandlerDependencies) {
   return async function handle(request: Request, env: Env): Promise<Response> {
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname === '/internal/codex-reset/refresh') {
+      if (request.method !== 'POST') return new Response('Method not allowed', {status:405});
+      const secret = request.headers.get('x-leaderboard-publisher-secret') || '';
+      if (!secret || !env.LEADERBOARD_PUBLISHER_SECRET || !equalSecret(secret, env.LEADERBOARD_PUBLISHER_SECRET)) {
+        return new Response('Unauthorized', {status:401});
+      }
+      try { return Response.json(await runResetRefresh(env, dependencies.cache)); }
+      catch (error) {
+        console.error('Reset collection failed', error instanceof Error ? error.message : 'unknown');
+        return Response.json({ok:false,error:'Reset collection failed; previous verified feed retained'}, {status:502});
+      }
+    }
     const internalAvatar = requestUrl.pathname.match(INTERNAL_AVATAR_RE);
     if (internalAvatar) return publishLeaderboardAvatar(request, env, internalAvatar[1]);
     if (requestUrl.pathname === PUBLISH_PATH) {
@@ -972,7 +1026,11 @@ export default {
       waitUntil: (promise) => context.waitUntil(promise),
     })(request, env);
   },
-  scheduled(controller: { scheduledTime: number }, env: Env, context: { waitUntil(promise: Promise<unknown>): void }) {
+  scheduled(controller: { scheduledTime: number; cron?: string }, env: Env, context: { waitUntil(promise: Promise<unknown>): void }) {
+    if (controller.cron === '15 * * * *') {
+      context.waitUntil(runResetRefresh(env, caches.default as unknown as CacheLike));
+      return;
+    }
     if (!env.LEADERBOARD_REFRESH_COORDINATOR) {
       context.waitUntil(runScheduledRefresh(controller.scheduledTime, env));
       return;

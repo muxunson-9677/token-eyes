@@ -20,7 +20,7 @@ test("uses lifecycle state when available and only marks usage-only sessions as 
   assert.equal(result.summary.active_agents.value, 1);
 });
 
-test("marks non-running Agent history as idle while keeping historical usage separate", () => {
+test("keeps usage-only Agent runtime unknown without lifecycle evidence", () => {
   const result = buildRealtimeSessionViewModel({
     usageRows: [{ session_id: "old", source: "claude", total_tokens: 12 }],
     lifecycleSessions: [{ sessionId: "live", agent: "codex", status: "running" }],
@@ -31,7 +31,7 @@ test("marks non-running Agent history as idle while keeping historical usage sep
   });
 
   assert.equal(result.agent_history.find((item) => item.source === "codex").runtime_state, "running");
-  assert.equal(result.agent_history.find((item) => item.source === "claude").runtime_state, "idle");
+  assert.equal(result.agent_history.find((item) => item.source === "claude").runtime_state, "unknown");
   assert.equal(result.summary.active_agents.value, 1);
 });
 

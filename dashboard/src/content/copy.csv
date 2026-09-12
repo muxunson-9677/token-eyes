@@ -2088,6 +2088,7 @@ realtime.recent_activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,rec
 realtime.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,running,"运行中",,active
 realtime.state.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_running,"运行中",,active
 realtime.state.idle,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_idle,"空闲",,active
+realtime.state.unknown,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_unknown,"状态未确认",,active
 realtime.state.completed,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_completed,"已完成",,active
 realtime.state.interrupted,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_interrupted,"已中断",,active
 realtime.state.error,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_error,"运行异常",,active
@@ -2825,3 +2826,6 @@ widget.limit.reset_at,ui,DesktopWidgetPage,ExpandedLimits,reset_at,"Resets {{tim
 widget.limit.reset_unavailable,ui,DesktopWidgetPage,ExpandedLimits,reset_unavailable,"Reset time unavailable",,active
 widget.limit.expires_at,ui,DesktopWidgetPage,ExpandedLimits,expires_at,"Expires in {{days}}d · {{absolute}}",,active
 widget.limit.time_unknown,ui,DesktopWidgetPage,ExpandedLimits,time_unknown,"Time unavailable",,active
+reset_history.time_not_published,ui,ResetHistoryPage,Detail,time_not_published,"官方未公布具体时刻",,active
+reset_history.stats.date_only,ui,ResetHistoryPage,Statistics,date_only,"部分公告仅提供日期，无法计算精确间隔",,active
+reset_history.stats.date_only_value,ui,ResetHistoryPage,Statistics,date_only_value,"精确间隔未知",,active

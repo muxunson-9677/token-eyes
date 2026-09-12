@@ -1,6 +1,71 @@
 import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { createHandler, LeaderboardRefreshCoordinator } from "./index";
+import { createHandler, LeaderboardRefreshCoordinator, runResetRefresh } from "./index";
+
+it('protects the reset collection trigger before any upstream request', async () => {
+  const {handler} = handlerWithCache();
+  const {env} = objectStore();
+  expect((await handler(new Request('https://cache.example/internal/codex-reset/refresh', {method:'POST'}), env)).status).toBe(401);
+});
+
+it('keeps the public payload unchanged during an incomplete scan and publishes pending items on completion', async () => {
+  const {privateKey}=generateKeyPairSync('ed25519');
+  const {env,storage}=objectStore({LEADERBOARD_SIGNING_PRIVATE_KEY_B64:privateKey.export({format:'der',type:'pkcs8'}).toString('base64')});
+  const {signedEnvelope}=await import('./codex-reset-collector');
+  const old=await signedEnvelope([],env.LEADERBOARD_SIGNING_PRIVATE_KEY_B64,Date.now()-3600000);
+  const key='publicObject:v1/codex-reset/feed.json';
+  storage.values.set(key,{body:JSON.stringify(old),contentType:'application/json',cacheControl:'public',contentSha256:'a'.repeat(64)});
+  const ids=Array.from({length:5},(_,i)=>String((BigInt(Date.now()-10000-i*1000)-1288834974657n)<<22n));
+  vi.stubGlobal('fetch',vi.fn(async(input:string|URL)=>{
+    const target=String(input);
+    if(target.startsWith('https://api.fxtwitter.com/')) return new Response('auth',{status:401});
+    if(target==='https://x.com/thsottiaux') return new Response('<link rel="canonical" href="https://x.com/thsottiaux">'+ids.map(id=>`<a href="/thsottiaux/status/${id}">post</a>`).join(''));
+    const url=target.startsWith('https://publish.x.com/')?new URL(target).searchParams.get('url')!:target;
+    const text=url.endsWith(ids[0])?'Codex usage limits have been reset.':'Ordinary post.';
+    if(target.startsWith('https://publish.x.com/'))return Response.json({url,author_url:'https://x.com/thsottiaux',provider_name:'X',html:`<p>${text}</p>`});
+    return new Response(`<link rel="canonical" href="${url}"><div dir="auto"><span>${text}</span></div>`);
+  }));
+  const payload=()=>JSON.parse(Buffer.from(JSON.parse(Buffer.from((storage.values.get(key) as any).body).toString()).payload_b64,'base64url').toString());
+  try {
+    expect((await runResetRefresh(env,new MemoryCache())).complete).toBe(false);
+    expect(payload().announcements).toEqual([]);
+    expect(payload().generated_at).toBe(JSON.parse(Buffer.from(old.payload_b64,'base64url').toString()).generated_at);
+    expect((await runResetRefresh(env,new MemoryCache())).complete).toBe(true);
+    expect(payload().announcements[0].source_post_id).toBe(ids[0]);
+    expect(payload().pending_announcements).toBeUndefined();
+  } finally {vi.unstubAllGlobals();}
+});
+
+it('rejects a stale conditional write instead of overwriting a newer reset feed', async () => {
+  const {coordinator,storage} = objectStore();
+  const key='publicObject:v1/codex-reset/feed.json';
+  storage.values.set(key,{body:'old',contentType:'application/json',cacheControl:'public',contentSha256:'a'.repeat(64)});
+  const write=(hash:string,body:string)=>coordinator.fetch(new Request('https://coordinator/objects/v1/codex-reset/feed.json',{
+    method:'PUT',headers:{'If-Match':'"'+ 'a'.repeat(64)+'"','X-Object-Content-Sha256':hash.repeat(64)},body,
+  }));
+  expect((await write('b','new')).status).toBe(200);
+  expect((await write('c','late old scan')).status).toBe(412);
+  expect((storage.values.get(key) as any).contentSha256).toBe('b'.repeat(64));
+});
+
+it('refreshes the stored reset feed only after successful discovery and preserves it on failure', async () => {
+  const { privateKey } = generateKeyPairSync('ed25519');
+  const store = objectStore({ LEADERBOARD_SIGNING_PRIVATE_KEY_B64: privateKey.export({format:'der',type:'pkcs8'}).toString('base64') });
+  const { signedEnvelope } = await import('./codex-reset-collector');
+  const old = await signedEnvelope([], store.env.LEADERBOARD_SIGNING_PRIVATE_KEY_B64, Date.now()-3600000);
+  const key = 'publicObject:v1/codex-reset/feed.json';
+  store.storage.values.set(key, {body:JSON.stringify(old), contentType:'application/json', cacheControl:'public',contentSha256:'old'});
+  const cache = new MemoryCache();
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({results:[],cursor:{}})));
+  try {
+    await runResetRefresh(store.env, cache);
+    const updated = store.storage.values.get(key);
+    expect(updated).not.toEqual({body:JSON.stringify(old), contentType:'application/json', cacheControl:'public',contentSha256:'old'});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('failure',{status:503})));
+    await expect(runResetRefresh(store.env, cache)).rejects.toThrow();
+    expect(store.storage.values.get(key)).toEqual(updated);
+  } finally { vi.unstubAllGlobals(); }
+});
 
 class MemoryCache {
   values = new Map<string, Response>();

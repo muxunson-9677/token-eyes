@@ -146,7 +146,7 @@ describe("RealtimeSessionsPage", () => {
     await screen.findAllByText("Codex");
     const states = [...document.querySelectorAll(".rt-mini-state")].map((node) => node.textContent.trim());
     expect(states).toContain(copy("realtime.state.running"));
-    expect(states.every((state) => [copy("realtime.state.running"), copy("realtime.state.idle")].includes(state))).toBe(true);
+    expect(states.every((state) => [copy("realtime.state.running"), copy("realtime.state.idle"), copy("realtime.state.unknown")].includes(state))).toBe(true);
     expect(states).not.toContain(copy("realtime.state.recent_activity"));
   });
   it("does not abort and restart a slow in-flight refresh on the polling interval", async () => {
@@ -184,9 +184,9 @@ describe("RealtimeSessionsPage", () => {
     const traeCard = screen.getByText("Trae").closest(".rt-session-mini");
     const codeBuddyCard = screen.getByText("CodeBuddy").closest(".rt-session-mini");
     expect(traeCard).toHaveTextContent(copy("realtime.history.trae_pending_metric"));
-    expect(traeCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.idle"));
+    expect(traeCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.unknown"));
     expect(codeBuddyCard).toHaveTextContent(copy("realtime.history.no_usage_metric"));
-    expect(codeBuddyCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.idle"));
+    expect(codeBuddyCard.querySelector(".rt-mini-state")).toHaveTextContent(copy("realtime.state.unknown"));
     expect(traeCard).not.toHaveTextContent(copy("value_realtime.data_unavailable"));
     expect(codeBuddyCard).not.toHaveTextContent(copy("value_realtime.data_unavailable"));
     await act(async () => { await user.click(screen.getByRole("button", { name: copy("realtime.agent.next") })); });

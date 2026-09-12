@@ -8,6 +8,7 @@ const MAX_LINE_PREFIX_BYTES = 4096;
 const MAX_ROLLOUT_FILES = 400;
 const FILE_MTIME_LOOKBACK_MS = 36 * 60 * 60 * 1000;
 const JSON_WHITESPACE = new Set([0x09, 0x0a, 0x0d, 0x20]);
+const spanMetadataCache = new Map();
 
 function safeSessionId(value) {
   const text = String(value || "").trim();
@@ -671,7 +672,25 @@ async function collectCodexMessageSpans({
 
   const combined = new Map();
   for (const { filePath } of files.slice(0, MAX_ROLLOUT_FILES)) {
-    const spans = await scanRolloutFile(filePath, resolveActivityDay, normalizedFrom, normalizedTo, allowedSessionIds);
+    const stat = await fs.promises.stat(filePath).catch(() => null);
+    if (!stat) continue;
+    const fileVersion = (value) => `${value.dev}:${value.ino}:${value.size}:${value.mtimeMs}:${value.ctimeMs}`;
+    const cacheKey = JSON.stringify([filePath, normalizedFrom, normalizedTo, timeZoneContext, allowedSessionIds ? [...allowedSessionIds].sort() : null]);
+    const cached = spanMetadataCache.get(cacheKey);
+    let spans;
+    if (cached?.version === fileVersion(stat)) {
+      spans = cached.spans;
+    } else {
+      spans = await scanRolloutFile(filePath, resolveActivityDay, normalizedFrom, normalizedTo, allowedSessionIds);
+      const after = await fs.promises.stat(filePath).catch(() => null);
+      // Never cache a read that raced an append/replacement. Only time/count
+      // metadata is retained; message bodies never enter this bounded cache.
+      if (after && fileVersion(after) === fileVersion(stat)) {
+        spanMetadataCache.delete(cacheKey);
+        spanMetadataCache.set(cacheKey, { version: fileVersion(stat), spans });
+        if (spanMetadataCache.size > 128) spanMetadataCache.delete(spanMetadataCache.keys().next().value);
+      }
+    }
     for (const span of spans) {
       const key = `${span.sessionId}\u0000${span.activityDay}`;
       const current = combined.get(key) || { ...span };

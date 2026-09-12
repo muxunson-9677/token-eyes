@@ -11,7 +11,7 @@ const SHANGHAI_DAY_FORMATTER = new Intl.DateTimeFormat("en", {
   day: "2-digit",
 });
 
-type OfficialResetEvent = Pick<CodexResetHistoryEvent, "type" | "occurred_at">;
+type OfficialResetEvent = Pick<CodexResetHistoryEvent, "type" | "occurred_at" | "published_precision">;
 
 export type ResetStatistics = {
   periodDays: number;
@@ -88,10 +88,12 @@ export function calculateResetStatistics(
   events: readonly OfficialResetEvent[],
   nowMs = Date.now(),
 ): ResetStatistics {
-  const occurredAtValues = filterRecentOfficialResets(events, nowMs)
+  const recentEvents = filterRecentOfficialResets(events, nowMs);
+  const hasDateOnly = recentEvents.some((event) => event.published_precision === "day");
+  const occurredAtValues = recentEvents
     .map((event) => Date.parse(event.occurred_at))
     .sort((left, right) => left - right);
-  const intervals = occurredAtValues
+  const intervals = (hasDateOnly ? [] : occurredAtValues)
     .slice(1)
     .map((occurredAt, index) => occurredAt - occurredAtValues[index]);
 

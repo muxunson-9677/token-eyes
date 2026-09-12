@@ -3401,6 +3401,13 @@ html.native-windows-app .tt-reference-route-widgets .tt-main-work-surface main >
 .tt-widget-limits > header button:disabled { opacity: 0.6; }
 .tt-widget-limits > header button svg { width: 14px; height: 14px; }
 .tt-widget-plan-list { display: grid; gap: 10px; margin: 0 14px 14px; }
+.tt-widget-limit-history { min-width: 0; }
+.tt-widget-limit-history > button { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--tt-border, #e2e8ef); border-radius: 10px; background: transparent; color: inherit; font-size: 13px; font-weight: 600; text-align: left; box-shadow: none; }
+.tt-widget-limit-history > button:hover { background: rgba(148, 163, 184, 0.08); }
+.tt-widget-limit-history > button:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+.tt-widget-limit-history > button svg { width: 16px; height: 16px; flex: 0 0 16px; color: #8895a7; }
+.tt-widget-limit-history > button[aria-expanded="true"] svg { transform: rotate(180deg); }
+.tt-widget-limit-history > .tt-widget-limit-plan-grid { margin-top: 12px; }
 .tt-widget-plan-list > .tt-token-plan-grid,
 .tt-widget-limit-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, 264px); grid-auto-rows: auto; align-items: stretch; justify-content: start; gap: 12px; }
 .tt-widget-plan-card { position: relative; display: flex; min-width: 0; height: 100%; flex-direction: column; overflow: hidden; border: 1px solid rgba(198, 211, 226, 0.95); border-radius: 8px; outline: none; padding: 8px; background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(244, 247, 251, 0.96)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 8px 18px -12px rgba(33, 48, 67, 0.26), 0 2px 6px rgba(33, 48, 67, 0.05); }
@@ -5443,8 +5450,8 @@ html.native-windows-app .tt-native-window-bar {
   box-shadow: inset 0 3px 7px rgba(31, 43, 56, 0.24), 0 1px 2px rgba(31, 43, 56, 0.08);
 }
 
-/* Usage details: give the chart a useful plotting area, let service cards own
-   their content height, and keep the tab panels in normal document flow. */
+/* Usage details: the chart determines the shared row height; service content
+   scrolls inside its stretched panel without resizing the row on tab changes. */
 .tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
@@ -5465,12 +5472,15 @@ html.native-windows-app .tt-native-window-bar {
   overflow: visible;
   border: 1px solid rgba(125, 139, 158, 0.16);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.98), 0 3px 7px rgba(31, 43, 56, 0.08), 0 18px 38px rgba(31, 43, 56, 0.1);
+  transform: none !important;
 }
 
 .tt-reference-route-spend-usage [data-testid="token-service-mode-panel"] {
-  height: 390px;
+  height: auto;
   min-height: 390px;
-  max-height: 390px;
+  max-height: none;
+  align-self: stretch;
+  contain: size;
   overflow: hidden;
 }
 
@@ -5506,6 +5516,12 @@ html.native-windows-app .tt-native-window-bar {
 
   .tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tt-reference-route-spend-usage [data-testid="token-service-mode-panel"] {
+    contain: none;
+    height: 390px;
+    max-height: 390px;
   }
 
   .tt-reference-route-spend-usage [data-testid="usage-chart-token-services-layout"] > :first-child,

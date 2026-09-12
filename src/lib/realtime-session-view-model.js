@@ -195,7 +195,7 @@ function buildAgentHistory(agentHistory = [], runtimeBySource = new Map()) {
     return {
         source: safeText(item?.source),
         agent_label: safeText(item?.agent_label),
-        runtime_state: runtimeBySource.get(safeText(item?.source)) || "idle",
+        runtime_state: runtimeBySource.get(safeText(item?.source)) || "unknown",
         history_state: item?.history_state === "installed_no_history" ? "installed_no_history" : "historical_usage",
         record_count: finiteNumber(item?.record_count) ?? 0,
         observed_from: safeText(item?.observed_from),
@@ -324,6 +324,7 @@ function buildRealtimeSessionViewModel(input = {}) {
     const source = safeText(item?.source || item?.agent);
     const state = safeText(item?.state || item?.status);
     if (!source) return states;
+    if (!["running", "idle", "completed", "interrupted", "error", "waiting_approval"].includes(state)) return states;
     if (state === "running" || !states.has(source)) states.set(source, state === "running" ? "running" : "idle");
     return states;
   }, new Map());

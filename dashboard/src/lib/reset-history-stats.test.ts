@@ -18,6 +18,16 @@ function event(id: string, occurredAt: string) {
 }
 
 describe("calculateResetStatistics", () => {
+  it("does not invent precise intervals from official date-only announcements", () => {
+    const result = calculateResetStatistics([
+      event("one", "2026-07-20T12:00:00.000Z"),
+      { ...event("two", "2026-07-22T00:00:00.000Z"), published_precision: "day" as const },
+    ], NOW_MS);
+    expect(result.count).toBe(2);
+    expect(result.averageIntervalMs).toBeNull();
+    expect(result.shortestIntervalMs).toBeNull();
+    expect(result.longestIntervalMs).toBeNull();
+  });
   it("calculates adjacent intervals for valid official resets in the last thirty days", () => {
     const result = calculateResetStatistics([
       event("old", "2026-06-29T12:00:00.000Z"),

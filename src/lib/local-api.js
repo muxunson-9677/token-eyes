@@ -2624,6 +2624,7 @@ function sanitizeCodexResetEvent(event) {
       }
     }
     dto.source_url = sourceUrl;
+    if (event.publishedPrecision === "day") dto.published_precision = "day";
     dto.source_author = boundedString(event.sourceAuthor, 32);
     dto.source_post_id = boundedString(event.sourcePostId, 32);
     dto.reset_kind = CODEX_RESET_KINDS.has(event.resetKind) ? event.resetKind : "unknown";
@@ -2902,6 +2903,7 @@ function createLocalApiHandler({
   // dashboard can poll freely without hammering the remote API.
   const WORKBUDDY_QUOTA_CACHE_MS = 5 * 60 * 1000;
   const workbuddyQuotaCache = { payload: null, fetchedAtMs: 0 };
+  let workbuddyQuotaPending = null;
   const workbuddyDailyBalancePath = path.join(trackerDataDir, "workbuddy-daily-balance.json");
   const WORKBUDDY_PUBLIC_GROUP_IDS = new Set(["base", "activity", "extra", "other"]);
   const WORKBUDDY_PUBLIC_PLANS = new Set(["FREE", "TRIAL", "PRO"]);
@@ -3067,18 +3069,42 @@ function createLocalApiHandler({
     const cached = workbuddyQuotaCache.payload;
     const fresh = cached && nowMs - workbuddyQuotaCache.fetchedAtMs < WORKBUDDY_QUOTA_CACHE_MS;
     if (fresh && !forceRefresh) return cached;
+    if (workbuddyQuotaPending) return workbuddyQuotaPending;
     const provider = typeof workbuddyQuotaProvider === "function"
       ? workbuddyQuotaProvider
       : require("./workbuddy-quota").fetchWorkbuddyQuota;
-    const data = await provider({
-      env: handlerEnv,
-      home: handlerHome,
-      platform: process.platform,
-    });
-    const observed = attachWorkbuddyDailyObservation(data, nowProvider());
-    workbuddyQuotaCache.payload = observed;
-    workbuddyQuotaCache.fetchedAtMs = nowMs;
-    return observed;
+    workbuddyQuotaPending = (async () => {
+      const data = await provider({
+        env: handlerEnv,
+        home: handlerHome,
+        platform: process.platform,
+      });
+      const observed = attachWorkbuddyDailyObservation(data, nowProvider());
+      workbuddyQuotaCache.payload = observed;
+      workbuddyQuotaCache.fetchedAtMs = nowProvider().getTime();
+      return observed;
+    })();
+    try {
+      return await workbuddyQuotaPending;
+    } finally {
+      workbuddyQuotaPending = null;
+    }
+  }
+
+  async function readRealtimeWorkbuddyQuota() {
+    let timer;
+    try {
+      // Quota is supplemental: a slow remote account must not block local sessions.
+      // The in-flight read still fills the cache for the next normal UI poll.
+      return await Promise.race([
+        readWorkbuddyQuotaForRequest().catch(() => ({ unreadable: true })),
+        new Promise((resolve) => {
+          timer = setTimeout(() => resolve({ unreadable: true }), 300);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function overlayProviderRuntimeFacts(payload) {
@@ -6740,6 +6766,7 @@ function createLocalApiHandler({
   }
 
   async function readValueRealtimeUsageRows(range, timeZoneContext, { includeCodexRolloutFallback = true } = {}) {
+    const pricingOptions = getPricingOptions();
     const queueRows = readQueueData(qp);
     const rows = includeCodexRolloutFallback
       ? await withCodexRolloutRows(queueRows, {
@@ -6754,10 +6781,11 @@ function createLocalApiHandler({
         const day = rowDayKey(row, timeZoneContext);
         return day >= range.from && day <= range.to;
       })
-      .map((row) => ({ ...row, ...computeRowCostDetailed(row, getPricingOptions()) }));
+      .map((row) => ({ ...row, ...computeRowCostDetailed(row, pricingOptions) }));
   }
 
   async function readRealtimeUsageRows(range, timeZoneContext, { codexRolloutFiles = [] } = {}) {
+    const pricingOptions = getPricingOptions();
     const queueRows = readQueueData(qp);
     let rows;
     if (codexRolloutFiles.length) {
@@ -6787,7 +6815,7 @@ function createLocalApiHandler({
         const day = rowDayKey(row, timeZoneContext);
         return day >= range.from && day <= range.to;
       })
-      .map((row) => ({ ...row, ...computeRowCostDetailed(row, getPricingOptions()) }));
+      .map((row) => ({ ...row, ...computeRowCostDetailed(row, pricingOptions) }));
   }
 
   function configuredPlanAttribution(config) {
@@ -7210,7 +7238,7 @@ function createLocalApiHandler({
           typeof codexLifecycleProvider === "function"
             ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowDate.getTime() })
             : collectCodexLifecycleSessions({ homes: codexHomes, nowMs: nowDate.getTime() }),
-          readWorkbuddyQuotaForRequest().catch(() => ({ unreadable: true })),
+          readRealtimeWorkbuddyQuota(),
         ]);
         const orderedLifecycleSessions = [...(lifecycleSessions || [])]
           .sort((left, right) => {
@@ -8228,9 +8256,8 @@ function createLocalApiHandler({
     // Provider statistics have two explicit contracts. The general endpoint
     // retains every explicitly attributed Provider. The API-card endpoint
     // retains API-key activity even when an official billed cost is unavailable.
-    // Both follow a valid selected range (bounded to the billing API's 180-day
-    // window); the API-card endpoint falls back to the latest seven days only
-    // when no usable range was supplied.
+    // Local cumulative history can exceed an upstream billing query window.
+    // The API-card endpoint uses seven days only without a usable range.
     if (
       p === "/functions/tokentracker-provider-stats"
       || p === "/functions/tokentracker-provider-api-stats"
@@ -8248,12 +8275,13 @@ function createLocalApiHandler({
       const requestedRangeDays = validDayKey(requestedFrom) && validDayKey(requestedTo)
         ? providerRangeDays(requestedFrom, requestedTo)
         : 0;
-      const useRequestedApiRange = recentApiView
-        && requestedRangeDays >= 1
-        && requestedRangeDays <= 180;
       const timeZoneContext = requestedTimeZoneContext;
       const currentDay = formatPartsDayKey(getZonedParts(nowProvider(), timeZoneContext))
         || nowProvider().toISOString().slice(0, 10);
+      // Local activity is not limited by the upstream billing query window.
+      const useRequestedApiRange = recentApiView
+        && requestedRangeDays >= 1
+        && (requestedRangeDays <= 180 || requestedTo <= currentDay);
       const to = recentApiView
         ? useRequestedApiRange ? requestedTo : currentDay
         : !validDayKey(requestedTo) ? currentDay : requestedTo;

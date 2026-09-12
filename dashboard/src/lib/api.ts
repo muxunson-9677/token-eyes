@@ -55,6 +55,7 @@ export interface CodexResetMonitorStatus {
   feed_last_checked_at: string | null;
   feed_generated_at?: string | null;
   latest_published_at?: string | null;
+  latest_published_precision?: "day";
   feed_stale?: boolean;
   feed_error_code: string | null;
   backfill_error_code: string | null;
@@ -76,6 +77,7 @@ export interface CodexResetEvent {
   confidence: "confirmed" | "recovered";
   alert_eligible: boolean;
   occurred_at?: string;
+  published_precision?: "day";
   source_url?: string;
   source_author?: "OpenAI" | "thsottiaux" | null;
   source_post_id?: string | null;
