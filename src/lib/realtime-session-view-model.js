@@ -111,6 +111,8 @@ function buildSessionActivityPoints(rows) {
 function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = null, agentDayRows = []) {
   const latest = [...rows].sort((left, right) => timestampMs(rowTime(right)) - timestampMs(rowTime(left)))[0] || {};
   const lifecycleStatus = safeText(lifecycle && lifecycle.status);
+  const lifecycleTime = safeText(lifecycle && lifecycle.updatedAt);
+  const usageTime = rowTime(latest);
   const hasCost = rows.some((row) => finiteNumber(row.cost_usd) !== null);
   const evidence = buildEvidence(rows, lifecycle, latest);
   function tokenMetric(metricRows, key, metricEvidence = evidence) {
@@ -140,7 +142,8 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
       || safeText(lifecycle && lifecycle.sessionId),
     model: safeText(latest.model) || safeText(lifecycle && lifecycle.model),
     state: lifecycleStatus || "recent_activity",
-    last_activity_at: rowTime(latest) || safeText(lifecycle && lifecycle.updatedAt),
+    last_activity_at: timestampMs(lifecycleTime) > timestampMs(usageTime)
+      ? lifecycleTime : usageTime || lifecycleTime,
     total_tokens: tokenMetric(rows, "total_tokens"),
     input_tokens: tokenMetric(rows, "input_tokens"),
     output_tokens: tokenMetric(rows, "output_tokens"),

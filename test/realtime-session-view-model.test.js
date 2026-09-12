@@ -5,6 +5,14 @@ const test = require("node:test");
 
 const { buildRealtimeSessionViewModel } = require("../src/lib/realtime-session-view-model");
 
+test("does not let a half-hour usage bucket hide a newer task lifecycle event", () => {
+  const result = buildRealtimeSessionViewModel({
+    usageRows: [{ session_id: "new", source: "codex", hour_start: "2026-09-12T15:30:00Z", total_tokens: 1 }],
+    lifecycleSessions: [{ sessionId: "new", agent: "codex", status: "running", updatedAt: "2026-09-12T15:33:36Z" }],
+  });
+  assert.equal(result.sessions[0].last_activity_at, "2026-09-12T15:33:36Z");
+});
+
 test("uses lifecycle state when available and only marks usage-only sessions as recent activity", () => {
   const result = buildRealtimeSessionViewModel({
     observedAt: "2026-08-21T08:00:00.000Z",
