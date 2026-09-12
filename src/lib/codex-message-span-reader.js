@@ -449,6 +449,20 @@ function consumeJsonByte(state, byte) {
   }
 }
 
+function consumeJsonSegment(state, buffer, offset = 0) {
+  for (let index = offset; index < buffer.length && !state.invalid; index += 1) {
+    // String contents do not change JSON structure. Scan their ordinary bytes
+    // without decoding or retaining them; escapes/control bytes still go
+    // through the complete validator, including across stream boundaries.
+    if (state.mode === "string" && !state.escaped && state.unicodeRemaining === 0) {
+      while (index < buffer.length && buffer[index] >= 0x20
+        && buffer[index] !== 0x22 && buffer[index] !== 0x5c) index += 1;
+      if (index === buffer.length) break;
+    }
+    consumeJsonByte(state, buffer[index]);
+  }
+}
+
 function isCompleteJsonLine(state) {
   if (state.mode === "number") {
     if (!isAcceptedNumberState(state.numberState)) return false;
@@ -554,9 +568,7 @@ async function scanRolloutFile(filePath, resolveActivityDay, from, to, allowedSe
     candidate = parseMetadataPrefix(prefix.subarray(0, prefixLength));
     if (candidate) {
       jsonState = createJsonValidationState();
-      for (let index = 0; index < prefixLength; index += 1) {
-        consumeJsonByte(jsonState, prefix[index]);
-      }
+      consumeJsonSegment(jsonState, prefix.subarray(0, prefixLength));
     }
   }
 
@@ -570,9 +582,7 @@ async function scanRolloutFile(filePath, resolveActivityDay, from, to, allowedSe
       if (prefixLength === MAX_LINE_PREFIX_BYTES) parsePrefix();
     }
     if (!candidate || !jsonState) return;
-    for (let index = offset; index < segment.length; index += 1) {
-      consumeJsonByte(jsonState, segment[index]);
-    }
+    consumeJsonSegment(jsonState, segment, offset);
   }
 
   function finishLine() {

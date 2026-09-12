@@ -3,7 +3,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
-const readline = require("node:readline");
+const { readCodexUsageLines } = require("./codex-usage-lines");
 const agentRegistry = require("../../shared/agent-registry.json");
 const codexResetReviewed = require("../../shared/codex-reset-reviewed.json");
 const { verifySignedStaticFeed } = require("./signed-static-feed");
@@ -1008,11 +1008,7 @@ async function collectCodexRolloutQueueRows({
 
       let model = "unknown";
       let sessionId = null;
-      const stream = fs.createReadStream(filePath, { encoding: "utf8" });
-      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-      try {
-        for await (const line of rl) {
+        for await (const line of readCodexUsageLines(filePath)) {
           if (!line) continue;
           if (
             !line.includes('"token_count"') &&
@@ -1088,10 +1084,6 @@ async function collectCodexRolloutQueueRows({
           row.billable_total_tokens += Number(usage.total_tokens || 0);
           row.conversation_count += 1;
         }
-      } finally {
-        rl.close();
-        stream.close?.();
-      }
     }
 
     const rows = Array.from(buckets.values()).sort((a, b) => {

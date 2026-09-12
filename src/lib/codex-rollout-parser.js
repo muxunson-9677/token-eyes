@@ -45,6 +45,8 @@ function formatPartsDayKey(parts) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+const zonedFormatters = new Map();
+
 function getZonedParts(date, timeZoneContext = {}) {
   const { timeZone, offsetMinutes } = timeZoneContext || {};
   const dt = date instanceof Date ? date : new Date(date);
@@ -52,13 +54,18 @@ function getZonedParts(date, timeZoneContext = {}) {
 
   if (timeZone && typeof Intl !== "undefined" && Intl.DateTimeFormat) {
     try {
-      return new Intl.DateTimeFormat("en-CA", {
-        timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hourCycle: "h23",
-      }).formatToParts(dt);
+      if (!zonedFormatters.has(timeZone)) {
+        const formatter = new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hourCycle: "h23",
+        });
+        if (zonedFormatters.size >= 32) zonedFormatters.delete(zonedFormatters.keys().next().value);
+        zonedFormatters.set(timeZone, formatter);
+      }
+      return zonedFormatters.get(timeZone).formatToParts(dt);
     } catch {
       // Fall through to offset handling.
     }

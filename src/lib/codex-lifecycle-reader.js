@@ -258,12 +258,13 @@ async function readLifecycleFile(filePath, includeProjectLabel) {
   try {
     handle = await fs.promises.open(filePath, "r");
     const stat = await handle.stat();
-    const [meta, evidence, modelEvidence] = await Promise.all([
-      readSessionMeta(handle, stat.size),
+    const meta = await readSessionMeta(handle, stat.size);
+    if (!meta || meta.threadSource !== "user") return null;
+    const [evidence, modelEvidence] = await Promise.all([
       readLatestLifecycleEvidence(handle, stat.size),
       readLatestModelEvidence(handle, stat.size),
     ]);
-    if (!meta || meta.threadSource !== "user" || !evidence) return null;
+    if (!evidence) return null;
     const project = projectMetadata(meta.cwd, includeProjectLabel);
     const sessionId = safeSessionId(meta.id, filePath);
     return attachRolloutPath({

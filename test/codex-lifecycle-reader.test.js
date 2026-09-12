@@ -10,6 +10,30 @@ const {
   collectCodexLifecycleSessions,
 } = require("../src/lib/codex-lifecycle-reader");
 
+test("excluded subagent threads stop after session metadata instead of scanning their history", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-lifecycle-subagent-"));
+  const open = fs.promises.open;
+  let readBytes = 0;
+  try {
+    fs.mkdirSync(path.join(root, "sessions"));
+    const file = path.join(root, "sessions", "rollout-child.jsonl");
+    fs.writeFileSync(file, JSON.stringify({ type: "session_meta", payload: { id: "child", thread_source: "subagent" } }) + "\n" + "x".repeat(2 * 1024 * 1024));
+    fs.promises.open = async (...args) => {
+      const handle = await open(...args);
+      if (args[0] === file) {
+        const read = handle.read.bind(handle);
+        handle.read = async (...readArgs) => { const result = await read(...readArgs); readBytes += result.bytesRead; return result; };
+      }
+      return handle;
+    };
+    assert.deepEqual(await collectCodexLifecycleSessions({ homes: [root] }), []);
+    assert.ok(readBytes <= 256 * 1024, `read ${readBytes} bytes from an excluded thread`);
+  } finally {
+    fs.promises.open = open;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("reads the safe Codex thread name without returning prompts, bodies, or paths", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-lifecycle-"));
   try {

@@ -40,6 +40,28 @@ function responseItemUserMessage(timestamp, content) {
   });
 }
 
+test("large user-message metadata scans stay responsive without decoding content", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-span-large-"));
+  try {
+    writeRollout(home, "rollout-large.jsonl", [
+      JSON.stringify({ type: "session_meta", payload: { id: "large-session" } }),
+    ]);
+    const file = path.join(home, "sessions", "2026", "08", "21", "rollout-large.jsonl");
+    fs.appendFileSync(file, '{"timestamp":"2026-08-21T06:00:00Z","type":"event_msg","payload":{"type":"user_message","message":"');
+    const chunk = Buffer.alloc(1024 * 1024, 0x78);
+    const benchmark = process.env.TOKEN_EYES_PERFORMANCE_TESTS === "1";
+    for (let index = 0; index < (benchmark ? 96 : 1); index += 1) fs.appendFileSync(file, chunk);
+    fs.appendFileSync(file, '\\n\\"\\u4e2d"}}\n');
+    const started = performance.now();
+    const result = await collectCodexMessageSpans({ homes: [home], from: "2026-08-21", to: "2026-08-21" });
+    const elapsed = performance.now() - started;
+    assert.equal(result[0].messageCount, 1);
+    if (benchmark) assert.ok(elapsed < 250, `metadata scan took ${Math.round(elapsed)}ms for 96 MiB`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("unchanged message spans reuse metadata but an appended message invalidates it", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-span-cache-"));
   const fileName = "rollout-cache.jsonl";
