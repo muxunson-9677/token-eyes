@@ -558,7 +558,7 @@ export function ResetHistoryPage() {
       : dataState === "loading"
         ? "reset_history.freshness.pending"
         : status?.feed_stale
-          ? "reset_history.freshness.cached"
+          ? status?.feed_error_code ? "reset_history.freshness.cached" : "reset_history.freshness.stale"
           : status?.feed_error_code
             ? "reset_history.freshness.unavailable"
             : status?.feed_generated_at

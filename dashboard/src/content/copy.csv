@@ -2084,6 +2084,10 @@ realtime.trend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,trend,"实时
 realtime.status,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status,"数据状态",,active
 realtime.coverage,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"价格覆盖率",,active
 realtime.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,empty,"当前没有可安全展示的会话活动",,active
+realtime.range.no_usage,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,no_usage,"此范围未读到用量（不代表0）。可查看近7天或刷新。",,active
+realtime.range.aggregate_only,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,aggregate_only,"已读取范围用量；暂无逐会话任务、时长和状态。",,active
+realtime.history.month_total,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,month_total,"{{month}} 月累计",,active
+realtime.history.account_snapshot,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,account_snapshot,"账户额度快照 · 非当前会话用量",,active
 realtime.recent_activity,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,recent_activity,"近期有活动",,active
 realtime.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,running,"运行中",,active
 realtime.state.running,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,state_running,"运行中",,active
@@ -2133,10 +2137,18 @@ realtime.billing_safe,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,billin
 realtime.tabs.composition,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_composition,"会话构成",,active
 realtime.tabs.trend,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_trend,"趋势",,active
 realtime.tabs.children,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_children,"子 Agent",,active
-realtime.tabs.requests,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_requests,"请求明细",,active
+realtime.tabs.requests,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tabs_requests,"用量明细",,active
+realtime.record.aggregate,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,record_aggregate,"用量汇总",,active
+realtime.record.included,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,record_included,"会话明细 · 已含于汇总",,active
+realtime.pagination.label,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,pagination_label,"用量明细分页",,active
+realtime.pagination.status,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,pagination_status,"第 {{current}} / {{pages}} 页 · 共 {{count}} 条",,active
+realtime.pagination.previous,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,pagination_previous,"上一页",,active
+realtime.pagination.next,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,pagination_next,"下一页",,active
+realtime.record.request,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,record_request,"请求事件",,active
+realtime.sync_error,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,sync_error,"本地采集失败，当前显示已有数据；请重试刷新或查看数据与诊断。",,active
 realtime.chart.window,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window,"最近 48 个安全活动点",,active
 realtime.tree.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,tree_empty,"当前没有可确认的父子会话关系",,active
-realtime.requests.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,requests_empty,"当前没有可展示的请求汇总",,active
+realtime.requests.empty,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,requests_empty,"当前没有可展示的用量记录",,active
 realtime.status.exact,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_exact,"精确",,active
 realtime.status.estimated,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_estimated,"估算",,active
 realtime.status.connected,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,status_connected,"仅缓存",,active
@@ -2148,6 +2160,7 @@ realtime.tokens_with_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,to
 realtime.count_unit,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,count_unit,"{{count}} 个",,active
 realtime.agent.next,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,agent_next,"查看下一组 Agent",,active
 realtime.data_range,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,data_range,"数据范围：当前会话",,active
+realtime.data_range.agent,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,data_range_agent,"数据范围：所选 Agent",,active
 realtime.updated_just_now,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,updated_just_now,"更新时间：刚刚",,active
 realtime.chart.window.1h,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window_1h,"1 小时",,active
 realtime.chart.window.4h,dashboard,RealtimeSessionsPage,RealtimeSessionsPage,chart_window_4h,"4 小时",,active
@@ -2450,6 +2463,7 @@ reset_history.data_unavailable,ui,ResetHistoryPage,ResetHistoryPage,data_unavail
 reset_history.data_cached,ui,ResetHistoryPage,ResetHistoryPage,data_cached,"Feed refresh failed. Showing the last trusted reset history.",,active
 reset_history.freshness.current,ui,ResetHistoryPage,ResetHistoryPage,freshness_current,"Feed verified",,active
 reset_history.freshness.cached,ui,ResetHistoryPage,ResetHistoryPage,freshness_cached,"Feed refresh failed · showing verified cache",,active
+reset_history.freshness.stale,ui,ResetHistoryPage,ResetHistoryPage,freshness_stale,"已连接公告源，但数据尚未更新 · 当前显示历史公告",,active
 reset_history.freshness.unavailable,ui,ResetHistoryPage,ResetHistoryPage,freshness_unavailable,"Feed unavailable",,active
 reset_history.freshness.pending,ui,ResetHistoryPage,ResetHistoryPage,freshness_pending,"Feed not verified yet",,active
 reset_history.freshness.last_checked,ui,ResetHistoryPage,ResetHistoryPage,freshness_last_checked,"Last feed check",,active

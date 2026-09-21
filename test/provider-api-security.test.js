@@ -2014,6 +2014,27 @@ function makeCapturingRunner(calls, opts = {}) {
   };
 }
 
+test("Windows DPAPI default runner isolates system PowerShell from inherited module paths", (t) => {
+  const tmp = fsSync.mkdtempSync(path.join(os.tmpdir(), "te-dpapi-environment-"));
+  t.after(() => fsSync.rmSync(tmp, { recursive: true, force: true }));
+  const calls = [];
+  t.mock.method(require("node:child_process"), "spawnSync", (cmd, args, options) => {
+    calls.push({ cmd, args, options });
+    return { status: 0, stdout: Buffer.from("encrypted-fixture"), stderr: Buffer.alloc(0) };
+  });
+  const store = createDefaultCredentialStore({ platform: "win32", trackerDataDir: tmp });
+  assert.equal(store.saveSecret("fixture", REPAIR_UNIQUE_SECRET).ok, true);
+  assert.equal(store.readSecret("fixture"), "encrypted-fixture");
+  const systemRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
+  for (const { cmd, args, options } of calls) {
+    assert.equal(cmd, path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"));
+    assert.equal(options.env.PSModulePath, path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"));
+    assert.deepEqual(Object.keys(options.env).sort(), ["PSModulePath", "SystemRoot", "windir"]);
+    assert.equal(options.windowsHide, true);
+    assert.ok(!JSON.stringify({ args, env: options.env }).includes(REPAIR_UNIQUE_SECRET));
+  }
+});
+
 test("F1-REPRO Windows DPAPI saveSecret: secret MUST NOT appear in runner argv", () => {
   const tmp = path.join(os.tmpdir(), `te-f1-win-argv-${crypto.randomUUID()}`);
   fsSync.mkdirSync(tmp, { recursive: true });

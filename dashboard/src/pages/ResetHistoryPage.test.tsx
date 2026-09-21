@@ -252,6 +252,15 @@ describe("ResetHistoryPage", () => {
     expect(resetContext.value.checkNow).toHaveBeenCalledWith(true);
   });
 
+  it("distinguishes a successfully fetched stale feed from a failed refresh", () => {
+    resetContext.value.status = { ...feedErrorStatus(), feed_error_code: null, feed_stale: true };
+    render(<ResetHistoryPage />);
+    expect(screen.getByTestId("reset-history-freshness"))
+      .toHaveTextContent("copy:reset_history.freshness.stale");
+    expect(screen.getByTestId("reset-history-freshness"))
+      .not.toHaveTextContent("copy:reset_history.freshness.cached");
+  });
+
   it("keeps the heatmap and summary figures in one right-side divided group", () => {
     resetContext.value.history = [
       officialReset("activity", new Date("2026-08-01T11:32:00.000Z")),

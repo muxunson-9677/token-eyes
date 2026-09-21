@@ -6150,17 +6150,24 @@ async function listDeepSeekHarnessSessionFiles(dshHome = resolveDeepSeekHarnessH
   const out = [];
   async function walk(dir) {
     const entries = await safeReadDir(dir);
+    let generationFile = null;
+    let generation = -1;
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(fullPath);
       } else if (
         entry.isFile() &&
-        (entry.name === "session.jsonl" || entry.name === "session.jsonl.zstd")
+        /^session(?:\.v[1-3])?\.jsonl(?:\.zstd)?$/.test(entry.name)
       ) {
-        out.push(fullPath);
+        const version = Number(/\.v([1-3])\./.exec(entry.name)?.[1] || 0);
+        if (version > generation || (version === generation && entry.name.endsWith(".zstd"))) {
+          generation = version;
+          generationFile = fullPath;
+        }
       }
     }
+    if (generationFile) out.push(generationFile);
   }
   await walk(path.join(dshHome, "sessions"));
   out.sort((a, b) => a.localeCompare(b));
@@ -6542,7 +6549,10 @@ async function parseDeepSeekHarnessIncremental({
       continue;
     }
     const signature = `${stat.size}:${stat.mtimeMs}`;
-    const previousFile = fileState[filePath];
+    const previousGeneration = !fileState[filePath]
+      ? Object.keys(fileState).find((previousPath) => path.dirname(previousPath) === path.dirname(filePath))
+      : null;
+    const previousFile = fileState[filePath] || (previousGeneration ? fileState[previousGeneration] : null);
     const fileNormalizationVersion = Number(previousFile?.normalizationVersion) || 1;
     if (
       Number(previousFile?.bucketStateVersion || 0) >= DEEPSEEK_HARNESS_BUCKET_STATE_VERSION
@@ -6609,6 +6619,7 @@ async function parseDeepSeekHarnessIncremental({
       bucketStateVersion: DEEPSEEK_HARNESS_BUCKET_STATE_VERSION,
       byBucket: currentByBucket,
     };
+    if (previousGeneration) delete fileState[previousGeneration];
     if (cb) {
       cb({
         index: index + 1,

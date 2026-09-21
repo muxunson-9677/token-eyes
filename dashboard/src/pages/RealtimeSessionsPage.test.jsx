@@ -14,8 +14,9 @@ const realtimeStyles = fs.readFileSync(
   "utf8",
 );
 
-const { getRealtimeSessions, peekRealtimeSessions } = vi.hoisted(() => ({ getRealtimeSessions: vi.fn(), peekRealtimeSessions: vi.fn(() => null) }));
-vi.mock("../lib/api", () => ({ getRealtimeSessions, peekRealtimeSessions }));
+const { getRealtimeSessions, peekRealtimeSessions, triggerLocalSync } = vi.hoisted(() => ({ getRealtimeSessions: vi.fn(), peekRealtimeSessions: vi.fn(() => null), triggerLocalSync: vi.fn() }));
+vi.mock("../lib/api", () => ({ getRealtimeSessions, peekRealtimeSessions, triggerLocalSync }));
+vi.mock("../lib/local-api-url", () => ({ isLocalDashboardRuntime: () => true }));
 
 const metric = (value) => ({ value, unit: "tokens", evidence_state: "exact" });
 const session = {
@@ -65,6 +66,7 @@ beforeEach(() => {
   window.localStorage.clear();
   peekRealtimeSessions.mockReset();
   peekRealtimeSessions.mockReturnValue(null);
+  triggerLocalSync.mockReset();
   globalThis.ResizeObserver = class ResizeObserverStub {
     observe() {}
     unobserve() {}
@@ -78,6 +80,201 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RealtimeSessionsPage", () => {
+  it("keeps the focus structure when selecting an Agent without session records", async () => {
+    getRealtimeSessions.mockResolvedValue(payload);
+    const user = userEvent.setup();
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await user.click(screen.getByRole("button", { name: /Claude Code/ }));
+    expect(document.querySelector(".rt-focus-top")).not.toBeNull();
+    expect(document.querySelectorAll(".rt-focus-footer > div")).toHaveLength(5);
+    expect(document.querySelector(".rt-focus")).toHaveTextContent("Claude Code");
+    expect(document.querySelector(".rt-focus")).toHaveTextContent(copy("realtime.range.no_usage"));
+    expect(document.querySelector(".rt-focus")).not.toHaveTextContent(session.task_label);
+    await user.click(screen.getByRole("button", { name: /Codex/ }));
+    expect(document.querySelector(".rt-focus")).toHaveTextContent(session.task_label);
+  });
+
+  it("shows range usage in the focus panel even without session-level evidence", async () => {
+    getRealtimeSessions.mockResolvedValue({ ...payload, data_month: "2026-09", agent_range_summary: [
+      { source: "claude", total_tokens: metric(54321), input_tokens: metric(50000), output_tokens: metric(4321), api_equivalent_usd: { value: 0.12 }, activity_points: [] },
+    ] });
+    const user = userEvent.setup();
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await user.click(screen.getByRole("button", { name: /Claude Code/ }));
+    expect(document.querySelector(".rt-focus")).toHaveTextContent("5.4万");
+    expect(document.querySelector(".rt-focus")).toHaveTextContent(copy("realtime.range.aggregate_only"));
+    expect(document.querySelector(".rt-mini-scope")).toHaveTextContent("2026-09");
+  });
+  it("defines readable dark realtime surfaces and a compact-width focus layout", () => {
+    const styles = fs.readFileSync(path.resolve(process.cwd(), "src/pages/value-realtime-pages.css"), "utf8");
+    expect(styles).toMatch(/\.vr-page--realtime\s*\{[^}]*overflow-anchor: none/u);
+    expect(styles).toMatch(/\.rt-focus-top\s*\{[^}]*height: 172px/u);
+    expect(styles).toMatch(/\.rt-analysis-body\s*\{[^}]*height: 300px[^}]*overflow: auto/u);
+    expect(styles).toMatch(/\.dark \.vr-page--realtime\s*\{[^}]*--vr-surface:/u);
+    expect(styles).toMatch(/\.dark \.vr-page--realtime :is\([^)]*\.rt-kpi-value[^)]*\)\s*\{[^}]*color: var\(--vr-ink\)/u);
+    expect(styles).toMatch(/@media \(max-width: 1180px\)\s*\{[^}]*\}[^}]*\.rt-focus-top\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/u);
+  });
+  it("shows existing data immediately then rereads after local collection finishes", async () => {
+    let finishSync;
+    triggerLocalSync.mockImplementation(() => new Promise((resolve) => { finishSync = resolve; }));
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    expect(triggerLocalSync).toHaveBeenCalledTimes(1);
+    expect(getRealtimeSessions).toHaveBeenCalledTimes(1);
+    await act(async () => { finishSync({ ok: true }); });
+    expect(getRealtimeSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("manual refresh collects locally before rereading and retains visible data on sync failure", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    triggerLocalSync.mockRejectedValueOnce(new Error("sync failed"));
+    await act(async () => { await user.click(screen.getByRole("button", { name: /最后更新/u })); });
+    expect(screen.getByRole("alert")).toHaveTextContent("本地采集失败");
+    expect(screen.getByText(session.task_label)).toBeVisible();
+  });
+
+  it("does not let an older entry sync cancel the user's manual refresh", async () => {
+    const user = userEvent.setup();
+    let finishEntry;
+    let finishManual;
+    let manualSignal;
+    triggerLocalSync
+      .mockImplementationOnce(() => new Promise((resolve) => { finishEntry = resolve; }))
+      .mockImplementationOnce(({ signal }) => { manualSignal = signal; return new Promise((resolve) => { finishManual = resolve; }); });
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await act(async () => { await user.click(screen.getByRole("button", { name: /最后更新/u })); });
+    await act(async () => { finishEntry({ ok: true }); });
+    expect(manualSignal.aborted).toBe(false);
+    expect(getRealtimeSessions).toHaveBeenCalledTimes(1);
+    await act(async () => { finishManual({ ok: true }); });
+    expect(getRealtimeSessions).toHaveBeenCalledTimes(2);
+  });
+  it("uses the selected Agent range totals without inventing a session for aggregate-only usage", async () => {
+    getRealtimeSessions.mockResolvedValue({ ...payload, sessions: [], session_tree: [],
+      agent_range_summary: [{ source: "codex", total_tokens: metric(9876), input_tokens: metric(9876), api_equivalent_usd: metric(4.32), activity_points: [] }],
+    });
+    render(<RealtimeSessionsPage />);
+    await screen.findAllByText("Codex");
+    expect(document.querySelectorAll(".rt-kpi-value")[1]).toHaveTextContent("9876");
+    expect(document.querySelector(".rt-focus")).toHaveTextContent(copy("realtime.range.aggregate_only"));
+    expect(document.querySelector(".rt-donut-center")).toHaveTextContent("9876");
+    expect(document.querySelector(".rt-composition-foot")).toHaveTextContent("数据范围：所选 Agent");
+  });
+
+  it("renders actual nested child sessions rather than only a child count", async () => {
+    const user = userEvent.setup();
+    const child = { ...session, session_id: "child", parent_session_id: session.session_id, last_activity_at: "2026-08-21T08:05:00.000Z", task_label: "核对真实子任务", children: [] };
+    getRealtimeSessions.mockResolvedValue({ ...payload, sessions: [session, child], session_tree: [{ ...session, children: [child] }] });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.children") })); });
+    expect(screen.getByText(child.task_label)).toBeVisible();
+  });
+
+  it("keeps range analysis separate from the current task when both have data", async () => {
+    getRealtimeSessions.mockResolvedValue({ ...payload, agent_range_summary: [{ source: "codex", total_tokens: metric(9876), input_tokens: metric(9876), api_equivalent_usd: metric(4.32), activity_points: [] }] });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    expect(document.querySelector(".rt-focus-metric-value")).toHaveTextContent("100");
+    expect(document.querySelector(".rt-donut-center")).toHaveTextContent("9876");
+    expect(document.querySelector(".rt-composition-foot")).toHaveTextContent("数据范围：所选 Agent");
+  });
+
+  it("labels the selected range instead of claiming every range is this app opening", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue(payload);
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await act(async () => { await user.selectOptions(screen.getByRole("combobox", { name: copy("realtime.range.select") }), "7d"); });
+    await screen.findByText(session.task_label);
+    expect(document.querySelector(".rt-focus-metric--blue")).toHaveTextContent(copy("realtime.range.7d"));
+    expect(document.querySelector(".rt-focus-metric--blue")).not.toHaveTextContent("本次打开");
+  });
+
+  it("keeps the parent tree visible when the running child is selected as current task", async () => {
+    const user = userEvent.setup();
+    const parent = { ...session, state: "completed" };
+    const child = { ...session, session_id: "child", parent_session_id: session.session_id, task_label: "运行中的子任务", children: [] };
+    getRealtimeSessions.mockResolvedValue({ ...payload, sessions: [parent, child], session_tree: [{ ...parent, children: [child] }] });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(child.task_label);
+    await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.children") })); });
+    expect(document.querySelector(".rt-session-tree")).toHaveTextContent(parent.task_label);
+    expect(document.querySelector(".rt-session-tree")).toHaveTextContent(child.task_label);
+  });
+
+  it("shows aggregate usage as aggregates and does not silently hide records after eight rows", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue({ ...payload, requests: [], usage_records: Array.from({ length: 9 }, (_, index) => ({
+      ...payload.requests[0], record_ref: `usage:row:${index}`, record_kind: "aggregate_bucket",
+    })) });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") })); });
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(9);
+    expect(screen.getAllByText("用量汇总")).toHaveLength(9);
+  });
+
+  it("distinguishes session detail already covered by an aggregate from additive usage", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue({ ...payload, usage_records: [
+      { ...payload.requests[0], record_kind: "aggregate_bucket", range_included: false },
+      { ...payload.requests[0], record_ref: "aggregate:1", record_kind: "aggregate_bucket", range_included: true },
+    ] });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") })); });
+    expect(screen.getByText("会话明细 · 已含于汇总")).toBeInTheDocument();
+    expect(screen.getByText("用量汇总")).toBeInTheDocument();
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(2);
+  });
+
+  it("keeps calendar dates visible in historical trends and usage records", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue({ ...payload, sessions: [{ ...session, activity_points: [
+      { observed_at: "2026-08-01T08:00:00.000Z", total_tokens: 10 },
+      { observed_at: "2026-08-21T08:00:00.000Z", total_tokens: 100 },
+    ] }] });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.trend") }));
+    await user.selectOptions(screen.getByRole("combobox", { name: copy("realtime.chart.window") }), "all");
+    expect(document.querySelector(".rt-live-x")).toHaveTextContent("2026/08/01");
+    expect(document.querySelector(".rt-live-x")).toHaveTextContent("2026/08/21");
+    await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") }));
+    expect(document.querySelector(".rt-request-row")).toHaveTextContent("2026/08/21");
+  });
+
+  it("paginates dense usage without losing records and resets when the range changes", async () => {
+    const user = userEvent.setup();
+    getRealtimeSessions.mockResolvedValue({ ...payload, usage_records: Array.from({ length: 51 }, (_, index) => ({
+      ...payload.requests[0], record_ref: `dense:${index}`, total_tokens: metric(index + 1),
+    })) });
+    render(<RealtimeSessionsPage />);
+    await screen.findByText(session.task_label);
+    await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") }));
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(25);
+    await user.click(screen.getByRole("button", { name: "下一页", exact: true }));
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(25);
+    await user.click(screen.getByRole("button", { name: "下一页", exact: true }));
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(1);
+    expect(document.querySelector(".rt-request-row")).toHaveTextContent("51 Token");
+    expect(screen.getByRole("button", { name: "下一页", exact: true })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "上一页", exact: true }));
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(25);
+    await user.selectOptions(screen.getByRole("combobox", { name: copy("realtime.range.select") }), "7d");
+    await screen.findByText(session.task_label);
+    expect(screen.getByRole("button", { name: "上一页", exact: true })).toBeDisabled();
+  });
+
   it("gives an already-selected Agent card a deeper pointer-down state", () => {
     expect(realtimeStyles).toMatch(
       /\.rt-session-mini\.tt-pressable\[aria-pressed="true"\]:active\s*\{[^}]*transform:\s*translateY\(2px\)\s*scale\(\.985\)/u,
@@ -112,7 +309,7 @@ describe("RealtimeSessionsPage", () => {
     });
 
     expect(screen.queryByText("Cached Codex")).not.toBeInTheDocument();
-    expect(screen.getByText("Hidden Claude")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Hidden Claude/ })).toBeInTheDocument();
 
     act(() => {
       setVisibleAgents([]);
@@ -227,7 +424,8 @@ describe("RealtimeSessionsPage", () => {
     expect(screen.queryByTestId("focus-art")).not.toBeInTheDocument();
     await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") })); });
     expect(await screen.findByText("100 Token")).toBeInTheDocument();
-    expect(screen.getByText("request:safe-session:0")).toBeInTheDocument();
+    expect(screen.getByText("请求事件")).toBeInTheDocument();
+    expect(screen.getByText("请求事件")).toHaveAttribute("title", "gpt-5");
     await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.children") })); });
     expect(await screen.findByText(copy("realtime.tree.empty"))).toBeInTheDocument();
   });
@@ -301,7 +499,7 @@ describe("RealtimeSessionsPage", () => {
       }],
     });
     render(<RealtimeSessionsPage />);
-    const card = (await screen.findByText("WorkBuddy")).closest(".rt-session-mini");
+    const card = await screen.findByRole("button", { name: /WorkBuddy/ });
     expect(card).toHaveTextContent("积分");
     expect(card).toHaveTextContent(copy("value_realtime.data_unavailable"));
     expect(card).not.toHaveTextContent("Credits");
@@ -320,7 +518,7 @@ describe("RealtimeSessionsPage", () => {
       }],
     });
     render(<RealtimeSessionsPage />);
-    const card = (await screen.findByText("WorkBuddy")).closest(".rt-session-mini");
+    const card = await screen.findByRole("button", { name: /WorkBuddy/ });
     expect(card).toHaveTextContent("总积分 3880");
     expect(card).toHaveTextContent("已消耗 55.5");
     expect(card).not.toHaveTextContent("基础");
@@ -520,8 +718,8 @@ describe("RealtimeSessionsPage", () => {
     expect(document.querySelector(".rt-focus")).toHaveTextContent("cursor-model");
     expect(screen.getByTestId("focus-sparkline")).toHaveAttribute("data-series-signature", "10,222");
     await act(async () => { await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") })); });
-    expect(screen.getByText("request:cursor-session:0")).toBeInTheDocument();
-    expect(screen.queryByText("request:safe-session:0")).not.toBeInTheDocument();
+    expect(document.querySelectorAll(".rt-request-row")).toHaveLength(1);
+    expect(document.querySelector(".rt-request-row strong")).toHaveTextContent("cursor");
   });
 
   it("shows a truthful empty detail when the selected Agent has no session", async () => {
@@ -535,8 +733,8 @@ describe("RealtimeSessionsPage", () => {
 
     expect(screen.queryByText("完善价值对比与实时会话")).not.toBeInTheDocument();
     expect(screen.queryByTestId("focus-sparkline")).not.toBeInTheDocument();
-    expect(document.querySelector(".rt-focus")).toBeNull();
-    expect(screen.getAllByText(copy("realtime.empty")).length).toBeGreaterThan(0);
+    expect(document.querySelector(".rt-focus")).toHaveTextContent(copy("realtime.range.no_usage"));
+    expect(document.querySelector(".rt-focus-footer")).toHaveTextContent(copy("value_realtime.data_unavailable"));
   });
 
   it("supports native keyboard selection and keeps one selected indicator while paging", async () => {

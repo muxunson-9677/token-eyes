@@ -25,6 +25,221 @@ async function call(handler, endpoint) {
   return (await callResponse(handler, endpoint)).body;
 }
 
+test("realtime keeps completed child rollout usage across state changes and filters each selected range", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-completed-child-"));
+  const reads = new Map();
+  const createReadStream = fs.createReadStream;
+  t.mock.method(fs, "createReadStream", function (file, ...args) {
+    if (String(file).startsWith(root)) reads.set(String(file), (reads.get(String(file)) || 0) + 1);
+    return createReadStream.call(this, file, ...args);
+  });
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, JSON.stringify({ source: "codex", model: "gpt-5", hour_start: "2026-09-21T08:00:00Z", input_tokens: 500, total_tokens: 500 }));
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    const sessions = Array.from({ length: 23 }, (_, i) => {
+      const session = { sessionId: `session-${i}`, agent: "codex", status: i ? "completed" : "running", updatedAt: "2026-09-21T08:05:00Z", ...(i ? { parentSessionId: "session-0" } : {}) };
+      const file = path.join(root, `rollout-2026-08-31T08-00-00-${i}.jsonl`);
+      Object.defineProperty(session, Symbol.for("token-eyes.codex-rollout-path"), { value: file });
+      fs.writeFileSync(file, [
+        { type: "session_meta", payload: { id: session.sessionId, model: "gpt-5" } },
+        ...[["2026-08-31", 1000], ["2026-09-20", 100], ["2026-09-21", 10]].map(([day, tokens]) => ({ timestamp: `${day}T08:04:00Z`, type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: tokens, total_tokens: tokens } } } })),
+      ].map(JSON.stringify).join("\n"));
+      return session;
+    });
+    const unrelated = { sessionId: "unrelated", agent: "codex", status: "completed", updatedAt: "2026-09-21T07:00:00Z" };
+    const unrelatedFile = path.join(root, "unrelated.jsonl");
+    Object.defineProperty(unrelated, Symbol.for("token-eyes.codex-rollout-path"), { value: unrelatedFile });
+    fs.writeFileSync(unrelatedFile, "");
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-09-21T10:00:00Z"), codexLifecycleProvider: async () => [...sessions, unrelated],
+      dataDirectoryPathsResolver: () => ({ codexHome: root, codexHomes: [root] }),
+      tokenOnlyDirectoryStatesProvider: () => ({}), workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    for (const status of ["running", "completed"]) {
+      sessions[1].status = status;
+      const data = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+      const children = data.session_tree.find((session) => session.children.length)?.children;
+      assert.equal(children.length, 22);
+      for (const child of children) {
+        assert.equal(child.total_tokens.value, 10, "every displayed child retains today's exact usage");
+        assert.equal(child.last_activity_at, "2026-09-21T08:05:00Z");
+      }
+      assert.equal(data.summary.realtime_tokens.value, 500, "anonymous queue bucket covers detailed child usage");
+    }
+    for (const [month, expected] of [["2026-09", 110], ["2026-08", 1000]]) {
+      const data = await call(handler, `/functions/tokentracker-realtime-sessions?range=month&month=${month}&tz=UTC`);
+      assert.equal(data.sessions.filter((session) => session.total_tokens.value !== null).length, 23);
+      for (const session of data.sessions.filter((session) => session.total_tokens.value !== null)) assert.equal(session.total_tokens.value, expected);
+      assert.equal(data.summary.realtime_tokens.value, month === "2026-09" ? 2800 : 23000);
+    }
+    const parentFile = sessions[0][Symbol.for("token-eyes.codex-rollout-path")];
+    for (let update = 1; update <= 129; update += 1) {
+      fs.appendFileSync(parentFile, `\n${JSON.stringify({ timestamp: "2026-09-21T09:04:00Z", type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 7, total_tokens: 7 } } } })}`);
+      const refreshed = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+      assert.equal(refreshed.sessions.find((session) => session.state === "running").total_tokens.value, 10 + update * 7, "changed file signature invalidates live usage");
+    }
+    for (const session of sessions.slice(2)) {
+      assert.equal(reads.get(session[Symbol.for("token-eyes.codex-rollout-path")]), 1, "completed rollout is parsed once across ranges and parent updates");
+    }
+    assert.equal(reads.has(unrelatedFile), false, "unrelated lifecycle history must not expand the usage scan");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("realtime with no lifecycle file paths reads queue only without scanning Codex history", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-no-lifecycle-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, JSON.stringify({ source: "hermes", model: "test", hour_start: "2026-09-21T08:00:00Z", total_tokens: 3 }));
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ dataDirectories: { codex: root } }));
+    let scans = 0;
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-09-21T10:00:00Z"), codexLifecycleProvider: async () => [],
+      dataDirectoryPathsResolver: () => ({ codexHome: root, codexHomes: [root] }),
+      codexRolloutRowsProvider: async () => { scans += 1; return []; },
+      tokenOnlyDirectoryStatesProvider: () => ({}), workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    const data = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+    assert.equal(scans, 0);
+    assert.equal(data.summary.realtime_tokens.value, 3);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("realtime uses event-local days when Kathmandu midnight splits one UTC half-hour bucket", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-kathmandu-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, JSON.stringify({ source: "codex", model: "gpt-5", hour_start: "2026-08-31T18:00:00Z", input_tokens: 100, total_tokens: 100 }));
+    const file = path.join(root, "rollout-2026-08-31T18-00-00-session.jsonl");
+    fs.writeFileSync(file, [
+      { type: "session_meta", payload: { id: "boundary", model: "gpt-5" } },
+      ...[["18:10", 100], ["18:20", 10]].map(([time, tokens]) => ({ timestamp: `2026-08-31T${time}:00Z`, type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: tokens, total_tokens: tokens } } } })),
+    ].map(JSON.stringify).join("\n"));
+    const session = { sessionId: "boundary", agent: "codex", status: "running", updatedAt: "2026-08-31T18:20:00Z" };
+    Object.defineProperty(session, Symbol.for("token-eyes.codex-rollout-path"), { value: file });
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-08-31T19:00:00Z"), codexLifecycleProvider: async () => [session],
+      dataDirectoryPathsResolver: () => ({ codexHome: root, codexHomes: [root] }),
+      tokenOnlyDirectoryStatesProvider: () => ({}), workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    for (const [query, expected] of [["range=today", 10], ["range=month&month=2026-08", 100], ["range=month&month=2026-09", 10]]) {
+      const data = await call(handler, `/functions/tokentracker-realtime-sessions?${query}&tz=Asia%2FKathmandu`);
+      assert.equal(data.summary.realtime_tokens.value, expected);
+      assert.equal(data.sessions[0].total_tokens.value, expected);
+      assert.equal(data.usage_records.filter((row) => row.range_included !== false).reduce((sum, row) => sum + row.total_tokens.value, 0), expected);
+      assert.equal(data.agent_range_summary[0].total_tokens.value, expected);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("realtime retains full-range totals beyond 100 buckets and requests subagent metadata", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-full-range-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, Array.from({ length: 101 }, (_, i) => JSON.stringify({ source: "hermes", model: `model-${i}`, hour_start: "2026-09-21T08:00:00Z", input_tokens: 1, total_tokens: 1 })).join("\n"));
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    let includesChildren;
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-09-21T10:00:00Z"),
+      codexLifecycleProvider: async (options) => { includesChildren = options.includeSubagents; return [
+        { sessionId: "parent", agent: "codex", status: "running" },
+        { sessionId: "child", parentSessionId: "parent", agent: "codex", status: "running" },
+      ]; },
+      codexRolloutRowsProvider: async () => [], tokenOnlyDirectoryStatesProvider: () => ({}),
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    const data = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+    assert.equal(includesChildren, true);
+    assert.equal(data.agent_range_summary.find((item) => item.source === "hermes").total_tokens.value, 101);
+    assert.equal(data.summary.realtime_tokens.value, 101);
+    assert.equal(data.session_tree.find((item) => item.children.length).children.length, 1);
+    assert.equal(data.usage_records.length, 101);
+    assert.equal(data.requests.length, 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("bounded realtime rollouts replace only their sessions and do not add detail over authoritative model buckets", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-merge-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    const row = (session, model, hour, tokens) => ({ source: "codex", ...(session ? { session_id: session } : {}), model, hour_start: `2026-09-21T${hour}:00:00Z`, input_tokens: tokens, total_tokens: tokens });
+    fs.writeFileSync(queuePath, [row("active", "gpt-5", "08", 10), row("other", "gpt-5", "08", 20), row(null, "gpt-5", "09", 100)].map(JSON.stringify).join("\n"));
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    const active = { sessionId: "active", agent: "codex", status: "running", updatedAt: "2026-09-21T10:00:00Z" };
+    Object.defineProperty(active, Symbol.for("token-eyes.codex-rollout-path"), { value: path.join(root, "selected-rollout.jsonl") });
+    let calls = 0;
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-09-21T12:00:00Z"), codexLifecycleProvider: async () => [active],
+      codexRolloutRowsProvider: async (options) => {
+        calls += 1;
+        assert.equal(options.rolloutFiles.length, 1, "must retain the bounded file selection");
+        return [row("active", "gpt-5", "08", 30), row("active", "gpt-5", "09", 40), row("active", "gpt-5", "10", 50), row("active", "gpt-5.6-sol", "09", 60)];
+      }, tokenOnlyDirectoryStatesProvider: () => ({}),
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    const data = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+    assert.equal(calls, 1);
+    assert.equal(data.summary.realtime_tokens.value, 260, "30 replacement + 20 other + 100 authoritative + 50 next hour + 60 other model");
+    assert.equal(data.sessions.find((item) => item.state === "running").total_tokens.value, 180);
+    assert.equal(data.sessions.find((item) => item.state !== "running").total_tokens.value, 20);
+    assert.equal(data.agent_range_summary[0].total_tokens.value, 260);
+    assert.equal(data.usage_records.filter((item) => item.range_included === false).length, 1);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("anonymous realtime buckets cover unknown billing details without dropping known separate billing modes", async () => {
+  for (const [aggregateMode, detailMode, expected] of [
+    ["unknown", undefined, 100], ["token_plan", undefined, 100], ["api_key", undefined, 100],
+    [undefined, "unknown", 100], ["token_plan", "api_key", 140], ["api_key", "token_plan", 140],
+    ["unknown", "token_plan", 100], ["token_plan", "token_plan", 100],
+  ]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-billing-"));
+    try {
+      const queuePath = path.join(root, "queue.jsonl");
+      const base = { source: "codex", model: "gpt-5", hour_start: "2026-09-21T08:00:00Z" };
+      fs.writeFileSync(queuePath, JSON.stringify({ ...base, billing_mode: aggregateMode, input_tokens: 100, total_tokens: 100 }));
+      fs.writeFileSync(path.join(root, "config.json"), "{}");
+      const active = { sessionId: "active", agent: "codex", status: "running" };
+      Object.defineProperty(active, Symbol.for("token-eyes.codex-rollout-path"), { value: path.join(root, "selected.jsonl") });
+      const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+        now: () => new Date("2026-09-21T12:00:00Z"), codexLifecycleProvider: async () => [active],
+        codexRolloutRowsProvider: async () => [{ ...base, session_id: "active", billing_mode: detailMode, input_tokens: 40, total_tokens: 40 }],
+        tokenOnlyDirectoryStatesProvider: () => ({}), workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+      });
+      const data = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+      assert.equal(data.summary.realtime_tokens.value, expected, `aggregate ${aggregateMode}, detail ${detailMode}`);
+      assert.equal(data.sessions[0].total_tokens.value, 40, "coverage must preserve the separate session detail");
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+test("realtime range selection changes anonymous Agent totals and preserves real request event kinds", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-range-"));
+  try {
+    const queuePath = path.join(root, "queue.jsonl");
+    fs.writeFileSync(queuePath, [
+      { source: "hermes", model: "unknown", hour_start: "2026-09-20T08:00:00Z", input_tokens: 10, total_tokens: 10 },
+      { source: "hermes", model: "unknown", hour_start: "2026-09-21T08:00:00Z", timestamp: "2026-09-21T08:01:00Z", input_tokens: 20, total_tokens: 20, record_kind: "request_event", id: "request-a" },
+      { source: "hermes", model: "unknown", hour_start: "2026-09-21T08:00:00Z", timestamp: "2026-09-21T08:02:00Z", input_tokens: 30, total_tokens: 30, record_kind: "request_event", id: "request-b" },
+    ].map(JSON.stringify).join("\n"));
+    fs.writeFileSync(path.join(root, "config.json"), "{}");
+    const handler = createLocalApiHandler({ queuePath, trackerDataDir: root,
+      now: () => new Date("2026-09-21T12:00:00Z"), codexLifecycleProvider: async () => [],
+      codexRolloutRowsProvider: async () => [], tokenOnlyDirectoryStatesProvider: () => ({}),
+      workbuddyQuotaProvider: async () => ({ signed_in: false, groups: [] }),
+    });
+    const today = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
+    const week = await call(handler, "/functions/tokentracker-realtime-sessions?range=7d&tz=UTC");
+    assert.equal(today.agent_range_summary[0].total_tokens.value, 50);
+    assert.equal(week.agent_range_summary[0].total_tokens.value, 60);
+    assert.equal(today.agent_range_summary[0].request_count.value, 2);
+    assert.equal(week.agent_range_summary[0].request_count.value, null);
+    assert.equal(today.requests.length, 2);
+    assert.equal(week.usage_records.length, 3);
+    assert.equal(week.sessions.length, 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("realtime pricing reads configuration per request, not once per usage row", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-pricing-"));
   const originalRead = fs.readFileSync;
@@ -101,7 +316,7 @@ test("realtime view retains the Codex session identifier from the live rollout i
       queuePath,
       trackerDataDir: root,
       now: () => new Date("2026-08-21T22:30:00.000Z"),
-      codexLifecycleProvider: async () => [{ agent: "codex", sessionId: "live-session", taskId: "raw-turn-id", model: "gpt-5.6-terra", status: "running", updatedAt: "2026-08-21T22:20:00.000Z" }],
+      codexLifecycleProvider: async () => [{ agent: "codex", sessionId: "live-session", taskId: "raw-turn-id", model: "gpt-5.6-terra", status: "running", updatedAt: "2026-08-21T22:20:00.000Z", [Symbol.for("token-eyes.codex-rollout-path")]: path.join(sessionDir, "rollout-2026-08-21T08-00-00-session.jsonl") }],
     });
 
     const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC&tz_offset_minutes=0");
@@ -138,7 +353,7 @@ test("realtime view includes a late-UTC Codex rollout in the user's local day", 
       queuePath,
       trackerDataDir: root,
       now: () => new Date("2026-08-25T01:30:00.000Z"),
-      codexLifecycleProvider: async () => [{ agent: "codex", sessionId: "local-day-session", status: "running", updatedAt: "2026-08-25T01:20:00.000Z" }],
+      codexLifecycleProvider: async () => [{ agent: "codex", sessionId: "local-day-session", status: "running", updatedAt: "2026-08-25T01:20:00.000Z", [Symbol.for("token-eyes.codex-rollout-path")]: path.join(sessionDir, "rollout-2026-08-24T17-00-00-local-day.jsonl") }],
     });
 
     const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=Asia%2FShanghai&tz_offset_minutes=480");
@@ -257,6 +472,7 @@ test("realtime endpoint returns a privacy-safe, explicit evidence payload", asyn
           projectLabel: "Secret Project",
           taskLabel: "完善实时会话",
           sessionLabel: "must not be copied into a prompt or body",
+          [Symbol.for("token-eyes.codex-rollout-path")]: path.join(codexHome, "sessions", "2026", "08", "21", "rollout-2026-08-21T08-00-00-history-only.jsonl"),
         }];
       },
       codexRolloutRowsProvider: async () => {
@@ -427,6 +643,8 @@ test("realtime view reads the active default lifecycle rollout directly for curr
     const realtime = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC&tz_offset_minutes=0");
     const running = realtime.sessions.find((session) => session.state === "running");
     assert.equal(running.total_tokens.value, 50);
+    assert.equal(running.last_activity_at, "2026-08-21T08:04:00.000Z", "safe token events advance activity beyond task_started");
+    assert.equal(running.activity_points[0].observed_at, "2026-08-21T08:00:00.000Z", "activity detail must not move the usage bucket");
     assert.equal(realtime.summary.realtime_tokens.value, 50);
     assert.equal(JSON.stringify(realtime).includes("private body"), false);
     assert.equal(JSON.stringify(realtime).includes(root), false);

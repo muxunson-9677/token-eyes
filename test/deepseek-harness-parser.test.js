@@ -111,6 +111,33 @@ test("lists compressed and raw DeepSeek Harness session logs recursively", async
   assert.deepEqual(await listDeepSeekHarnessSessionFiles(root), [compressed, raw].sort((a, b) => a.localeCompare(b)));
 });
 
+test("discovers v3 logs and replaces the prior generation without double counting migrated usage", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-v3-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const oldFile = await writeSession(root, "migrated", fixtureEvents(), true);
+  const queuePath = path.join(root, "queue.jsonl");
+  const cursors = {};
+  await parseDeepSeekHarnessIncremental({ sessionFiles: [oldFile], cursors, queuePath });
+  const events = fixtureEvents();
+  events[0].version = 3;
+  events[0].createdAt = Date.parse(events[0].createdAt);
+  for (const event of events.slice(1)) event.time = Date.parse(event.time);
+  events.push(usageEvent({ turn: 2, time: Date.parse("2026-08-16T10:10:00Z"), usage: { inputTokens: 5, outputTokens: 7, cacheReadTokens: 2, cacheWriteTokens: 3, reasoningTokens: 4 } }));
+  const v3 = path.join(path.dirname(oldFile), "session.v3.jsonl.zstd");
+  fs.writeFileSync(v3, Buffer.from(await zstd.compress(Buffer.from(events.map(JSON.stringify).join("\n")))));
+  const files = await listDeepSeekHarnessSessionFiles(root);
+  assert.deepEqual(files, [v3]);
+  await parseDeepSeekHarnessIncremental({ sessionFiles: files, cursors, queuePath });
+  const last = readQueue(queuePath).at(-1);
+  assert.equal(last.total_tokens, 221);
+  assert.equal(last.input_tokens, 125);
+  assert.equal(last.reasoning_output_tokens, 14);
+  assert.equal(last.conversation_count, 2);
+  assert.equal(cursors.deepseekHarness.files[oldFile], undefined);
+  const repeat = await parseDeepSeekHarnessIncremental({ sessionFiles: files, cursors, queuePath });
+  assert.equal(repeat.bucketsQueued, 0);
+});
+
 test("parses exact DeepSeek Harness usage and does not double count final messages", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-dsh-parse-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

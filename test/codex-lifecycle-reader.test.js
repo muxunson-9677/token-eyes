@@ -10,6 +10,34 @@ const {
   collectCodexLifecycleSessions,
 } = require("../src/lib/codex-lifecycle-reader");
 
+test("realtime opt-in preserves explicit nested subagent links and expires only inactive running evidence", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-realtime-lifecycle-"));
+  const nowMs = Date.parse("2026-09-21T10:00:00Z");
+  try {
+    fs.mkdirSync(path.join(root, "sessions"));
+    for (const [id, parent, oldFile, oldEvent] of [["parent", null, true, true], ["child", "parent", false, true], ["grandchild", "child", true, false]]) {
+      const file = path.join(root, "sessions", `rollout-${id}.jsonl`);
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: "session_meta", payload: { id, thread_source: parent ? "subagent" : "user", source: parent ? { subagent: { thread_spawn: { parent_thread_id: parent, private_field: "never-export" } } } : "vscode" } }),
+        JSON.stringify({ timestamp: oldEvent ? "2026-09-12T10:00:00Z" : "2026-09-21T09:00:00Z", type: "event_msg", payload: { type: "task_started" } }),
+      ].join("\n"));
+      const mtime = new Date(oldFile ? nowMs - 9 * 86400000 : nowMs - 1000);
+      fs.utimesSync(file, mtime, mtime);
+    }
+    const defaults = await collectCodexLifecycleSessions({ homes: [root], nowMs });
+    assert.deepEqual(defaults.map((item) => item.sessionId), ["parent"]);
+    const rows = await collectCodexLifecycleSessions({ homes: [root], nowMs, includeSubagents: true });
+    assert.equal(rows.length, 3);
+    assert.equal(rows.find((item) => item.sessionId === "child").parentSessionId, "parent");
+    assert.equal(rows.find((item) => item.sessionId === "grandchild").parentSessionId, "child");
+    assert.equal(rows.find((item) => item.sessionId === "parent").status, "unknown");
+    assert.equal(rows.find((item) => item.sessionId === "parent").updatedAt, "2026-09-12T10:00:00.000Z");
+    assert.equal(rows.find((item) => item.sessionId === "child").status, "running");
+    assert.equal(rows.find((item) => item.sessionId === "grandchild").status, "running");
+    assert.equal(JSON.stringify(rows).includes("never-export"), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("excluded subagent threads stop after session metadata instead of scanning their history", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-lifecycle-subagent-"));
   const open = fs.promises.open;

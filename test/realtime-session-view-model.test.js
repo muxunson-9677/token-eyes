@@ -5,6 +5,55 @@ const test = require("node:test");
 
 const { buildRealtimeSessionViewModel } = require("../src/lib/realtime-session-view-model");
 
+test("range summaries include anonymous buckets and merge equal times without inventing requests", () => {
+  const usageRows = [
+    { source: "codex", session_id: "parent", hour_start: "2026-09-21T08:00:00Z", total_tokens: 10, input_tokens: 8, output_tokens: 2, record_kind: "aggregate_bucket" },
+    { source: "codex", hour_start: "2026-09-21T08:00:00Z", total_tokens: 20, input_tokens: 15, output_tokens: 5, record_kind: "aggregate_bucket" },
+    { source: "codex", session_id: "child", hour_start: "2026-09-21T09:00:00Z", total_tokens: 5, input_tokens: 4, output_tokens: 1, record_kind: "request_event", request_count: 1 },
+  ];
+  const view = buildRealtimeSessionViewModel({ usageRows, lifecycleSessions: [
+    { sessionId: "parent", agent: "codex", status: "running" },
+    { sessionId: "child", parentSessionId: "parent", agent: "codex", status: "running" },
+    { sessionId: "grandchild", parentSessionId: "child", agent: "codex", status: "running" },
+  ] });
+  assert.equal(view.summary.realtime_tokens.value, 35);
+  const range = view.agent_range_summary.find((item) => item.source === "codex");
+  assert.equal(range.total_tokens.value, 35);
+  assert.equal(range.input_tokens.value, 27);
+  assert.equal(range.request_count.value, null);
+  assert.deepEqual(range.activity_points.map((point) => point.total_tokens), [30, 5]);
+  assert.equal(view.requests.length, 1);
+  assert.equal(view.requests[0].record_kind, "request_event");
+  assert.equal(view.usage_records.length, 3);
+  assert.deepEqual(view.usage_records.map((row) => row.record_kind).sort(), ["aggregate_bucket", "aggregate_bucket", "request_event"]);
+  assert.equal(view.session_tree[0].children[0].children[0].session_id, "grandchild");
+});
+
+test("range trend groups request times into half-hour buckets and keeps absent costs unknown", () => {
+  const view = buildRealtimeSessionViewModel({ usageRows: [
+    { source: "hermes", timestamp: "2026-09-21T08:01:00Z", total_tokens: 10, record_kind: "request_event", request_count: 1 },
+    { source: "hermes", timestamp: "2026-09-21T08:29:59Z", total_tokens: 20, record_kind: "request_event", request_count: 1 },
+    { source: "hermes", timestamp: "2026-09-21T08:30:00Z", total_tokens: 5, record_kind: "request_event", request_count: 1 },
+  ] });
+  assert.deepEqual(view.agent_range_summary[0].activity_points, [
+    { observed_at: "2026-09-21T08:00:00.000Z", total_tokens: 30 },
+    { observed_at: "2026-09-21T08:30:00.000Z", total_tokens: 5 },
+  ]);
+  assert.equal(view.agent_range_summary[0].api_equivalent_usd.value, null);
+  assert.equal(view.agent_range_summary[0].request_count.value, 3);
+  assert.equal(view.sessions.length, 0);
+});
+
+test("an unpriced contributing bucket keeps the Agent range cost unknown", () => {
+  const view = buildRealtimeSessionViewModel({ usageRows: [
+    { source: "codex", total_tokens: 10, cost_usd: 0.02 },
+    { source: "codex", total_tokens: 20, cost_usd: null },
+  ] });
+  assert.equal(view.agent_range_summary[0].total_tokens.value, 30);
+  assert.equal(view.agent_range_summary[0].api_equivalent_usd.value, null);
+  assert.equal(view.agent_range_summary[0].api_equivalent_usd.evidence_state, "connected_no_exact_data");
+});
+
 test("does not let a half-hour usage bucket hide a newer task lifecycle event", () => {
   const result = buildRealtimeSessionViewModel({
     usageRows: [{ session_id: "new", source: "codex", hour_start: "2026-09-12T15:30:00Z", total_tokens: 1 }],

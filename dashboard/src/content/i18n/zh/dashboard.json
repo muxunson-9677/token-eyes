@@ -532,6 +532,7 @@
     "reset_history.data_cached":  "公告刷新失败，正在显示上次已验证的重置记录",
     "reset_history.freshness.current": "Feed 已验证",
     "reset_history.freshness.cached": "Feed 刷新失败 · 正在显示已验证缓存",
+    "reset_history.freshness.stale": "已连接公告源，但数据尚未更新 · 当前显示历史公告",
     "reset_history.freshness.unavailable": "Feed 不可用",
     "reset_history.freshness.pending": "Feed 尚未验证",
     "reset_history.freshness.last_checked": "上次 Feed 检测",

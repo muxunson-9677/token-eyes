@@ -626,7 +626,9 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     // synthetic fixture to the default queue. Ignore only its full fingerprint;
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
-    const key = dedupeMode === "dimensions"
+    const key = dedupeMode === "realtime"
+      ? queueUsageIdentity(row, { dimensionsKey: `${providerQueueDimensionsKey(row)}\u0001session:${row.session_key || row.session_id || ""}` })
+      : dedupeMode === "dimensions"
       ? queueUsageIdentity(row, { dimensionsKey: queueRowDimensionsKey(row) })
       : dedupeMode === "provider"
         ? queueUsageIdentity(row, {
@@ -795,6 +797,7 @@ function appendDetectedTokenOnlyProviders(providers, directoryStates = {}, sourc
 }
 
 function rowDayKey(row, timeZoneContext) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(row.codex_usage_day || ""))) return row.codex_usage_day;
   const hs = row.hour_start;
   if (!hs) return "";
   if (
@@ -966,6 +969,22 @@ async function collectCodexRolloutQueueRows({
   to = "",
   timeZoneContext = null,
 } = {}) {
+  const directFiles = Array.isArray(rolloutFiles) ? [...new Set(rolloutFiles)] : [];
+  if (directFiles.length > 1) {
+    const rows = [];
+    for (const filePath of directFiles) {
+      rows.push(...await collectCodexRolloutQueueRows({ codexHome, codexHomes, rolloutFiles: [filePath], from, to, timeZoneContext }));
+    }
+    return rows;
+  }
+  const requestedFrom = from;
+  const requestedTo = to;
+  // A live parent's signature must not invalidate completed child files, and
+  // changing the display range must not reread their unchanged usage events.
+  if (directFiles.length) {
+    from = "";
+    to = "";
+  }
   const homes = Array.isArray(codexHomes) && codexHomes.length > 0
     ? codexHomes
     : (codexHome ? [codexHome] : []);
@@ -997,7 +1016,9 @@ async function collectCodexRolloutQueueRows({
       await codexRolloutFilesSignature(relevantFiles),
     ].join("|");
     const cached = CODEX_ROLLOUT_QUEUE_CACHE.get(cacheKey);
-    if (cached && Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS) {
+    if (cached && (usesDirectRolloutFiles || Date.now() - cached.at < CODEX_ROLLOUT_QUEUE_CACHE_TTL_MS)) {
+      CODEX_ROLLOUT_QUEUE_CACHE.delete(cacheKey);
+      CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, cached);
       return cached.rows;
     }
     const buckets = new Map();
@@ -1057,10 +1078,11 @@ async function collectCodexRolloutQueueRows({
           const hourStart = toUtcHalfHourStart(timestamp);
           if (!hourStart) continue;
 
-          const bucketKey = `codex|${sessionId || "aggregate"}|${model}|${hourStart}`;
+          const bucketKey = `codex|${sessionId || "aggregate"}|${model}|${hourStart}|${dayKey}`;
           if (!buckets.has(bucketKey)) {
             buckets.set(bucketKey, {
               hour_start: hourStart,
+              codex_usage_day: dayKey,
               source: "codex",
               ...(sessionId ? { session_id: sessionId } : {}),
               model,
@@ -1075,6 +1097,9 @@ async function collectCodexRolloutQueueRows({
             });
           }
           const row = buckets.get(bucketKey);
+          if (!row.last_activity_at || Date.parse(timestamp) > Date.parse(row.last_activity_at)) {
+            row.last_activity_at = timestamp;
+          }
           row.input_tokens += Number(usage.input_tokens || 0);
           row.output_tokens += Number(usage.output_tokens || 0);
           row.cached_input_tokens += Number(usage.cached_input_tokens || 0);
@@ -1091,10 +1116,21 @@ async function collectCodexRolloutQueueRows({
       if (timeCmp !== 0) return timeCmp;
       return String(a.model || "").localeCompare(String(b.model || ""));
     });
-    CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows });
+    // Keep only the latest signature for this file/range scope. A frequently
+    // growing parent must not crowd unchanged children out of the bounded cache.
+    for (const [key, entry] of CODEX_ROLLOUT_QUEUE_CACHE) {
+      if (entry.scanScopeKey === scanScopeKey) CODEX_ROLLOUT_QUEUE_CACHE.delete(key);
+    }
+    CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, { at: Date.now(), rows, scanScopeKey });
+    while (CODEX_ROLLOUT_QUEUE_CACHE.size > 128) {
+      CODEX_ROLLOUT_QUEUE_CACHE.delete(CODEX_ROLLOUT_QUEUE_CACHE.keys().next().value);
+    }
     return rows;
   });
-  return rows.map((row) => ({ ...row }));
+  return rows.filter((row) => {
+    const day = rowDayKey(row, timeZoneContext);
+    return (!requestedFrom || day >= requestedFrom) && (!requestedTo || day <= requestedTo);
+  }).map((row) => ({ ...row }));
 }
 
 // ---------------------------------------------------------------------------
@@ -6778,7 +6814,10 @@ function createLocalApiHandler({
 
   async function readRealtimeUsageRows(range, timeZoneContext, { codexRolloutFiles = [] } = {}) {
     const pricingOptions = getPricingOptions();
-    const queueRows = readQueueData(qp);
+    const queueRows = readQueueData(qp, { dedupeMode: "realtime" }).filter((row) => {
+      const day = rowDayKey(row, timeZoneContext);
+      return day >= range.from && day <= range.to;
+    });
     let rows;
     if (codexRolloutFiles.length) {
       const config = readTrackerConfig();
@@ -6792,15 +6831,33 @@ function createLocalApiHandler({
         to: range.to,
         timeZoneContext,
       });
-      rows = codexRows.length > 0
-        ? [...queueRows.filter((row) => normalizeSource(row?.source) !== "codex"), ...codexRows]
-        : queueRows;
-    } else {
-      rows = await withCodexRolloutRows(queueRows, {
-        from: range.from,
-        to: range.to,
-        timeZoneContext,
+      const sessionKey = (row) => row?.session_key || row?.session_id || null;
+      const replacedSessions = new Set(codexRows.map(sessionKey).filter(Boolean));
+      rows = [
+        ...queueRows.filter((row) => normalizeSource(row?.source) !== "codex" || !replacedSessions.has(sessionKey(row))),
+        ...codexRows,
+      ];
+      // Anonymous queue buckets already cover their model/time window. Keep
+      // detailed rollout rows for sessions without counting that usage twice.
+      const bucketKey = (row) => `${normalizeSource(row?.source)}|${row.model || "unknown"}|${toUtcHalfHourStart(row.hour_start || row.timestamp)}`;
+      const authoritativeBuckets = new Map();
+      for (const row of queueRows) {
+        if (normalizeSource(row?.source) !== "codex" || sessionKey(row) || row.record_kind === "request_event") continue;
+        const key = bucketKey(row);
+        const modes = authoritativeBuckets.get(key) || new Set();
+        modes.add(normalizeBillingModeRaw(row.billing_mode) || "unknown");
+        authoritativeBuckets.set(key, modes);
+      }
+      rows = rows.map((row) => {
+        const modes = authoritativeBuckets.get(bucketKey(row));
+        const mode = normalizeBillingModeRaw(row.billing_mode) || "unknown";
+        // Unknown attribution cannot prove that detail is additional to an
+        // anonymous aggregate. Only explicit different modes remain additive.
+        const covered = modes && (mode === "unknown" || modes.has("unknown") || modes.has(mode));
+        return sessionKey(row) && covered ? { ...row, range_included: false } : row;
       });
+    } else {
+      rows = queueRows;
     }
     return rows
       .filter((row) => {
@@ -6891,18 +6948,22 @@ function createLocalApiHandler({
     const rawSession = record?.session_key || record?.session_id || record?.request_id || null;
     const firstMessageAt = typeof record?.first_message_at === "string" ? record.first_message_at : null;
     const lastMessageAt = typeof record?.last_message_at === "string" ? record.last_message_at : null;
-    const activityDay = /^\d{4}-\d{2}-\d{2}$/.test(String(record?.activity_day || ""))
-      ? record.activity_day
+    const usageDay = record?.codex_usage_day || record?.activity_day;
+    const activityDay = /^\d{4}-\d{2}-\d{2}$/.test(String(usageDay || ""))
+      ? usageDay
       : codexTimestampDayKey(firstMessageAt || lastMessageAt || timestamp, timeZoneContext);
     return {
       session_id: rawSession ? publicValueRealtimeId("session", rawSession) : null,
+      record_kind: record?.record_kind === "request_event" ? "request_event" : "aggregate_bucket",
+      range_included: record?.range_included !== false,
       source,
       agent_label: source,
       model: typeof record?.model === "string" ? record.model : null,
       parent_session_id: typeof record?.parent_session_id === "string" ? publicValueRealtimeId("session", record.parent_session_id) : null,
       root_task_id: typeof record?.root_task_id === "string" ? publicValueRealtimeId("task", record.root_task_id) : null,
       project_label: null,
-      last_activity_at: timestamp,
+      last_activity_at: typeof record?.last_activity_at === "string" ? record.last_activity_at : timestamp,
+      hour_start: typeof record?.hour_start === "string" ? record.hour_start : null,
       activity_day: activityDay,
       first_message_at: firstMessageAt,
       last_message_at: lastMessageAt,
@@ -6923,6 +6984,8 @@ function createLocalApiHandler({
   function publicRealtimeLifecycleSession(session) {
     return {
       sessionId: publicValueRealtimeId("session", session?.sessionId),
+      parentSessionId: typeof session?.parentSessionId === "string"
+        ? publicValueRealtimeId("session", session.parentSessionId) : null,
       agent: typeof session?.agent === "string" ? session.agent : "unknown",
       model: typeof session?.model === "string" ? session.model.slice(0, 120) : null,
       projectLabel: null,
@@ -7229,8 +7292,8 @@ function createLocalApiHandler({
         const [historyRows, lifecycleSessions, workbuddyQuota] = await Promise.all([
           readValueRealtimeUsageRows(historyRange, timeZoneContext, { includeCodexRolloutFallback: false }),
           typeof codexLifecycleProvider === "function"
-            ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowDate.getTime() })
-            : collectCodexLifecycleSessions({ homes: codexHomes, nowMs: nowDate.getTime() }),
+            ? codexLifecycleProvider({ homes: codexHomes, nowMs: nowDate.getTime(), includeSubagents: true })
+            : collectCodexLifecycleSessions({ homes: codexHomes, nowMs: nowDate.getTime(), includeSubagents: true }),
           readRealtimeWorkbuddyQuota(),
         ]);
         const orderedLifecycleSessions = [...(lifecycleSessions || [])]
@@ -7247,9 +7310,31 @@ function createLocalApiHandler({
         const messageSpanFilePaths = messageSpanCandidates
           .map((session) => session?.[Symbol.for("token-eyes.codex-rollout-path")])
           .filter(Boolean);
+        const focusCandidate = [...orderedLifecycleSessions].sort((left, right) => (
+          Number(right?.status === "running") - Number(left?.status === "running")
+          || Number(Boolean(left?.parentSessionId)) - Number(Boolean(right?.parentSessionId))
+          || Date.parse(right?.updatedAt || 0) - Date.parse(left?.updatedAt || 0)
+        ))[0];
+        const usageSessionIds = new Set([focusCandidate?.sessionId].filter(Boolean));
+        // Expand only the displayed focus tree, including completed siblings
+        // when the running focus is itself a child. Lifecycle is already bounded.
+        let previousSize;
+        do {
+          previousSize = usageSessionIds.size;
+          for (const session of orderedLifecycleSessions) {
+            if (usageSessionIds.has(session?.sessionId) && session?.parentSessionId) usageSessionIds.add(session.parentSessionId);
+            if (usageSessionIds.has(session?.parentSessionId) && session?.sessionId) usageSessionIds.add(session.sessionId);
+          }
+        } while (usageSessionIds.size !== previousSize);
+        const usageFilePaths = [...new Set([
+          ...messageSpanFilePaths,
+          ...orderedLifecycleSessions.filter((session) => (
+            usageSessionIds.has(session?.sessionId)
+            && (!session?.updatedAt || codexTimestampDayKey(session.updatedAt, timeZoneContext) >= range.from)
+          )).map((session) => session?.[Symbol.for("token-eyes.codex-rollout-path")]).filter(Boolean),
+        ])];
         const [usageRows, messageSpans] = await Promise.all([
-          readRealtimeUsageRows(range, timeZoneContext, { codexRolloutFiles: messageSpanFilePaths })
-            .then((rows) => rows.slice(-100)),
+          readRealtimeUsageRows(range, timeZoneContext, { codexRolloutFiles: usageFilePaths }),
           collectCodexMessageSpans({
             homes: codexHomes,
             from: range.to,

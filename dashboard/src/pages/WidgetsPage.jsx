@@ -1685,7 +1685,16 @@ function WindowsProjectManager({ onOpenSettings }) {
 
       <div className="tt-widget-bottom-grid">
         <section className="tt-widget-limits tt-pressable-group" data-testid="widget-limits">
-          <header><div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitPlanCount, total: limitPlans.length })}</small></div></div><button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button></header>
+          <header>
+            <div className="tt-widget-section-title"><span><Gauge aria-hidden /></span><div><h2>{copy("widgets.reference.usage_plans")}</h2><small>{copy("widgets.reference.total_plans", { selected: selectedLimitPlanCount, total: limitPlans.length })}</small></div></div>
+            <div className="tt-widget-limit-actions">
+              <button type="button" className="tt-raised-control tt-pressable" onClick={() => void refreshPlans()} disabled={refreshingPlans}><RefreshCw aria-hidden />{copy("widgets.reference.refresh_data")}</button>
+              {groupedLimitPlans.expired.length ? <button type="button" aria-expanded={expiredPlansOpen} aria-controls="widget-expired-limit-plan-panel" className="tt-widget-expired-toggle tt-raised-control tt-pressable" onClick={() => setExpiredPlansOpen((open) => !open)}>
+                <span>{copy("settings.token_plan.expired_group", { count: groupedLimitPlans.expired.length })}</span>
+                <ChevronDown aria-hidden />
+              </button> : null}
+            </div>
+          </header>
           <div className="tt-widget-plan-list">
             <div className="tt-token-plan-grid" data-testid="widget-active-limit-plan-list">
               {groupedLimitPlans.active.map((plan) => renderLimitPlan(plan, "active"))}
@@ -1700,10 +1709,6 @@ function WindowsProjectManager({ onOpenSettings }) {
               </div> : null}
             </section> : null}
             {groupedLimitPlans.expired.length ? <section className="tt-widget-limit-history" data-testid="widget-expired-limit-plans">
-              <button type="button" aria-expanded={expiredPlansOpen} aria-controls="widget-expired-limit-plan-panel" className="tt-raised-control tt-pressable" onClick={() => setExpiredPlansOpen((open) => !open)}>
-                <span>{copy("settings.token_plan.expired_group", { count: groupedLimitPlans.expired.length })}</span>
-                <ChevronDown aria-hidden />
-              </button>
               {expiredPlansOpen ? <div id="widget-expired-limit-plan-panel" className="tt-token-plan-grid tt-widget-limit-plan-grid" data-testid="widget-expired-limit-plan-list">
                 {groupedLimitPlans.expired.map((plan) => renderLimitPlan(plan, "expired"))}
               </div> : null}

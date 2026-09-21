@@ -3,7 +3,8 @@ import {
   Boxes, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Info, RefreshCw, Users,
 } from "lucide-react";
 import { copy } from "../lib/copy";
-import { getRealtimeSessions, peekRealtimeSessions } from "../lib/api";
+import { getRealtimeSessions, peekRealtimeSessions, triggerLocalSync } from "../lib/api";
+import { isLocalDashboardRuntime } from "../lib/local-api-url";
 import { normalizeVisibleProviderIds } from "../lib/spend-provider-visibility.js";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { ValueRealtimeEvidence } from "../components/ValueRealtimeEvidence";
@@ -37,8 +38,8 @@ function historyLabel(agent) {
   if (agent.history_state !== "installed_no_history") return copy("realtime.history.six_month");
   return agent.source === "trae" ? copy("realtime.history.authorization_pending") : copy("realtime.history.installed");
 }
-function historyDetail(agent) {
-  if (agent.history_state !== "installed_no_history") return copy("realtime.history.six_month");
+function historyDetail(agent, month) {
+  if (agent.history_state !== "installed_no_history") return copy("realtime.history.month_total", { month: month || "—" });
   return agent.source === "trae" ? copy("realtime.history.trae_pending_detail") : copy("realtime.history.no_usage_metric");
 }
 function missingHistoryMetric(agent) {
@@ -47,6 +48,12 @@ function missingHistoryMetric(agent) {
 function formatTime(value) {
   const date = value ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : copy("value_realtime.data_unavailable");
+}
+function formatActivityTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return copy("value_realtime.data_unavailable");
+  const day = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+  return `${day} ${formatTime(value)}`;
 }
 function formatDuration(metric) {
   if (metric?.value == null) return copy("value_realtime.data_unavailable");
@@ -89,9 +96,10 @@ function sourceId(value) { return normalizeVisibleProviderIds([value])[0] || "";
 function focusSession(sessions) {
   return [...sessions].sort((left, right) => {
     const running = Number(right?.state === "running") - Number(left?.state === "running");
+    const root = Number(Boolean(left?.parent_session_id)) - Number(Boolean(right?.parent_session_id));
     const activity = Date.parse(right?.last_activity_at || 0) - Date.parse(left?.last_activity_at || 0);
     const tokens = Number(right?.total_tokens?.value || 0) - Number(left?.total_tokens?.value || 0);
-    return running || activity || tokens;
+    return running || root || activity || tokens;
   })[0];
 }
 
@@ -148,7 +156,7 @@ function Kpi({ icon: Icon, tone, title, value, delta }) {
   return <section className="vr-card rt-kpi"><div className={`rt-kpi-icon rt-kpi-icon--${tone}`}><Icon size={31} /></div><div><div className="rt-kpi-label">{title}</div><div className="rt-kpi-value">{value}</div><div className="rt-kpi-change">{delta == null ? copy("realtime.current_range") : <>{copy("realtime.changed")}<strong>{`${delta > 0 ? "+" : ""}${delta.toLocaleString()}`}</strong></>}</div></div></section>;
 }
 
-function SessionStrip({ agents, selectedSource, onSelect }) {
+function SessionStrip({ agents, selectedSource, onSelect, historyMonth }) {
   const [offset, setOffset] = useState(0);
   const pageSize = 5;
   const selectedIndex = agents.findIndex((agent) => sourceId(agent?.source) === selectedSource);
@@ -181,8 +189,9 @@ function SessionStrip({ agents, selectedSource, onSelect }) {
           ? [compact(agent.total_tokens), money(agent.api_equivalent_usd)]
           : [missingHistoryMetric(agent)];
       return <button type="button" key={agent.source} className="vr-card rt-session-mini tt-pressable tt-product-focusable" aria-pressed={selected} onClick={() => onSelect(agentSource)}>
-        <div className="rt-mini-head"><div className="rt-mini-name" title={agent.agent_label || agent.source}><i className={`rt-provider-avatar ${providerTone(agent.runtime_state)}`}><ProviderIcon provider={agent.source} size={14} /></i><span>{agent.agent_label || agent.source}</span></div><span className={`rt-mini-state${agent.runtime_state === "running" ? " rt-mini-state--running" : " rt-mini-state--idle"}`} title={historyDetail(agent)}>{stateLabel(agent.runtime_state)}</span></div>
+        <div className="rt-mini-head"><div className="rt-mini-name" title={agent.agent_label || agent.source}><i className={`rt-provider-avatar ${providerTone(agent.runtime_state)}`}><ProviderIcon provider={agent.source} size={14} /></i><span>{agent.agent_label || agent.source}</span></div><span className={`rt-mini-state${agent.runtime_state === "running" ? " rt-mini-state--running" : " rt-mini-state--idle"}`} title={historyDetail(agent, historyMonth)}>{stateLabel(agent.runtime_state)}</span></div>
         <div className={`rt-mini-data${agent.source === "workbuddy" ? " rt-mini-data--workbuddy" : ""}`} title={metrics.join(" · ")}>{metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>
+        <div className="rt-mini-scope">{copy(native.length ? "realtime.history.account_snapshot" : "realtime.history.month_total", { month: historyMonth || "—" })}</div>
       </button>;
     }) : <div className="vr-empty">{copy("realtime.empty")}</div>}</div>
     {hasMore ? <div className="rt-session-controls">
@@ -238,7 +247,7 @@ function RealtimeLineChart({ points, showLegend = true }) {
     draw(); const observer = new ResizeObserver(draw); observer.observe(canvas); return () => observer.disconnect();
   }, [maximum, visible]);
   const labels = [maximum, maximum * .75, maximum / 2, maximum * .25, 0];
-  return <div className={`rt-line-view${showLegend ? "" : " rt-line-view--composition"}`}><div className="rt-chart-top"><span>{copy("realtime.trend")}</span><label className="rt-chart-window"><select aria-label={copy("realtime.chart.window")} value={windowKey} onChange={(event) => setWindowKey(event.target.value)}><option value="1h">{copy("realtime.chart.window.1h")}</option><option value="4h">{copy("realtime.chart.window.4h")}</option><option value="all">{copy("realtime.chart.window.all")}</option></select><ChevronDown size={13} /></label></div><div className="rt-live-chart"><div className="rt-live-y">{labels.map((label) => <span key={label}>{compact({ value: label })}</span>)}</div><div className="rt-live-plot"><canvas ref={canvasRef} aria-label={copy("realtime.trend")} /></div></div><div className="rt-live-x"><span>{formatTime(visible[0]?.observed_at)}</span><span>{formatTime(visible.at(-1)?.observed_at)}</span></div>{showLegend ? <div className="rt-live-legend"><i className="vr-dot vr-tone--blue" />{copy("realtime.tokens.short")}</div> : null}</div>;
+  return <div className={`rt-line-view${showLegend ? "" : " rt-line-view--composition"}`}><div className="rt-chart-top"><span>{copy("realtime.trend")}</span><label className="rt-chart-window"><select aria-label={copy("realtime.chart.window")} value={windowKey} onChange={(event) => setWindowKey(event.target.value)}><option value="1h">{copy("realtime.chart.window.1h")}</option><option value="4h">{copy("realtime.chart.window.4h")}</option><option value="all">{copy("realtime.chart.window.all")}</option></select><ChevronDown size={13} /></label></div><div className="rt-live-chart"><div className="rt-live-y">{labels.map((label) => <span key={label}>{compact({ value: label })}</span>)}</div><div className="rt-live-plot"><canvas ref={canvasRef} aria-label={copy("realtime.trend")} /></div></div><div className="rt-live-x"><span>{formatActivityTime(visible[0]?.observed_at)}</span><span>{formatActivityTime(visible.at(-1)?.observed_at)}</span></div>{showLegend ? <div className="rt-live-legend"><i className="vr-dot vr-tone--blue" />{copy("realtime.tokens.short")}</div> : null}</div>;
 }
 
 function CompositionTab({ focus, points, evidence, rangeFrom, rangeTo }) {
@@ -256,7 +265,7 @@ function CompositionTab({ focus, points, evidence, rangeFrom, rangeTo }) {
       <div className="rt-breakdown">{rows.map((row) => <div className="rt-breakdown-row" key={row.key}><span><i className={`vr-dot vr-tone--${row.tone}`} />{copy(row.label)}</span><strong>{compact({ value: row.value })}</strong><em>{total && row.value !== null ? `${(row.value / total * 100).toFixed(1)}%` : copy("value_realtime.share_unavailable")}</em></div>)}</div>
     </div>
     <RealtimeLineChart points={points} showLegend={false} />
-  </div><footer className="rt-composition-foot"><div className="rt-composition-foot-meta"><span>{copy("realtime.data_range")}</span><i /> <span data-testid="realtime-range-window">{rangeFrom && rangeTo ? `${rangeFrom} 至 ${rangeTo}` : `${formatTime(evidence?.observed_from)} 至 ${formatTime(evidence?.observed_to)}`}</span></div><span className="rt-composition-legend"><i className="vr-dot vr-tone--blue" />{copy("realtime.tokens.short")}</span></footer></>;
+  </div><footer className="rt-composition-foot"><div className="rt-composition-foot-meta"><span>{copy(focus?.session_id ? "realtime.data_range" : "realtime.data_range.agent")}</span><i /> <span data-testid="realtime-range-window">{rangeFrom && rangeTo ? `${rangeFrom} 至 ${rangeTo}` : `${formatTime(evidence?.observed_from)} 至 ${formatTime(evidence?.observed_to)}`}</span></div><span className="rt-composition-legend"><i className="vr-dot vr-tone--blue" />{copy("realtime.tokens.short")}</span></footer></>;
 }
 
 function TrendTab({ points }) {
@@ -265,11 +274,25 @@ function TrendTab({ points }) {
 
 function TreeTab({ tree }) {
   const nodes = tree.filter(function withChildren(node) { return node.children?.length; });
-  return <div className="rt-list-view">{nodes.length ? nodes.map(function renderTreeNode(node) { return <div className="rt-request-row" key={node.session_id}><strong>{node.agent_label || node.source}</strong><span>{copy("realtime.sub_agents")} {node.children.length}</span><span>{compact(node.total_tokens)}</span></div>; }) : copy("realtime.tree.empty")}</div>;
+  function renderNode(node) {
+    return <li key={node.session_id}><div className="rt-request-row"><strong>{node.agent_label || node.source}</strong><span title={taskText(node)}>{taskText(node)}</span><span>{stateLabel(node.state)}</span><span>{compact(node.total_tokens)}</span><span>{formatActivityTime(node.last_activity_at)}</span></div>{node.children?.length ? <ul>{node.children.map(renderNode)}</ul> : null}</li>;
+  }
+  return <div className="rt-list-view">{nodes.length ? <ul className="rt-session-tree">{nodes.map(renderNode)}</ul> : copy("realtime.tree.empty")}</div>;
 }
 
 function RequestsTab({ requests }) {
-  return <div className="rt-list-view">{requests.length ? requests.slice(0, 8).map((request) => <div className="rt-request-row" key={request.record_ref}><strong>{request.source}</strong><span>{request.record_ref}</span><span>{formatTime(request.observed_at)}</span><span>{request.total_tokens?.value == null ? copy("value_realtime.data_unavailable") : copy("realtime.tokens_with_unit", { value: request.total_tokens.value.toLocaleString() })}</span><span>{money(request.api_equivalent_usd)}</span></div>) : copy("realtime.requests.empty")}</div>;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(requests.length / 25));
+  const current = Math.min(page, pageCount - 1);
+  const hasMultiplePages = pageCount !== 1;
+  return <div className="rt-list-view">
+    {hasMultiplePages ? <nav className="rt-usage-pagination" aria-label={copy("realtime.pagination.label")}>
+      <span>{copy("realtime.pagination.status", { current: current + 1, pages: pageCount, count: requests.length })}</span>
+      <button type="button" className="tt-raised-control tt-pressable" disabled={current === 0} onClick={() => setPage(current - 1)}>{copy("realtime.pagination.previous")}</button>
+      <button type="button" className="tt-raised-control tt-pressable" disabled={current === pageCount - 1} onClick={() => setPage(current + 1)}>{copy("realtime.pagination.next")}</button>
+    </nav> : null}
+    {requests.length ? requests.slice(current * 25, (current + 1) * 25).map((request) => <div className="rt-request-row" key={request.record_ref}><strong>{request.source}</strong><span title={request.model || request.record_ref}>{copy(request.range_included === false ? "realtime.record.included" : request.record_kind === "aggregate_bucket" ? "realtime.record.aggregate" : "realtime.record.request")}</span><span>{formatActivityTime(request.observed_at)}</span><span>{request.total_tokens?.value == null ? copy("value_realtime.data_unavailable") : copy("realtime.tokens_with_unit", { value: request.total_tokens.value.toLocaleString() })}</span><span>{money(request.api_equivalent_usd)}</span></div>) : copy("realtime.requests.empty")}
+  </div>;
 }
 
 function SidePanels({ data, stateCounts }) {
@@ -295,14 +318,17 @@ export function RealtimeSessionsPage() {
   const { range, month } = period;
   const [data, setData] = useState(() => peekRealtimeSessions("today"));
   const [error, setError] = useState(false);
+  const [syncError, setSyncError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState("composition");
   const [selectedSource, setSelectedSource] = useState("");
   const previousSummary = useRef(null);
   const latestSummary = useRef(null);
   const controllerRef = useRef(null);
+  const entrySyncRef = useRef(null);
   const load = useCallback(async (manual = false, replaceInFlight = false) => {
     if (controllerRef.current && !replaceInFlight) return;
+    if (manual) entrySyncRef.current?.abort();
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -312,6 +338,12 @@ export function RealtimeSessionsPage() {
     setRefreshing(manual);
     setError(false);
     try {
+      if (manual && isLocalDashboardRuntime()) {
+        setSyncError(false);
+        try { await triggerLocalSync({ signal: controller.signal }); }
+        catch (reason) { if (reason?.name !== "AbortError") setSyncError(true); }
+        if (controller.signal.aborted) return;
+      }
       const next = await getRealtimeSessions(range, controller.signal, requestedMonth);
       if (!controller.signal.aborted) {
         previousSummary.current = latestSummary.current;
@@ -328,6 +360,16 @@ export function RealtimeSessionsPage() {
     }
   }, [range, month]);
   useEffect(() => { load(false, true); return () => controllerRef.current?.abort(); }, [load]);
+  useEffect(() => {
+    if (!isLocalDashboardRuntime()) return undefined;
+    const controller = new AbortController();
+    entrySyncRef.current = controller;
+    setSyncError(false);
+    Promise.resolve(triggerLocalSync({ signal: controller.signal, minIntervalMs: 30_000 }))
+      .then((result) => { if (!controller.signal.aborted && result?.ok) load(false, true); })
+      .catch((reason) => { if (!controller.signal.aborted && reason?.name !== "AbortError") setSyncError(true); });
+    return () => controller.abort();
+  }, [load]);
   useEffect(() => {
     const refreshVisible = () => { if (document.visibilityState === "visible" && document.hasFocus()) load(); };
     const id = window.setInterval(refreshVisible, 15_000);
@@ -349,7 +391,15 @@ export function RealtimeSessionsPage() {
     : selectableSources.includes(preferredSource)
       ? preferredSource
       : selectableSources[0] || "";
-  const focus = focusSession(visibleSessions.filter((session) => sourceId(session?.source) === activeSource));
+  const selectedAgent = agentHistory.find((agent) => sourceId(agent?.source) === activeSource);
+  const rangeUsage = data?.agent_range_summary?.find((agent) => sourceId(agent.source) === activeSource);
+  const sessionFocus = focusSession(visibleSessions.filter((session) => sourceId(session?.source) === activeSource));
+  const focus = sessionFocus || (selectedAgent ? {
+    ...rangeUsage,
+    source: selectedAgent.source,
+    agent_label: selectedAgent.agent_label,
+    task_label: copy(rangeUsage ? "realtime.range.aggregate_only" : "realtime.range.no_usage"),
+  } : null);
   const monthOptions = data?.month_options?.length ? data.month_options : data?.available_months || [];
   const selectedMonth = range === "month" && month ? month : data?.data_month || monthOptions[0] || "";
   const changePeriod = (nextRange, nextMonth = month) => {
@@ -366,20 +416,25 @@ export function RealtimeSessionsPage() {
     ? focus.activity_points
     : focusUsesAgentDay ? focus.agent_day_activity_points || [] : [];
   const focusForAnalysis = focusUsesAgentDay ? { ...focus, ...focusUsage, activity_points: focusPoints } : focus;
-  const selectedAgent = agentHistory.find((agent) => sourceId(agent?.source) === activeSource);
+  const analysisUsage = rangeUsage || focusForAnalysis;
+  const analysisPoints = rangeUsage ? rangeUsage.activity_points || [] : focusPoints;
   const selectedRuntimeState = selectedAgent?.runtime_state || focus?.state;
   const selectedSummary = selectedAgent ? {
     active_agents: { value: selectedRuntimeState === "running" ? 1 : 0 },
-    realtime_tokens: focusUsage?.total_tokens,
-    api_equivalent_value: focusUsage?.api_equivalent_usd,
+    realtime_tokens: rangeUsage?.total_tokens || focusUsage?.total_tokens,
+    api_equivalent_value: rangeUsage?.api_equivalent_usd || focusUsage?.api_equivalent_usd,
   } : data?.summary;
   const focusSessionRef = focus?.session_id ? `session:${focus.session_id}` : null;
-  const focusRequests = focusSessionRef
-    ? (data?.requests || []).filter((request) => request?.session_ref === focusSessionRef)
-    : [];
+  const focusRequests = rangeUsage
+    ? (data?.usage_records || []).filter((request) => sourceId(request.source) === activeSource)
+    : focusSessionRef
+    ? (data?.usage_records || data?.requests || []).filter((request) => request?.session_ref === focusSessionRef)
+    : (data?.usage_records || []).filter((request) => sourceId(request.source) === activeSource);
+  function containsFocus(node) { return node?.session_id === focus?.session_id || node.children?.some(containsFocus); }
   const focusTree = focus?.session_id
-    ? (data?.session_tree || []).filter((node) => node?.session_id === focus.session_id)
+    ? (data?.session_tree || []).filter(containsFocus)
     : [];
+  const childCount = focus?.session_id ? focusTree[0]?.children?.length ?? 0 : copy("value_realtime.data_unavailable");
 
   return <main className="vr-page vr-page--realtime flex flex-1 flex-col px-5 py-7 dark:bg-oai-gray-950 dark:text-oai-white">
     <header className="vr-head"><div><h1>{copy("realtime.page.title")}</h1><p>{copy("realtime.page.subtitle")} <Info size={15} className="inline" /></p></div><div className="rt-head-actions">
@@ -388,6 +443,7 @@ export function RealtimeSessionsPage() {
       <button type="button" className="rt-refresh" onClick={() => load(true, true)}><i className="rt-updated-dot" />{refreshing ? copy("realtime.refreshing") : `${copy("realtime.updated")} ${formatTime(data?.observed_at)}`}<RefreshCw size={16} className={refreshing ? "animate-spin" : ""} /></button>
     </div></header>
     {error ? <div className="vr-alert" role="alert">{copy("realtime.error")}</div> : null}
+    {syncError ? <div className="vr-alert" role="alert">{copy("realtime.sync_error")}</div> : null}
     {!data && !error ? <div className="vr-loading">{copy("realtime.loading")}</div> : null}
     {data ? <>
       <section className="rt-kpis"><Kpi icon={Users} tone="blue" title={copy("realtime.active_agents")} value={number(selectedSummary?.active_agents)} delta={selectedAgent ? null : delta("active_agents")} /><Kpi icon={Boxes} tone="violet" title={copy("realtime.tokens")} value={compact(selectedSummary?.realtime_tokens)} delta={selectedAgent ? null : delta("realtime_tokens")} /><Kpi icon={CircleDollarSign} tone="green" title={copy("realtime.equivalent")} value={money(selectedSummary?.api_equivalent_value)} delta={selectedAgent ? null : delta("api_equivalent_value")} /></section>
@@ -395,10 +451,10 @@ export function RealtimeSessionsPage() {
         <div><div className="rt-agent-title"><i className="rt-agent-cube"><ProviderIcon provider={focus.source} size={21} /></i>{focus.agent_label || focus.source}{focus.state === "running" ? <span className="rt-status-pill">{stateLabel(focus.state)}</span> : null}</div><div className="rt-focus-task-label">{copy("realtime.current_task")}</div><div className="rt-focus-task">{taskText(focus)}</div><FocusSparkline points={focusPoints} /></div>
         <div className="rt-focus-metric"><div className="rt-focus-metric-label">{focusUsesAgentDay ? copy("realtime.agent_today_total") : copy("realtime.tokens")}</div><div className="rt-focus-metric-value">{compact(focusUsage?.total_tokens)}</div><div className="rt-focus-metric-sub">{copy("realtime.input")} {compact(focusUsage?.input_tokens)} · {copy("realtime.output")} {compact(focusUsage?.output_tokens)}</div></div>
         <div className="rt-focus-metric"><div className="rt-focus-metric-label">{copy("realtime.equivalent")}</div><div className="rt-focus-metric-value">{money(focusUsage?.api_equivalent_usd)}</div><div className="rt-focus-metric-sub">{focusUsesAgentDay ? copy("realtime.agent_today_total") : copy("realtime.billing_safe")}</div></div>
-        <div className="rt-focus-metric rt-focus-metric--blue"><div className="rt-focus-metric-label">{copy("realtime.current_range")}</div><div className="rt-focus-metric-value">{copy("realtime.current_range_value")}</div></div>
-      </div><div className="rt-focus-footer"><div><span>{copy("realtime.requests")}</span><strong>{number(focusUsage?.request_count)}</strong></div><div><span>{copy("realtime.sub_agents")}</span><strong>{focusTree[0]?.children?.length || 0}</strong></div><div><span>{copy("realtime.duration")}</span><strong>{formatDuration(focus.duration_minutes)}</strong></div><div><span>{copy("realtime.model")}</span><strong>{focus.model || copy("value_realtime.data_unavailable")}</strong></div><div><span>{copy("realtime.billing")}</span><strong>{copy("realtime.billing_safe")}</strong></div></div></section> : <section className="vr-empty mt-4">{copy("realtime.empty")}</section>}
-      {agentHistory.length ? <SessionStrip agents={agentHistory} selectedSource={activeSource} onSelect={setSelectedSource} /> : null}
-      <section className="rt-workspace"><div className="vr-card rt-analysis"><div className="rt-tabs" role="tablist">{TABS.map((item) => <button type="button" key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>{copy(`realtime.tabs.${item}`)}</button>)}</div><div className="rt-analysis-body">{!focus ? <div className="vr-empty">{copy("realtime.empty")}</div> : <>{tab === "composition" ? <CompositionTab focus={focusForAnalysis} points={focusPoints} evidence={focusUsage?.total_tokens?.evidence || focus?.evidence || data.summary?.realtime_tokens?.evidence} rangeFrom={data.range_from} rangeTo={data.range_to} /> : null}{tab === "trend" ? <TrendTab points={focusPoints} /> : null}{tab === "children" ? <TreeTab tree={focusTree} /> : null}{tab === "requests" ? <RequestsTab requests={focusRequests} /> : null}</>}</div></div><SidePanels data={data} stateCounts={stateCounts} /></section>
+        <div className="rt-focus-metric rt-focus-metric--blue"><div className="rt-focus-metric-label">{copy("realtime.current_range")}</div><div className="rt-focus-metric-value">{range === "month" ? selectedMonth : copy(`realtime.range.${range}`)}</div></div>
+      </div><div className="rt-focus-footer"><div><span>{copy("realtime.requests")}</span><strong>{number(focusUsage?.request_count)}</strong></div><div><span>{copy("realtime.sub_agents")}</span><strong>{childCount}</strong></div><div><span>{copy("realtime.duration")}</span><strong>{formatDuration(focus.duration_minutes)}</strong></div><div><span>{copy("realtime.model")}</span><strong>{focus.model || copy("value_realtime.data_unavailable")}</strong></div><div><span>{copy("realtime.billing")}</span><strong>{copy("realtime.billing_safe")}</strong></div></div></section> : <section className="vr-empty mt-4">{copy("realtime.empty")}</section>}
+      {agentHistory.length ? <SessionStrip agents={agentHistory} selectedSource={activeSource} onSelect={setSelectedSource} historyMonth={data.data_month} /> : null}
+      <section className="rt-workspace"><div className="vr-card rt-analysis"><div className="rt-tabs" role="tablist">{TABS.map((item) => <button type="button" key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>{copy(`realtime.tabs.${item}`)}</button>)}</div><div className="rt-analysis-body">{!analysisUsage ? <div className="vr-empty">{copy("realtime.empty")}</div> : <>{tab === "composition" ? <CompositionTab focus={analysisUsage} points={analysisPoints} evidence={analysisUsage?.total_tokens?.evidence || focus?.evidence || data.summary?.realtime_tokens?.evidence} rangeFrom={data.range_from} rangeTo={data.range_to} /> : null}{tab === "trend" ? <TrendTab points={analysisPoints} /> : null}{tab === "children" ? <TreeTab tree={focusTree} /> : null}{tab === "requests" ? <RequestsTab key={`${activeSource}:${range}:${selectedMonth}`} requests={focusRequests} /> : null}</>}</div></div><SidePanels data={data} stateCounts={stateCounts} /></section>
     </> : null}
   </main>;
 }

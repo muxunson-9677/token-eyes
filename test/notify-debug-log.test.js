@@ -5,6 +5,35 @@ const fs = require("node:fs/promises");
 const cp = require("node:child_process");
 const { test } = require("node:test");
 
+test("notify spawns the installed local sync without a cloud device token", () => {
+  const vm = require("node:vm");
+  const { buildNotifyHandler } = require("../src/commands/init");
+  const trackerDir = path.join(os.tmpdir(), "local-notify-contract");
+  const launches = [];
+  const files = new Map();
+  const handler = buildNotifyHandler({ trackerDir });
+  const notifyPath = path.join(trackerDir, "notify.cjs");
+  const context = {
+    require(name) {
+      if (name === "node:fs") return {
+        mkdirSync() {}, writeFileSync(file, value) { files.set(file, value); },
+        existsSync(file) { return file.endsWith(path.join("bin", "tracker.js")); },
+        readFileSync(file) { if (files.has(file)) return files.get(file); throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
+      };
+      if (name === "node:child_process") return { spawn(exe, args) { launches.push({ exe, args }); return { on() {}, unref() {} }; } };
+      return require(name);
+    },
+    process: { argv: [process.execPath, notifyPath, "--source=codex"], execPath: process.execPath, env: {}, exit() {} },
+    __filename: notifyPath,
+  };
+  vm.runInNewContext(handler, context);
+  assert.equal(launches.length, 1);
+  assert.deepEqual(Array.from(launches[0].args).slice(1), ["sync", "--auto", "--from-notify"]);
+  assert.equal(launches[0].args.includes("--drain"), false);
+  vm.runInNewContext(handler, { ...context });
+  assert.equal(launches.length, 1, "the existing 20-second throttle still applies");
+});
+
 async function runNotify(notifyPath, env) {
   await new Promise((resolve, reject) => {
     const child = cp.execFile(process.execPath, [notifyPath, "--source=codex"], { env }, (err) => {

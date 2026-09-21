@@ -143,14 +143,24 @@ function createDefaultCredentialStore(options = {}) {
  * then closes. The child argv and inherited env never carry the secret.
  */
 function defaultRunner(cmd, args, opts = {}) {
+  const systemRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
   const spawnOpts = {
     stdio: ["pipe", "pipe", "pipe"],
     timeout: opts.timeout != null ? opts.timeout : 10_000,
+    windowsHide: true,
+    env: {
+      SystemRoot: systemRoot,
+      windir: systemRoot,
+      PSModulePath: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
+    },
   };
   if (opts.input != null) {
     spawnOpts.input = opts.input;
   }
-  const result = cp.spawnSync(cmd, args, spawnOpts);
+  const executable = cmd === "powershell.exe"
+    ? path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : cmd;
+  const result = cp.spawnSync(executable, args, spawnOpts);
   return {
     status: result.status,
     stdout: result.stdout ? result.stdout.toString("utf8") : "",

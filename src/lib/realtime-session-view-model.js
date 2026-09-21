@@ -102,7 +102,7 @@ function sum(rows, key) {
 
 function buildSessionActivityPoints(rows) {
   return rows
-    .map((row) => ({ observed_at: rowTime(row), total_tokens: finiteNumber(row.total_tokens) }))
+    .map((row) => ({ observed_at: safeText(row.hour_start) || rowTime(row), total_tokens: finiteNumber(row.total_tokens) }))
     .filter((point) => point.observed_at && point.total_tokens !== null)
     .sort((left, right) => timestampMs(left.observed_at) - timestampMs(right.observed_at))
     .slice(-48);
@@ -129,7 +129,7 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
   const agentDayHasCost = agentDayRows.some((row) => finiteNumber(row.cost_usd) !== null);
   return {
     session_id: safeText(latest.session_id) || safeText(lifecycleSessionId) || safeText(lifecycle && lifecycle.sessionId),
-    parent_session_id: safeText(latest.parent_session_id),
+    parent_session_id: safeText(latest.parent_session_id) || safeText(lifecycle && lifecycle.parentSessionId),
     root_task_id: safeText(latest.root_task_id),
     source: safeText(latest.source) || safeText(lifecycle && lifecycle.agent) || "unknown",
     agent_label: safeText(latest.agent_label) || safeText(lifecycle && lifecycle.agent),
@@ -220,7 +220,7 @@ function buildAgentHistory(agentHistory = [], runtimeBySource = new Map()) {
 function buildActivityPoints(rows) {
   return rows
     .map((row) => ({
-      observed_at: rowTime(row),
+      observed_at: safeText(row.hour_start) || rowTime(row),
       total_tokens: finiteNumber(row.total_tokens),
       api_equivalent_usd: finiteNumber(row.cost_usd),
       source: safeText(row.source) || "unknown",
@@ -230,15 +230,18 @@ function buildActivityPoints(rows) {
     .slice(-48);
 }
 
-function buildRequests(rows) {
+function buildUsageRecords(rows) {
   return rows
     .map((row, index) => {
       const sessionId = safeText(row && row.session_id);
       const observedAt = rowTime(row);
-      if (!sessionId || !observedAt) return null;
+      if (!observedAt) return null;
+      const recordKind = row.record_kind === "request_event" ? "request_event" : "aggregate_bucket";
       return {
-        record_ref: `request:${sessionId}:${index}`,
-        session_ref: `session:${sessionId}`,
+        record_ref: `${recordKind === "request_event" ? "request" : "usage"}:${sessionId || "aggregate"}:${index}`,
+        record_kind: recordKind,
+        range_included: row.range_included !== false,
+        session_ref: sessionId ? `session:${sessionId}` : null,
         observed_at: observedAt,
         source: safeText(row.source) || "unknown",
         model: safeText(row.model),
@@ -258,8 +261,38 @@ function buildRequests(rows) {
       };
     })
     .filter(Boolean)
-    .sort((left, right) => timestampMs(right.observed_at) - timestampMs(left.observed_at))
-    .slice(0, 100);
+    .sort((left, right) => timestampMs(right.observed_at) - timestampMs(left.observed_at));
+}
+
+function buildAgentRangeSummary(rows) {
+  const bySource = new Map();
+  for (const row of rows) {
+    const source = safeText(row.source) || "unknown";
+    if (!bySource.has(source)) bySource.set(source, []);
+    bySource.get(source).push(row);
+  }
+  return [...bySource].map(([source, sourceRows]) => {
+    const session = buildSession(sourceRows, null);
+    if (sourceRows.some((row) => finiteNumber(row.cost_usd) === null)) {
+      session.api_equivalent_usd = metric(null, "USD", "connected_no_exact_data", session.evidence);
+    }
+    const points = new Map();
+    for (const row of sourceRows) {
+      const observedAt = safeText(row.hour_start) || rowTime(row);
+      if (!observedAt) continue;
+      const time = Date.parse(observedAt);
+      if (!Number.isFinite(time)) continue;
+      const key = Math.floor(time / 1_800_000) * 1_800_000;
+      const point = points.get(key) || { observed_at: new Date(key).toISOString(), total_tokens: null };
+      if (finiteNumber(row.total_tokens) !== null) point.total_tokens = (point.total_tokens || 0) + row.total_tokens;
+      points.set(key, point);
+    }
+    return {
+      source,
+      ...Object.fromEntries(["total_tokens", "input_tokens", "output_tokens", "cached_input_tokens", "cache_creation_input_tokens", "reasoning_output_tokens", "api_equivalent_usd", "request_count"].map((key) => [key, session[key]])),
+      activity_points: [...points.values()].sort((left, right) => timestampMs(left.observed_at) - timestampMs(right.observed_at)),
+    };
+  });
 }
 
 function buildPricingCoverage(rows, sessions) {
@@ -323,11 +356,13 @@ function buildRealtimeSessionViewModel(input = {}) {
     const stateOrder = Number(right.state === "running") - Number(left.state === "running");
     return stateOrder || timestampMs(right.last_activity_at) - timestampMs(left.last_activity_at) || left.session_id.localeCompare(right.session_id);
   });
-  const sessionTokenValues = sessions.map((session) => session.total_tokens.value).filter((value) => value !== null);
-  const sessionCostValues = sessions.map((session) => session.api_equivalent_usd.value).filter((value) => value !== null);
+  const rangeRows = rawRows.filter((row) => row.range_included !== false);
+  const agentRangeSummary = buildAgentRangeSummary(rangeRows);
+  const sessionTokenValues = agentRangeSummary.map((item) => item.total_tokens.value).filter((value) => value !== null);
+  const sessionCostValues = agentRangeSummary.map((item) => item.api_equivalent_usd.value).filter((value) => value !== null);
   const totalTokens = sessionTokenValues.length ? sessionTokenValues.reduce((sumValue, value) => sumValue + value, 0) : null;
   const totalCost = sessionCostValues.length ? sessionCostValues.reduce((sumValue, value) => sumValue + value, 0) : null;
-  const summaryEvidence = buildEvidence(rawRows, null, rawRows.at(-1));
+  const summaryEvidence = buildEvidence(rangeRows, null, rangeRows.at(-1));
   const runtimeItems = Array.isArray(input.runtimeSessions) ? input.runtimeSessions : sessions;
   const runtimeBySource = runtimeItems.reduce((states, item) => {
     const source = safeText(item?.source || item?.agent);
@@ -348,7 +383,9 @@ function buildRealtimeSessionViewModel(input = {}) {
     sessions,
     session_tree: buildSessionTree(sessions),
     activity_points: buildActivityPoints(rawRows),
-    requests: buildRequests(rawRows),
+    requests: buildUsageRecords(rawRows.filter((row) => row.record_kind === "request_event")),
+    usage_records: buildUsageRecords(rawRows),
+    agent_range_summary: agentRangeSummary,
     agent_history: buildAgentHistory(input.agentHistory, runtimeBySource),
     summary: {
       active_agents: metric(new Set(sessions.filter((session) => session.state === "running").map((session) => session.source)).size, "agents", "partial", summaryEvidence),

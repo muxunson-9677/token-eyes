@@ -71,8 +71,9 @@ async function cmdServe(argv) {
   }
 
   try {
-    const { installLocalTrackerApp } = require("./init");
+    const { installLocalTrackerApp, refreshInstalledNotifyHandler } = require("./init");
     await installLocalTrackerApp({ appDir: path.join(trackerDir, "app") });
+    await refreshInstalledNotifyHandler({ trackerDir });
   } catch (e) {
     process.stdout.write(`Runtime refresh warning: ${e?.message || e}\n`);
   }

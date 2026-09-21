@@ -153,6 +153,8 @@ function parseSessionMeta(line) {
     id: item.payload.id,
     cwd: item.payload.cwd,
     threadSource: item.payload.thread_source,
+    parentSessionId: typeof item.payload.source?.subagent?.thread_spawn?.parent_thread_id === "string"
+      ? item.payload.source.subagent.thread_spawn.parent_thread_id : null,
   };
 }
 
@@ -253,13 +255,13 @@ async function readLatestModelEvidence(handle, fileSize) {
   return null;
 }
 
-async function readLifecycleFile(filePath, includeProjectLabel) {
+async function readLifecycleFile(filePath, includeProjectLabel, includeSubagents, nowMs) {
   let handle;
   try {
     handle = await fs.promises.open(filePath, "r");
     const stat = await handle.stat();
     const meta = await readSessionMeta(handle, stat.size);
-    if (!meta || meta.threadSource !== "user") return null;
+    if (!meta || (meta.threadSource !== "user" && !(includeSubagents && meta.threadSource === "subagent"))) return null;
     const [evidence, modelEvidence] = await Promise.all([
       readLatestLifecycleEvidence(handle, stat.size),
       readLatestModelEvidence(handle, stat.size),
@@ -271,7 +273,10 @@ async function readLifecycleFile(filePath, includeProjectLabel) {
       agent: "codex",
       ...project,
       sessionId,
-      status: evidence.status,
+      ...(meta.parentSessionId ? { parentSessionId: safeSessionId(meta.parentSessionId, "") } : {}),
+      status: evidence.status === "running"
+        && nowMs - Math.max(stat.mtimeMs, Date.parse(evidence.updatedAt)) > 24 * 60 * 60 * 1000
+        ? "unknown" : evidence.status,
       updatedAt: evidence.updatedAt,
       ...(evidence.taskId ? { taskId: evidence.taskId } : {}),
       ...(modelEvidence?.model ? { model: modelEvidence.model } : {}),
@@ -287,6 +292,7 @@ async function collectCodexLifecycleSessions({
   homes = [],
   nowMs = Date.now(),
   includeProjectLabels = false,
+  includeSubagents = false,
 } = {}) {
   const cutoffMs = nowMs - LOOKBACK_MS;
   const files = [];
@@ -298,7 +304,7 @@ async function collectCodexLifecycleSessions({
 
   const sessions = [];
   for (const item of files.slice(0, MAX_FILES)) {
-    const session = await readLifecycleFile(item.filePath, includeProjectLabels === true);
+    const session = await readLifecycleFile(item.filePath, includeProjectLabels === true, includeSubagents === true, nowMs);
     if (session) sessions.push(session);
     if (sessions.length >= MAX_SESSIONS) break;
   }

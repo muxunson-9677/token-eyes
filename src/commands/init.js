@@ -845,6 +845,40 @@ function normalizePlatform(value) {
   return "unknown";
 }
 
+async function refreshInstalledNotifyHandler({ trackerDir }) {
+  const notifyPath = path.join(trackerDir, "..", "bin", "notify.cjs");
+  let stat;
+  try {
+    stat = await fs.lstat(notifyPath);
+  } catch (error) {
+    if (error.code === "ENOENT") return "missing";
+    throw error;
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) return "unrecognized";
+  const existing = (await fs.readFile(notifyPath, "utf8")).replace(/\r\n/g, "\n");
+  const expected = buildNotifyHandler({ trackerDir, packageName: "tokentracker-cli" });
+  if (existing === expected) return "current";
+  // Match the entire prior generated template, including its embedded paths.
+  // A custom script or a handler belonging to another installation is not ours.
+  const legacyGate = `    let deviceToken = process.env.TOKENTRACKER_DEVICE_TOKEN || null;
+    if (!deviceToken) {
+      try {
+        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (cfg && typeof cfg.deviceToken === 'string') deviceToken = cfg.deviceToken;
+      } catch (_) {}
+    }
+    const canSync = Boolean(deviceToken && deviceToken.length > 0);
+`;
+  const migrated = existing
+    .replace("  const configPath = path.join(trackerDir, 'config.json');\n", "")
+    .replace(legacyGate, "")
+    .replace("if (canSync && now - last > 20_000)", "if (now - last > 20_000)");
+  if (migrated !== expected) return "unrecognized";
+  await writeFileAtomic(notifyPath, expected);
+  await fs.chmod(notifyPath, stat.mode & 0o777).catch(() => {});
+  return "updated";
+}
+
 function buildNotifyHandler({ trackerDir, packageName }) {
   // Keep this file dependency-free: Node built-ins only.
   // It must never block Codex; it spawns sync in the background and exits 0.
@@ -884,7 +918,6 @@ const codexOriginalPath = ${JSON.stringify(originalPath)};
 const codeOriginalPath = ${JSON.stringify(path.join(trackerDir, "code_notify_original.json"))};
 const trackerBinPath = ${JSON.stringify(trackerBinPath)};
   const depsMarkerPath = path.join(trackerDir, 'app', 'bin', 'tracker.js');
-  const configPath = path.join(trackerDir, 'config.json');
 const fallbackPkg = ${JSON.stringify(fallbackPkg)};
 const selfPath = path.resolve(__filename);
 const home = os.homedir();
@@ -922,18 +955,10 @@ if (debugEnabled) {
 // Throttle spawn: at most once per 20 seconds.
 try {
     const throttlePath = path.join(trackerDir, 'sync.throttle');
-    let deviceToken = process.env.TOKENTRACKER_DEVICE_TOKEN || null;
-    if (!deviceToken) {
-      try {
-        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (cfg && typeof cfg.deviceToken === 'string') deviceToken = cfg.deviceToken;
-      } catch (_) {}
-    }
-    const canSync = Boolean(deviceToken && deviceToken.length > 0);
     const now = Date.now();
     let last = 0;
     try { last = Number(fs.readFileSync(throttlePath, 'utf8')) || 0; } catch (_) {}
-    if (canSync && now - last > 20_000) {
+    if (now - last > 20_000) {
     try { fs.writeFileSync(throttlePath, String(now), 'utf8'); } catch (_) {}
     const hasLocalRuntime = fs.existsSync(trackerBinPath);
     const hasLocalDeps = fs.existsSync(depsMarkerPath);
@@ -1019,7 +1044,7 @@ function isRunnableCommand(command) {
 `;
 }
 
-module.exports = { cmdInit, buildNotifyHandler, copyTreeWithTransientRetry, installLocalTrackerApp, readFirstSyncTotals };
+module.exports = { cmdInit, buildNotifyHandler, refreshInstalledNotifyHandler, copyTreeWithTransientRetry, installLocalTrackerApp, readFirstSyncTotals };
 
 async function probeFile(p) {
   try {

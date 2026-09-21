@@ -311,7 +311,7 @@ describe("WidgetsPage Windows desktop widget", () => {
     fireEvent.animationEnd(statusSelect, { animationName: "tt-widget-press-rebound" });
     expect(statusSelect).not.toHaveClass("tt-widget-click-bounce");
 
-    const refresh = document.querySelector(".tt-widget-limits > header > button");
+    const refresh = screen.getByRole("button", { name: copy("widgets.reference.refresh_data") });
     expect(refresh).not.toBeNull();
     fireEvent.pointerDown(refresh, { button: 0 });
     expect(refresh).toHaveClass("tt-widget-click-bounce");
@@ -1438,6 +1438,13 @@ describe("WidgetsPage Windows desktop widget", () => {
     const scheduledToggle = screen.getByRole("button", {
       name: copy("settings.token_plan.scheduled_group", { count: 1 }),
     });
+    const refreshToggle = screen.getByRole("button", {
+      name: copy("widgets.reference.refresh_data"),
+    });
+    expect(expiredToggle.closest("header")).toBe(refreshToggle.closest("header"));
+    expect(expiredToggle.parentElement).toBe(refreshToggle.parentElement);
+    expect(refreshToggle.nextElementSibling).toBe(expiredToggle);
+    expect(expiredToggle).toHaveClass("tt-raised-control", "tt-pressable");
     expect(expiredToggle).toHaveAttribute("aria-expanded", "false");
     expect(expiredToggle).toHaveAttribute("aria-controls", "widget-expired-limit-plan-panel");
     expect(scheduledToggle).toHaveAttribute("aria-expanded", "false");
