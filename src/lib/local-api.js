@@ -62,6 +62,7 @@ const {
   createConfiguredTokenPlanResolver,
   normalizeBillingMode,
   normalizeUsageAttribution,
+  expandUsageIdentitySnapshot,
   queueUsageIdentity,
 } = require("./usage-attribution");
 
@@ -375,19 +376,15 @@ async function buildRequestUsageRecordsList({
   }
 
   const identity = row => JSON.stringify([row.source, row.model || "unknown", row.hour_start]);
-  const aggregateTotals = new Map(), rawTotals = new Map();
-  for (const row of allRecords) {
-    const target = row.record_kind === "aggregate_bucket" ? aggregateTotals : rawTotals;
-    const key = identity(row);
-    target.set(key, (target.get(key) || 0) + Number(row.total_tokens || 0));
-  }
-  const merged = allRecords.filter(row => {
-    if (row.usage_available === false) return true;
-    const key = identity(row);
-    if (!aggregateTotals.has(key) || !rawTotals.has(key)) return true;
-    const covered = aggregateTotals.get(key) === rawTotals.get(key);
-    return row.record_kind === "aggregate_bucket" ? !covered : covered;
-  });
+  const rawKeys = new Set(allRecords.filter(row => row.record_kind !== "aggregate_bucket" && row.usage_available !== false).map(identity));
+  // Request evidence and queue snapshots have independent coverage. Preserve both,
+  // but never add overlapping aggregates to the request list or infer replacement
+  // from equal totals (which says nothing about account or billing attribution).
+  const queueBaselineRecords = buildAggregateUsageRecords(allRows, {
+    fromKey: fromKeyRur, toKey: toKeyRur, timeZoneContext, pricingOptions,
+    sources: effectiveSources, models, includeCodex: true,
+  }).filter(row => rawKeys.has(identity(row)));
+  const merged = allRecords.filter(row => row.record_kind !== "aggregate_bucket" || !rawKeys.has(identity(row)));
   allRecords.splice(0, allRecords.length, ...merged);
   aggregateOnlySources = [...new Set(allRecords.filter(row => row.record_kind === "aggregate_bucket").map(row => row.source))];
   for (const record of allRecords) {
@@ -403,7 +400,7 @@ async function buildRequestUsageRecordsList({
   const hasMore = sourceTruncated || allRecords.length > limit;
   if (allRecords.length > limit) allRecords.length = limit;
 
-  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur, hasMore };
+  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur, hasMore, queueBaselineRecords };
 }
 
 // ---------------------------------------------------------------------------
@@ -612,12 +609,14 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
   // Deduplicate: each sync appends cumulative totals per bucket, so for
   // each (source, model, hour_start, billing_mode) keep only the latest entry.
   const seen = new Map();
+  const snapshotBases = new Set(parsed.filter(row => row.usage_identity_version === 1).map(row => queueUsageIdentity(row)));
   for (const row of parsed) {
     // A pre-release OpenClaw smoke check accidentally wrote this exact
     // synthetic fixture to the default queue. Ignore only its full fingerprint;
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
-    const key = dedupeMode === "realtime"
+    const key = snapshotBases.has(queueUsageIdentity(row)) ? queueUsageIdentity(row)
+      : dedupeMode === "realtime"
       ? queueUsageIdentity(row, { dimensionsKey: `${providerQueueDimensionsKey(row)}\u0001session:${row.session_key || row.session_id || ""}` })
       : dedupeMode === "dimensions"
       ? queueUsageIdentity(row, { dimensionsKey: queueRowDimensionsKey(row) })
@@ -628,7 +627,7 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
         : queueUsageIdentity(row);
     seen.set(key, normalizeQueueRow(row));
   }
-  const rows = Array.from(seen.values());
+  const rows = Array.from(seen.values()).flatMap(expandUsageIdentitySnapshot);
   queueDataCache.delete(cacheKey);
   queueDataCache.set(cacheKey, { fingerprint, rows });
   while (queueDataCache.size > QUEUE_DATA_CACHE_MAX_ENTRIES) {
@@ -1210,7 +1209,7 @@ function buildAggregateUsageRecords(rows, options = {}) {
   for (const row of rows) {
     if (!row || !row.hour_start) continue;
     const src = normalizeSource(row.source);
-    if (!src || src === "codex") continue;
+    if (!src || (src === "codex" && !options.includeCodex)) continue;
     if (sources && !sources.includes(src)) continue;
     const model = String(row.model || "unknown");
     const modelKey = model.trim().toLowerCase();
@@ -1239,6 +1238,7 @@ function buildAggregateUsageRecords(rows, options = {}) {
       status: null,
       latency_ms: null,
       first_token_ms: null,
+      ...normalizeUsageAttribution(row),
       request_source: "queue_aggregate",
       record_kind: "aggregate_bucket",
     });
@@ -3472,11 +3472,10 @@ function createLocalApiHandler({
     });
     if (codexRows.length === 0) return rows;
     const key = row => JSON.stringify([row.source, row.model || "unknown", row.hour_start]);
-    const queued = new Map(), raw = new Map();
-    for (const row of rows.filter(row => row.source === "codex")) queued.set(key(row), (queued.get(key(row)) || 0) + Number(row.total_tokens || 0));
-    for (const row of codexRows) raw.set(key(row), (raw.get(key(row)) || 0) + Number(row.total_tokens || 0));
-    const replace = new Set([...queued.keys()].filter(id => raw.get(id) === queued.get(id)));
-    return [...rows.filter(row => !replace.has(key(row))), ...codexRows.filter(row => !queued.has(key(row)) || replace.has(key(row)))];
+    const queued = new Set(rows.filter(row => row.source === "codex").map(key));
+    // Queue snapshots retain historical and attribution evidence. Raw logs only
+    // fill buckets absent from the queue; request detail is available separately.
+    return [...rows, ...codexRows.filter(row => !queued.has(key(row)))];
   }
 
   function normalizeAgentDefaultPricingUpdatedAt(raw, pricing, legacyUpdatedAt) {
@@ -7124,7 +7123,7 @@ function createLocalApiHandler({
           agent: model.source,
           model: model.model,
           tokens: model.tokens,
-          costUsd: model.cost_usd,
+          costUsd: model.pricing_coverage === "complete" ? model.cost_usd : null,
         }));
         const viewModel = buildWidgetViewModel({
           agent: url.searchParams.get("agent") || "all",
@@ -9155,6 +9154,7 @@ function createLocalApiHandler({
           let fromKeyRur;
           let toKeyRur;
           let hasMore;
+          let queueBaselineRecords;
 
           const cachedList = readRequestUsageRecordsListCache(listCacheKey);
           if (cachedList) {
@@ -9164,6 +9164,7 @@ function createLocalApiHandler({
             fromKeyRur = cachedList.fromKeyRur;
             toKeyRur = cachedList.toKeyRur;
             hasMore = cachedList.hasMore;
+            queueBaselineRecords = cachedList.queueBaselineRecords;
           } else {
             const built = await buildRequestUsageRecordsList({
               qp,
@@ -9184,6 +9185,7 @@ function createLocalApiHandler({
             fromKeyRur = built.fromKeyRur;
             toKeyRur = built.toKeyRur;
             hasMore = built.hasMore;
+            queueBaselineRecords = built.queueBaselineRecords;
             writeRequestUsageRecordsListCache(listCacheKey, {
               allRecords,
               aggregateOnlySources,
@@ -9191,6 +9193,7 @@ function createLocalApiHandler({
               fromKeyRur,
               toKeyRur,
               hasMore,
+              queueBaselineRecords,
             });
           }
 
@@ -9254,7 +9257,7 @@ function createLocalApiHandler({
               limit: Number(limit),
               returned_count: pagedRecords.length,
               total_count: totalCount,
-              totals_scope: totals.usage_coverage !== "complete" ? "unknown" : hasMore ? "returned_subset" : "all_matching",
+              totals_scope: queueBaselineRecords.length > 0 || totals.usage_coverage !== "complete" ? "unknown" : hasMore ? "returned_subset" : "all_matching",
               has_more: Boolean(hasMore),
             },
             availability: {
@@ -9263,6 +9266,7 @@ function createLocalApiHandler({
               latency: hasLatencyData ? "measured" : "unavailable",
             },
             queue_baseline_totals: queueBaselineTotals,
+            queue_baseline_records: queueBaselineRecords,
           });
         } catch (e) {
           console.error("[LocalAPI] tokentracker-request-usage-records error:", e?.message || e);

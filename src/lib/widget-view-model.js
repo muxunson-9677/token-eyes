@@ -308,21 +308,22 @@ function buildTotals(usage, selectedAgent) {
     const name = safeLabel(item?.model, "unknown");
     const current = models.get(name) || { name, tokens: 0, costUsd: 0 };
     current.tokens += finiteNonNegative(item?.tokens);
-    current.costUsd += finiteNonNegative(item?.costUsd);
+    current.costUsd = current.costUsd === null || item?.costUsd == null || !Number.isFinite(Number(item.costUsd))
+      ? null : current.costUsd + finiteNonNegative(item.costUsd);
     models.set(name, current);
   }
   const entries = Array.from(models.values())
     .sort((left, right) => right.tokens - left.tokens || left.name.localeCompare(right.name));
   const tokens = entries.reduce((total, model) => total + model.tokens, 0);
-  const costUsd = entries.reduce((total, model) => total + model.costUsd, 0);
+  const costUsd = entries.some(model => model.costUsd === null) ? null : entries.reduce((total, model) => total + model.costUsd, 0);
   return {
     tokens: Math.round(tokens),
-    costUsd: Number(costUsd.toFixed(6)),
+    costUsd: costUsd === null ? null : Number(costUsd.toFixed(6)),
     models: entries.slice(0, 24).map((model) => ({
       name: model.name,
       tokens: Math.round(model.tokens),
       share: tokens > 0 ? Number(((model.tokens / tokens) * 100).toFixed(1)) : 0,
-      costUsd: Number(model.costUsd.toFixed(6)),
+      costUsd: model.costUsd === null ? null : Number(model.costUsd.toFixed(6)),
     })),
   };
 }

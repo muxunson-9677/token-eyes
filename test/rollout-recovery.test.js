@@ -126,10 +126,19 @@ test('mixed account evidence never assigns the whole bucket to its last account'
   const f=await fixture(t); const a=codex('10',100),b=codex('11',300);
   Object.assign(a.payload.info,{billing_mode:'api_key',provider_id:'deepseek',account_ref:'account/deepseek/a'});
   Object.assign(b.payload.info,{billing_mode:'api_key',provider_id:'deepseek',account_ref:'account/deepseek/b'});
-  await fs.writeFile(f.file,[a,b].map(JSON.stringify).join('\n')+'\n');
+  await fs.writeFile(f.file,JSON.stringify(a)+'\n');
+  await parseRolloutIncremental({...f,rolloutFiles:[f.file]});
+  await fs.appendFile(f.file,JSON.stringify(b)+'\n');
   await parseRolloutIncremental({...f,rolloutFiles:[f.file]});
   const final=(await rows(f.queuePath)).at(-1);
   assert.equal(final.total_tokens,300);assert.equal(final.account_ref,undefined);
+  const {readQueueData}=require('../src/lib/local-api');
+  const actual=readQueueData(f.queuePath);
+  assert.equal(actual.length,2);
+  assert.deepEqual(actual.map(row=>[row.account_ref,row.total_tokens]).sort(),[['account/deepseek/a',100],['account/deepseek/b',200]]);
+  const {auditRows}=require('../scripts/audit-token-correctness.cjs');
+  assert.equal(auditRows(await rows(f.queuePath),{expectedRows:actual}).reconciliation.ok,true);
+  for(const dedupeMode of ['legacy','provider','dimensions','realtime']) assert.equal(readQueueData(f.queuePath,{dedupeMode}).reduce((sum,row)=>sum+row.total_tokens,0),300);
 });
 
 test('Codex: data appended during a read is consumed only by the next checkpoint', async t => {

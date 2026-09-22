@@ -203,12 +203,12 @@ export interface DesktopWidgetViewModel {
   }>;
   totals: {
     tokens: number;
-    costUsd: number;
+    costUsd: number | null;
     models: Array<{
       name: string;
       tokens: number;
       share: number;
-      costUsd: number;
+      costUsd: number | null;
     }>;
   };
   pendingReset: {

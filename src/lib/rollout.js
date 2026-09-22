@@ -13,6 +13,7 @@ const {
   normalizeUsageAttribution,
   parseAttributionTimestamp,
   queueUsageIdentity,
+  usageAttributionIdentity,
 } = require("./usage-attribution");
 
 const DEFAULT_SOURCE = "codex";
@@ -149,7 +150,7 @@ async function parseRolloutIncremental({
       typeof entry === "string"
         ? defaultSource
         : normalizeSourceInput(entry?.source) || defaultSource;
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
@@ -196,7 +197,7 @@ async function parseRolloutIncremental({
       publicRepoCache,
       publicRepoResolver,
       seenCodexEvents,
-      sessionId: prev?.sessionId || codexSessionIdFromPath(filePath),
+      sessionId: codexSessionIdFromPath(filePath) || prev?.sessionId,
     });
 
     cursors.files[key] = {
@@ -282,7 +283,7 @@ async function parseClaudeIncremental({
       typeof entry === "string"
         ? defaultSource
         : normalizeSourceInput(entry?.source) || defaultSource;
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
@@ -395,7 +396,7 @@ async function parseGeminiIncremental({
       typeof entry === "string"
         ? defaultSource
         : normalizeSourceInput(entry?.source) || defaultSource;
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
@@ -514,7 +515,7 @@ async function parseOpencodeIncremental({
       typeof entry === "string"
         ? defaultSource
         : normalizeSourceInput(entry?.source) || defaultSource;
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
@@ -653,7 +654,7 @@ async function parseOpenclawIncremental({
       typeof entry === "string"
         ? defaultSource
         : normalizeSourceInput(entry?.source) || defaultSource;
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
@@ -965,12 +966,14 @@ async function parseRolloutFile({
   });
   const st = await fs.stat(filePath);
   if (startOffset > st.size) { startOffset = 0; lastTotal = null; }
+  let sessionMetaSeen = startOffset > 0;
   let endOffset = startOffset;
   if (startOffset >= st.size) {
     return {
       endOffset,
       lastTotal,
       lastModel,
+      sessionId,
       eventsAggregated: 0,
       forked: forkTracker.forked,
       replayDone: forkTracker.replayDone,
@@ -1007,7 +1010,10 @@ async function parseRolloutFile({
     } catch (_e) {
       continue;
     }
-    if (obj?.type === "session_meta" && typeof obj.payload?.id === "string") sessionId = obj.payload.id;
+    if (obj?.type === "session_meta" && !sessionMetaSeen) {
+      sessionId = codexSessionIdFromPath(filePath) || obj.payload?.id || sessionId;
+      sessionMetaSeen = true;
+    }
 
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
@@ -1136,7 +1142,7 @@ async function parseClaudeFile({
   repoRoot,
   seenMessageHashes,
 }) {
-  const st = await fs.stat(filePath).catch(() => null);
+  const st = await fs.stat(filePath).catch(missingFileOrThrow);
   if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
 
   if (startOffset > st.size) startOffset = 0;
@@ -1263,6 +1269,22 @@ async function parseGeminiFile({
     const upstreamTokens = Object.fromEntries(["input", "output", "cached", "thoughts", "tool", "total"].filter(field => msg.tokens[field] != null).map(field => [field, msg.tokens[field]]));
     const next = { model: model || DEFAULT_MODEL, bucketStart, totals: { ...currentTotals, conversation_count: 1 }, upstream_tokens: upstreamTokens };
     const previous = messageUsage[key];
+    const revisionMs = Date.parse(session.lastUpdated);
+    const revision = { filePath, updatedAt: Number.isFinite(revisionMs) ? revisionMs : null };
+    const { revision: previousRevision, legacy, ...previousUsage } = previous || {};
+    const sameUsage = previous && JSON.stringify(previousUsage) === JSON.stringify(next);
+    if (previous && !legacy) {
+      const ordered = revision.updatedAt != null && previousRevision?.updatedAt != null;
+      if (ordered && revision.updatedAt < previousRevision.updatedAt) continue;
+      if (!sameUsage && !(ordered && revision.updatedAt > previousRevision.updatedAt) &&
+          !(revision.updatedAt == null && previousRevision?.updatedAt == null && previousRevision?.filePath === filePath)) {
+        throw new Error("Gemini message revision conflict: copies lack an unambiguous update order");
+      }
+      if (sameUsage) {
+        if (ordered && revision.updatedAt > previousRevision.updatedAt) previous.revision = revision;
+        continue;
+      }
+    }
     // Legacy cursors cannot establish earlier per-message contributions. Preserve history;
     // seed identities without re-adding it, and explicitly retain the unreconciled marker.
     if (!previous && legacyCursor && idx <= legacyCursor.lastIndex) { messageUsage[key] = { ...next, legacy: true }; continue; }
@@ -1284,7 +1306,7 @@ async function parseGeminiFile({
         projectTouchedBuckets.add(projectBucketKey(projectKey, source, entry.bucketStart, entry.model));
       }
     }
-    messageUsage[key] = next;
+    messageUsage[key] = { ...next, revision };
     eventsAggregated++;
     totals = currentTotals;
   }
@@ -1322,27 +1344,8 @@ async function parseOpencodeMessageFile({
       ? fallbackEntry.lastTotals
       : legacyTotals;
 
-  const raw = await fs.readFile(filePath, "utf8").catch(() => "");
-  if (!raw.trim()) {
-    return {
-      messageKey: fallbackKey,
-      lastTotals: fallbackLastTotals,
-      eventsAggregated: 0,
-      shouldUpdate: false,
-    };
-  }
-
-  let msg;
-  try {
-    msg = JSON.parse(raw);
-  } catch (_e) {
-    return {
-      messageKey: fallbackKey,
-      lastTotals: fallbackLastTotals,
-      eventsAggregated: 0,
-      shouldUpdate: false,
-    };
-  }
+  const raw = await fs.readFile(filePath, "utf8");
+  const msg = JSON.parse(raw);
 
   const messageKey = deriveOpencodeMessageKey(msg, filePath);
   const prev = messageIndex && messageKey ? messageIndex[messageKey] : null;
@@ -1423,6 +1426,18 @@ function addAttributedTotals(bucket, delta, evidence) {
     };
   }
   const attributedBucket = bucket.attributionBuckets[mode];
+  if (attributedBucket.identityBuckets || attribution.account_ref || attribution.credential_ref || attribution.plan_ref) {
+    if (!attributedBucket.identityBuckets) {
+      attributedBucket.identityBuckets = {};
+      if (!isAllZeroUsage(attributedBucket.totals)) {
+        const previous = normalizeUsageAttribution(attributedBucket.attribution);
+        attributedBucket.identityBuckets[usageAttributionIdentity(previous)] = { totals: cloneTotals(attributedBucket.totals), attribution: previous };
+      }
+    }
+    const identity = usageAttributionIdentity(attribution);
+    const identityBucket = attributedBucket.identityBuckets[identity] ||= { totals: initTotals(), attribution };
+    addTotals(identityBucket.totals, delta);
+  }
   mergeProviderAttribution(attributedBucket, attribution);
   addTotals(attributedBucket.totals, delta);
   addTotals(bucket.totals, delta);
@@ -1455,7 +1470,12 @@ function attributionSlices(bucket) {
   const entries = Object.values(bucket?.attributionBuckets || {}).filter(
     (entry) => entry?.totals,
   );
-  if (entries.length > 0) return entries;
+  if (entries.length > 0) return entries.map(entry => entry.identityBuckets ? {
+    ...entry,
+    attribution: { ...entry.attribution, usage_identity_slices: Object.values(entry.identityBuckets)
+      .sort((a, b) => usageAttributionIdentity(a.attribution).localeCompare(usageAttributionIdentity(b.attribution)))
+      .map(slice => ({ ...slice.totals, ...slice.attribution })) },
+  } : entry);
   return [{ totals: bucket.totals, attribution: normalizeUsageAttribution(bucket.attribution) }];
 }
 
@@ -1479,9 +1499,18 @@ function mergeAttributionSlices(...buckets) {
         );
       }
       addTotals(merged.get(mode).totals, slice.totals);
+      const target = merged.get(mode);
+      target.identityBuckets ||= {};
+      const contributions = slice.attribution.usage_identity_slices || [{ ...slice.totals, ...slice.attribution }];
+      for (const contribution of contributions) {
+        const attribution = normalizeUsageAttribution(contribution);
+        const identity = usageAttributionIdentity(attribution);
+        const entry = target.identityBuckets[identity] ||= { totals: initTotals(), attribution };
+        addTotals(entry.totals, contribution);
+      }
     }
   }
-  return [...merged.values()];
+  return attributionSlices({ attributionBuckets: Object.fromEntries(merged) });
 }
 
 function attributionQueuedKey(bucket, outputModel, slice) {
@@ -1536,6 +1565,9 @@ function serializeUsageQueueRecord(record, evidence) {
   return JSON.stringify({
     ...record,
     ...normalizeUsageAttribution(evidence),
+    ...(evidence?.usage_identity_slices && Number(record.total_tokens) > 0 ? {
+      usage_identity_version: 1, usage_identity_slices: evidence.usage_identity_slices,
+    } : {}),
   });
 }
 
@@ -2854,10 +2886,16 @@ function coerceEpochMs(v) {
   return Math.floor(n);
 }
 
+function missingFileOrThrow(error) {
+  if (error?.code === "ENOENT") return null;
+  throw error;
+}
+
 async function safeReadDir(dir) {
   try {
     return await fs.readdir(dir, { withFileTypes: true });
-  } catch (_e) {
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
     return [];
   }
 }
@@ -3131,6 +3169,61 @@ async function parseCursorApiIncremental({
   let eventsAggregated = 0;
   const cb = typeof onProgress === "function" ? onProgress : null;
   const total = records.length;
+
+  if (records.some(record => record.account_ref)) {
+    if (records.some(record => !record.account_ref)) throw new Error("Cursor export contains unscoped account usage");
+    const accountBuckets = cursors.cursorApi?.accountBuckets || {};
+    const fetched = new Map();
+    for (const record of records) {
+      const hourStart = toUtcHalfHourStart(record.date);
+      if (!hourStart) throw new Error("Cursor export timestamp unavailable");
+      const model = normalizeModelInput(record.model) || DEFAULT_MODEL;
+      const key = bucketKey(defaultSource, model, hourStart);
+      const attribution = normalizeUsageAttribution(record);
+      const identity = usageAttributionIdentity(attribution);
+      const sliceKey = JSON.stringify([key, identity]);
+      if (!fetched.has(sliceKey)) fetched.set(sliceKey, { key, model, hourStart, attribution, totals: initTotals() });
+      const delta = require("./cursor-config").normalizeCursorUsage(record);
+      delta.conversation_count = 1;
+      addTotals(fetched.get(sliceKey).totals, delta);
+      if (!latestTs || record.date > latestTs) latestTs = record.date;
+    }
+    for (const slice of fetched.values()) {
+      const existing = hourlyState.buckets[slice.key];
+      if (existing?.totals?.total_tokens > 0 && !Object.values(accountBuckets).some(entry => entry.key === slice.key)) {
+        throw new Error("Cursor legacy account coverage requires history reconciliation");
+      }
+      touchedBuckets.add(slice.key);
+    }
+    const representedAccounts = new Set([...fetched.values()].map(slice => JSON.stringify([slice.key, slice.attribution.account_ref])));
+    for (const [sliceKey, slice] of Object.entries(accountBuckets)) {
+      if (representedAccounts.has(JSON.stringify([slice.key, slice.attribution.account_ref]))) delete accountBuckets[sliceKey];
+    }
+    for (const [sliceKey, slice] of fetched) accountBuckets[sliceKey] = slice;
+    for (const key of touchedBuckets) {
+      const slices = Object.values(accountBuckets).filter(entry => entry.key === key);
+      const { model, hourStart } = slices[0];
+      const bucket = getHourlyBucket(hourlyState, defaultSource, model, hourStart);
+      const previousModes = Object.keys(bucket.attributionBuckets || {});
+      bucket.totals = initTotals();
+      bucket.attributionBuckets = {};
+      for (const slice of slices) {
+        const mode = slice.attribution.billing_mode;
+        const modeBucket = bucket.attributionBuckets[mode] ||= { totals: initTotals(), attribution: { billing_mode: mode, provider_id: "cursor" }, identityBuckets: {} };
+        addTotals(bucket.totals, slice.totals);
+        addTotals(modeBucket.totals, slice.totals);
+        modeBucket.identityBuckets[usageAttributionIdentity(slice.attribution)] = slice;
+      }
+      // A mode revision must also replace its previously queued snapshot.
+      for (const mode of previousModes) {
+        bucket.attributionBuckets[mode] ||= { totals: initTotals(), attribution: { billing_mode: mode, provider_id: "cursor" } };
+      }
+    }
+    const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+    cursors.hourly = hourlyState;
+    cursors.cursorApi = { ...cursors.cursorApi, accountBuckets, lastRecordTimestamp: latestTs, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: total, eventsAggregated: records.length, bucketsQueued };
+  }
 
   if (records.length > 0) {
     // An export does not prove coverage outside the buckets it actually carries.
@@ -5371,16 +5464,10 @@ async function parseCodebuddyFamilyIncremental({
     const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
 
-    let stream;
-    try {
-      stream = fssync.createReadStream(filePath, {
-        encoding: "utf8",
-        start: startOffset,
-      });
-    } catch { continue; }
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    for await (const line of rl) {
+    let endOffset = startOffset;
+    for await (const record of readCompleteJsonl(filePath, startOffset)) {
+      const { line } = record;
+      endOffset = record.endOffset;
       if (!line || !line.trim()) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
@@ -5499,12 +5586,10 @@ async function parseCodebuddyFamilyIncremental({
       }
     }
 
-    let postStat = stat;
-    try { postStat = fssync.statSync(filePath); } catch {}
     fileOffsets[filePath] = {
-      size: postStat.size,
-      mtimeMs: postStat.mtimeMs,
-      ino: postStat.ino,
+      size: endOffset,
+      mtimeMs: stat.mtimeMs,
+      ino: stat.ino,
     };
   }
 
@@ -6575,13 +6660,17 @@ async function parseDeepSeekHarnessIncremental({
   let filesProcessed = 0;
   let eventsAggregated = 0;
   let migrationFilesPending = 0;
+  const readErrorCodes = [];
+  let sourceAvailable = false;
 
   for (let index = 0; index < files.length; index++) {
     const filePath = files[index];
     let stat;
     try {
       stat = await fs.stat(filePath);
-    } catch {
+      sourceAvailable = true;
+    } catch (error) {
+      readErrorCodes.push(error.code || error.name || "read_error");
       if (bucketMigrationPending) migrationFilesPending += 1;
       continue;
     }
@@ -6600,7 +6689,8 @@ async function parseDeepSeekHarnessIncremental({
     let text;
     try {
       text = await readDeepSeekHarnessSession(filePath);
-    } catch {
+    } catch (error) {
+      readErrorCodes.push(error.code || error.name || "read_error");
       if (bucketMigrationPending) migrationFilesPending += 1;
       continue;
     }
@@ -6702,7 +6792,7 @@ async function parseDeepSeekHarnessIncremental({
   };
   if (migrationComplete) delete nextDeepSeekHarnessState.bucketMigrationAttribution;
   cursors.deepseekHarness = nextDeepSeekHarnessState;
-  return { filesProcessed, eventsAggregated, bucketsQueued };
+  return { filesProcessed, eventsAggregated, bucketsQueued, sourceAvailable, ...(readErrorCodes.length ? { readErrorCodes: [...new Set(readErrorCodes)] } : {}) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9611,7 +9701,7 @@ async function parseAntigravityIncremental({
       typeof entry === "string"
         ? defaultSource
         : normalizeSourceInput(entry?.source) || defaultSource;
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
@@ -9993,7 +10083,7 @@ async function collectRolloutRequestUsageRecords(options) {
 
   const candidateFiles = [];
   for (const filePath of files) {
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(missingFileOrThrow);
     if (!st || !st.isFile()) continue;
     if (fromTs != null && st.mtimeMs < fromTs) continue;
     candidateFiles.push({ filePath, mtimeMs: st.mtimeMs });
@@ -10005,6 +10095,7 @@ async function collectRolloutRequestUsageRecords(options) {
   for (const { filePath } of candidateFiles) {
 
     let sessionId = codexSessionIdFromPath(filePath) || path.basename(filePath);
+    let sessionMetaSeen = false;
     let lastTotal = null;
     const forkTracker = createForkReplayTracker({
       sessionId: codexSessionIdFromPath(filePath),
@@ -10051,7 +10142,10 @@ async function collectRolloutRequestUsageRecords(options) {
         ) {
           if (obj.type === "session_meta") {
             forkTracker.onSessionMeta(obj.payload);
-            if (typeof obj.payload.id === "string") sessionId = obj.payload.id;
+            if (!sessionMetaSeen) {
+              sessionId = codexSessionIdFromPath(filePath) || obj.payload.id || sessionId;
+              sessionMetaSeen = true;
+            }
           }
           if (obj.type === "turn_context") {
             forkTracker.onTurnContext(obj.payload);
@@ -10501,8 +10595,10 @@ function transactionalIncremental(parse) {
     }
     for (const key of Object.keys(options.cursors)) delete options.cursors[key];
     Object.assign(options.cursors, staged);
-    if (health) {
-      const readable = result.filesProcessed > 0 || result.recordsProcessed > 0 || result.messagesProcessed > 0 || [options.dbPath, options.jsonlPath].some(file => file && fssync.existsSync(file) && fssync.statSync(file).isFile()) || Array.isArray(options.records);
+    if (health && result.readErrorCodes?.length) {
+      health[source] = { ...health[source], status: "error", last_attempt_at: attemptedAt, error_code: result.readErrorCodes[0] };
+    } else if (health) {
+      const readable = result.sourceAvailable === true || result.filesProcessed > 0 || result.recordsProcessed > 0 || result.messagesProcessed > 0 || [options.dbPath, options.jsonlPath].some(file => file && fssync.existsSync(file) && fssync.statSync(file).isFile()) || Array.isArray(options.records);
       health[source] = { ...health[source], status: readable ? "ok" : "missing", last_attempt_at: attemptedAt, ...(readable ? { last_successful_at: attemptedAt } : {}), error_code: null };
     }
     return result;

@@ -132,6 +132,7 @@ test("desktop widget endpoint composes existing usage, limits, lifecycle, and re
     const body = res.json();
     assert.equal(body.selectedAgent, "codex");
     assert.equal(body.totals.tokens, 100);
+    assert.equal(body.totals.costUsd,null,"missing pricing must not become zero cost");
     assert.equal(body.totals.models[0].name, "gpt-5");
     assert.equal(body.projectStatus.yellow, 1);
     assert.equal(body.projectStatus.projects[0].label, "Token Eyes");

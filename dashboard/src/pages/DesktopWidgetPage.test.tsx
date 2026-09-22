@@ -1097,3 +1097,8 @@ describe("DesktopWidgetPage", () => {
     }
   });
 });
+
+it('preserves unknown widget cost while formatting genuine zero',()=>{
+ expect(formatWidgetCompactCost(null)).toBe('—');
+ expect(formatWidgetCompactCost(0)).toBe('$0');
+});

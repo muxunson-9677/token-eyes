@@ -391,6 +391,7 @@ export function RealtimeSessionsPage() {
     return visibleAgentIds.has(sourceId(agent?.source));
   });
   const visibleSessions = sessions.filter((session) => visibleAgentIds.has(sourceId(session?.source)));
+  const hasHiddenSources = sessions.length !== visibleSessions.length || (data?.agent_history || []).length !== agentHistory.length;
   const preferredFocus = focusSession(visibleSessions);
   const selectableSources = agentHistory.map((agent) => sourceId(agent?.source)).filter(Boolean);
   const preferredSource = sourceId(preferredFocus?.source);
@@ -417,7 +418,7 @@ export function RealtimeSessionsPage() {
     setPeriod({ range: nextRange, month: nextMonth });
   };
   const stateCounts = useMemo(() => sessions.reduce((counts, session) => ({ ...counts, [session.state]: (counts[session.state] || 0) + 1 }), {}), [sessions]);
-  function delta(key) { return data?.summary?.[key]?.value != null && previousSummary.current?.[key]?.value != null ? data.summary[key].value - previousSummary.current[key].value : null; }
+  function delta(key) { return !hasHiddenSources && data?.summary?.[key]?.value != null && previousSummary.current?.[key]?.value != null ? data.summary[key].value - previousSummary.current[key].value : null; }
   const focusUsesAgentDay = focus?.total_tokens?.value == null && focus?.agent_day_usage?.total_tokens?.value != null;
   const focusUsage = focusUsesAgentDay ? focus.agent_day_usage : focus;
   const focusPoints = Array.isArray(focus?.activity_points) && focus.activity_points.length
@@ -431,7 +432,7 @@ export function RealtimeSessionsPage() {
     active_agents: { value: selectedRuntimeState === "running" ? 1 : ["idle", "completed", "interrupted", "error", "waiting_approval"].includes(selectedRuntimeState) ? 0 : null },
     realtime_tokens: rangeUsage?.total_tokens || focusUsage?.total_tokens,
     api_equivalent_value: rangeUsage?.api_equivalent_usd || focusUsage?.api_equivalent_usd,
-  } : data?.summary;
+  } : hasHiddenSources ? null : data?.summary;
   const focusSessionRef = focus?.session_id ? `session:${focus.session_id}` : null;
   const focusRequests = rangeUsage
     ? (data?.usage_records || []).filter((request) => sourceId(request.source) === activeSource)

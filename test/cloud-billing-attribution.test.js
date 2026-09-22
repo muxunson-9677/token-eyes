@@ -721,6 +721,20 @@ test("edge-first deployment falls back to one legacy base row without losing api
   assert.equal("billing_mode" in fallbackRows[0], false);
   assert.equal("billing_mode_snapshot" in fallbackRows[0], false);
   assert.equal("billing_mode_slices" in fallbackRows[0], false);
+  const snapshot={...row('api_key',300),usage_identity_version:1,usage_identity_slices:[
+    {...row('api_key',100),provider_id:'deepseek',account_ref:'account/deepseek/a'},
+    {...row('api_key',200),provider_id:'deepseek',account_ref:'account/deepseek/b'},
+  ]};
+  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'tt-cloud-account-snapshot-'));t.after(()=>fs.rm(tmp,{recursive:true,force:true}));
+  const queuePath=path.join(tmp,'queue.jsonl');
+  await fs.writeFile(queuePath,[row('api_key',100),snapshot].map(JSON.stringify).join('\n')+'\n');
+  const batch=await syncCommand.readQueueBatch(queuePath,0,500);
+  const response2=await edge.default(new Request('https://cloud.example/functions/tokentracker-ingest',{
+    method:'POST',headers:{Authorization:'Bearer device-token','Content-Type':'application/json'},body:JSON.stringify({buckets:batch.buckets})
+  }));
+  assert.equal(response2.status,200);assert.equal(fallbackRows.length,1);assert.equal(fallbackRows[0].total_tokens,300);
+  assert.equal('account_ref' in fallbackRows[0],false,'legacy cloud storage must not claim account precision');
+
 });
 
 test("new Edge excludes compatibility summaries while preserving exact mode slices", async (t) => {

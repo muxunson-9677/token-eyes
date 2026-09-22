@@ -501,3 +501,25 @@ test("a Codex terminal event without usage keeps its outcome but never reports e
  const body=await callEndpoint(queuePath,"/functions/tokentracker-request-usage-records?sources=codex&tz=UTC");
  assert.equal(body.records.length,1);assert.equal(body.records[0].status,499);assert.equal(body.records[0].total_tokens,null);assert.equal(body.records[0].cost_usd,null);assert.equal(body.totals.total_tokens,null);assert.equal(body.page.totals_scope,"unknown");
 });
+
+for (const source of ['codex','claude']) for (const [label,queued,raw] of [['queue-lag',100,150],['partial-raw-history',200,100],['equal-total-different-attribution',100,100]]) test('raw requests preserve independent queue evidence: '+source+' '+label,async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-independent-records-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');
+ await writeQueue(queuePath,[makeRow({source,model:'gpt-5',hour_start:FIXED_HOUR,input_tokens:queued,output_tokens:0,cached_input_tokens:0,total_tokens:queued,billing_mode:'token_plan',billing_mode_confidence:'explicit_runtime',provider_id:'openai',account_ref:'account/openai/a'})]);
+ const sessions=path.join(dir,'codex','sessions');await fs.promises.mkdir(sessions,{recursive:true});
+ await fs.promises.writeFile(path.join(sessions,'rollout-review.jsonl'),JSON.stringify({type:'session_meta',payload:{id:'child',model:'gpt-5'}})+'\n'+buildCodexTokenCountLine({ts:FIXED_HOUR,usage:{input_tokens:raw,output_tokens:0,total_tokens:raw}})+'\n');
+ if(source==='claude') {
+ const dirClaude=path.join(dir,'claude','projects','fixture');await fs.promises.mkdir(dirClaude,{recursive:true});
+ await fs.promises.writeFile(path.join(dirClaude,'session.jsonl'),JSON.stringify({type:'assistant',timestamp:FIXED_HOUR,message:{id:'m',model:'gpt-5',usage:{input_tokens:raw,output_tokens:0}}})+'\n');
+ }
+ const query='?from='+FIXED_DAY+'&to='+FIXED_DAY+'&sources='+source+'&tz=UTC';
+ const body=await callEndpoint(queuePath,'/functions/tokentracker-request-usage-records'+query);
+ assert.equal(body.records.filter(r=>r.record_kind==='request_event').length,1);
+ assert.equal(body.totals.total_tokens,raw);assert.equal(body.queue_baseline_totals.total_tokens,queued);
+ assert.ok(Array.isArray(body.queue_baseline_records),'separate queue evidence must be retained');
+ assert.equal(body.queue_baseline_records[0].account_ref,'account/openai/a');
+ assert.equal(body.queue_baseline_records[0].billing_mode,'token_plan');
+ assert.equal(body.page.totals_scope,'unknown');
+ const summary=await callEndpoint(queuePath,'/functions/tokentracker-usage-summary'+query);
+ assert.equal(Number(summary.total_tokens ?? summary.totals?.total_tokens),queued);
+});

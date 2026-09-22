@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { queueUsageIdentity } = require("../src/lib/usage-attribution");
+const { queueUsageIdentity, expandUsageIdentitySnapshot } = require("../src/lib/usage-attribution");
 
 const { getSourceScope } = require("../src/lib/source-metadata");
 
@@ -142,12 +142,13 @@ function auditRows(inputRows, { expectedRows } = {}) {
         : 0;
   }
 
+  const detailedLatest = new Map([...latestByKey.values()].flatMap(expandUsageIdentitySnapshot).map(row => [rowKey(row), row]));
   const expected = Array.isArray(expectedRows) ? new Map(expectedRows.map(row => [rowKey(row), row])) : null;
   const mismatches = [];
   if (expected && expected.size !== expectedRows.length) mismatches.push({ kind: "ambiguous_expected_identity" });
   if (expected) {
-    for (const key of new Set([...expected.keys(), ...latestByKey.keys()])) {
-      const want = expected.get(key), actual = latestByKey.get(key);
+    for (const key of new Set([...expected.keys(), ...detailedLatest.keys()])) {
+      const want = expected.get(key), actual = detailedLatest.get(key);
       if (!want || !actual || ["input_tokens", "output_tokens", "cached_input_tokens", "cache_creation_input_tokens", "reasoning_output_tokens", "total_tokens"].some(field => toNumber(want[field]) !== toNumber(actual[field])) || (want && actual && ["provider_id", "account_ref", "credential_ref", "plan_ref"].some(field => (want[field] || null) !== (actual[field] || null)))) mismatches.push({ identity: key, kind: !actual ? "missing" : !want ? "unexpected" : "different" });
     }
   }

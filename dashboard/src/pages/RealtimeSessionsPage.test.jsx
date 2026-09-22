@@ -769,3 +769,14 @@ it("部分Token与采集失败在实际卡片可见，未知活跃不显示确�
   expect(document.querySelector(".rt-kpi-value")).toHaveTextContent(copy("value_realtime.data_unavailable"));
   expect(screen.getByRole("alert")).toHaveTextContent("codex");
 });
+
+it('does not fall back to global KPI usage when the only data source is hidden',async()=>{
+ setVisibleAgents(['claude']);
+ getRealtimeSessions.mockResolvedValue({...payload,agent_history:payload.agent_history.filter(a=>a.source==='codex')});
+ render(<RealtimeSessionsPage />);
+ await screen.findAllByText(copy('realtime.empty'));
+ expect(document.querySelector('.rt-kpis')).not.toHaveTextContent('100');
+ expect(document.querySelector('.rt-kpis')).not.toHaveTextContent('$0.20');
+ expect(document.querySelector('.rt-kpis')).toHaveTextContent(copy('value_realtime.data_unavailable'));
+ expect(payload.summary.realtime_tokens.value).toBe(100);
+});

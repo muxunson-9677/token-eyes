@@ -1781,12 +1781,10 @@ test("parseOpencodeIncremental preserves totals after empty rewrite", async () =
 
     await fs.rm(messagePath);
     await fs.writeFile(messagePath, "", "utf8");
-    const resEmpty = await parseOpencodeIncremental({
-      messageFiles: [messagePath],
-      cursors,
-      queuePath,
-    });
-    assert.equal(resEmpty.bucketsQueued, 0);
+    const beforeEmpty = structuredClone(cursors);
+    await assert.rejects(parseOpencodeIncremental({ messageFiles: [messagePath], cursors, queuePath }), SyntaxError);
+    assert.deepEqual(cursors, beforeEmpty);
+    assert.equal((await readJsonLines(queuePath)).length, 1);
 
     await fs.rm(messagePath);
     await fs.writeFile(messagePath, JSON.stringify(message), "utf8");

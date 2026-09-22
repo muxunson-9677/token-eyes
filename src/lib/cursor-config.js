@@ -517,7 +517,7 @@ function toFloat(s) {
 
 // Stage every account before publishing any queue snapshot. A failed account
 // must not erase its contribution when another account's export succeeds.
-async function collectCursorAccountUsage({ homes, home, previousAccountKeys = [],
+async function collectCursorAccountUsage({ homes, home,
   isInstalled = isCursorInstalled, readAuth = extractCursorSessionToken,
   fetchCsv = fetchCursorUsageCsv } = {}) {
   const accountKeys = new Set();
@@ -529,10 +529,9 @@ async function collectCursorAccountUsage({ homes, home, previousAccountKeys = []
     const key = require("node:crypto").createHash("sha256").update(auth.userId).digest("hex");
     if (accountKeys.has(key)) continue;
     const csv = await fetchCsv({ cookie: auth.cookie });
-    records.push(...parseCursorCsv(csv, { strict: true }));
+    records.push(...parseCursorCsv(csv, { strict: true }).map(record => ({ ...record, provider_id: "cursor", account_ref: `account/cursor/${key}` })));
     accountKeys.add(key);
   }
-  if (previousAccountKeys.some(key => !accountKeys.has(key))) throw new Error("Cursor account coverage incomplete");
   return { records, accountKeys: [...accountKeys] };
 }
 
