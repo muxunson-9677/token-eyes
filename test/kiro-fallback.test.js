@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+const { runSql } = require("./helpers/sqlite-builder.cjs");
 
 const { parseKiroIncremental } = require("../src/lib/rollout.js");
 
@@ -19,15 +19,15 @@ function writeJsonl(filePath, events) {
 }
 
 function seedSqlite(dbPath, events) {
-  execFileSync("sqlite3", [
+  runSql(
     dbPath,
     "CREATE TABLE tokens_generated (id INTEGER PRIMARY KEY AUTOINCREMENT, tokens_prompt INTEGER, tokens_generated INTEGER, model TEXT, provider TEXT, timestamp TEXT);",
-  ]);
+  );
   for (const e of events) {
-    execFileSync("sqlite3", [
+    runSql(
       dbPath,
       `INSERT INTO tokens_generated (tokens_prompt, tokens_generated, model, provider, timestamp) VALUES (${e.promptTokens}, ${e.generatedTokens}, 'claude-sonnet-4', 'kiro', '2026-04-19 08:00:00');`,
-    ]);
+    );
   }
 }
 
@@ -115,13 +115,6 @@ test("Kiro real SQLite handoff counts only complete JSONL rows and rolls back un
 });
 
 test("kiro DB→JSONL fallback does not re-read rows the DB path already consumed", async (t) => {
-  try {
-    execFileSync("sqlite3", ["-version"], { stdio: "ignore" });
-  } catch {
-    t.skip("sqlite3 not available");
-    return;
-  }
-
   const tmp = makeTmpDir();
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 

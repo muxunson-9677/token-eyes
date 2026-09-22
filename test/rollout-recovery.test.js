@@ -82,6 +82,43 @@ test('Claude: same-inode rewrite and atomic replacement resume without duplicati
   assert.equal(latestTotal(await rows(f.queuePath)),225);
 });
 
+for (const [name, parse, field] of [['Claude', parseClaudeIncremental, 'projectFiles'], ['Codex', parseRolloutIncremental, 'rolloutFiles']]) {
+ test(`${name}: same-size middle rewrite discovers usage with unchanged head and tail`, async t => {
+  const f=await fixture(t),options={...f,[field]:[f.file]};
+  const first=name==='Claude'?claude('first'):codex('10');
+  const later=name==='Claude'?claude('later',50):codex('11',150);
+  const padding=JSON.stringify({type:'padding',text:'x'.repeat(1000)})+'\n';
+  const replacement=JSON.stringify(later)+'\n';
+  const original=padding+JSON.stringify(first)+'\n'+' '.repeat(Buffer.byteLength(replacement)-1)+'\n'+padding;
+  await fs.writeFile(f.file,original);await parse(options);
+  // Upgrade the actual pre-full-fingerprint shape, retaining counted history.
+  const bytes=await fs.readFile(f.file);
+  options.cursors.files[f.file].fingerprint=require('node:crypto').createHash('sha256').update(bytes.subarray(0,256)).update(bytes.subarray(-256)).digest('hex');
+  for(const key of ['size','mtimeMs','ctimeMs'])delete options.cursors.files[f.file][key];
+  const beforeUpgrade=await fs.readFile(f.queuePath,'utf8');
+  await parse(options);assert.equal(await fs.readFile(f.queuePath,'utf8'),beforeUpgrade);
+  assert.equal(options.cursors.files[f.file].fingerprint,'sha256:'+require('node:crypto').createHash('sha256').update(bytes).digest('hex'));
+  const inode=(await fs.stat(f.file)).ino;
+  assert.equal(latestTotal(await rows(f.queuePath)),100);
+  const changed=padding+JSON.stringify(first)+'\n'+replacement+padding;
+  assert.equal(Buffer.byteLength(changed),Buffer.byteLength(original));
+  assert.equal(changed.slice(0,256),original.slice(0,256));assert.equal(changed.slice(-256),original.slice(-256));
+  await fs.writeFile(f.file,changed);assert.equal((await fs.stat(f.file)).ino,inode);
+  options.cursors=JSON.parse(JSON.stringify(options.cursors));
+  await parse(options);await parse(options);
+  assert.equal(latestTotal(await rows(f.queuePath)),150);
+  const last=name==='Claude'?claude('last',25):codex('12',175);
+  await fs.appendFile(f.file,JSON.stringify(last)+'\n');await parse(options);
+  const disk=await fs.readFile(f.queuePath,'utf8');await parse(options);
+  assert.equal(latestTotal(await rows(f.queuePath)),175);
+  assert.equal(await fs.readFile(f.queuePath,'utf8'),disk);
+  const open=fs.open;let readBytes=0;
+  fs.open=async(file,...args)=>{const handle=await open(file,...args);if(file===f.file){const read=handle.read.bind(handle);handle.read=async(...params)=>{const result=await read(...params);readBytes+=result.bytesRead;return result;};}return handle;};
+  try{await parse(options);}finally{fs.open=open;}
+  assert.equal(readBytes,0,'unchanged complete logs must not rescan their historical prefix');
+ });
+}
+
 test('Claude: partial queue append rolls back disk and deep state before retry', async t => {
   const f=await fixture(t); const options={...f,projectFiles:[f.file]};
   await fs.writeFile(f.file,JSON.stringify(claude('first'))+'\n'); await parseClaudeIncremental(options);

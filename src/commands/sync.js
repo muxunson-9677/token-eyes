@@ -175,6 +175,20 @@ async function syncOnce(argv) {
   const collectionStatusPath = path.join(trackerDir, "collection-status.json");
   let collectionStatus = null;
   let syncError = null;
+  const discoveryFailures = new Map();
+  async function discoverSourceFiles(source, label, discover) {
+    try {
+      const files = await discover();
+      if (!files.length) collectionStatus[source] = { ...collectionStatus[source], status: "missing", last_attempt_at: new Date().toISOString(), error_code: null };
+      return files;
+    } catch (error) {
+      const failure = { ...collectionStatus[source], status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || error.name };
+      discoveryFailures.set(source, failure);
+      collectionStatus[source] = failure;
+      warnProviderParseFailure(label, error, opts);
+      return [];
+    }
+  }
   try {
     const healthRead = await readJsonStrict(collectionStatusPath);
     if (healthRead.status !== "ok" && healthRead.status !== "missing") throw healthRead.error;
@@ -255,9 +269,9 @@ async function syncOnce(argv) {
     for (const entry of sources) {
       if (seenSessions.has(entry.sessionsDir)) continue;
       seenSessions.add(entry.sessionsDir);
-      const files = entry.deep
-        ? await listRolloutFilesDeep(entry.sessionsDir)
-        : await listRolloutFiles(entry.sessionsDir);
+      const files = await discoverSourceFiles(entry.source, entry.source, () => entry.deep
+        ? listRolloutFilesDeep(entry.sessionsDir)
+        : listRolloutFiles(entry.sessionsDir));
       for (const filePath of files) {
         rolloutFiles.push({ path: filePath, source: entry.source });
       }
@@ -267,7 +281,7 @@ async function syncOnce(argv) {
     // some (or no) logs cannot authorize replacing the only surviving totals.
     // Keep the repair helpers available for explicit, scoped history repair.
 
-    const openclawFiles = await listConfiguredOpenclawSessionFiles(dataDirectoryPaths.openclawHome);
+    const openclawFiles = await discoverSourceFiles("openclaw", "OpenClaw", () => listConfiguredOpenclawSessionFiles(dataDirectoryPaths.openclawHome));
     if (openclawSignal?.sessionFile && !openclawFiles.some((entry) => entry.path === openclawSignal.sessionFile)) {
       openclawFiles.push({ path: openclawSignal.sessionFile, source: "openclaw" });
     }
@@ -279,25 +293,29 @@ async function syncOnce(argv) {
     }
 
     let parseResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    try {
-      parseResult = await parseRolloutIncremental({
-        rolloutFiles,
-        cursors,
-        collectionStatus,
-        queuePath,
-        projectQueuePath,
-        onProgress: (p) => {
-          if (!progress?.enabled) return;
-          const pct = p.total > 0 ? p.index / p.total : 1;
-          progress.update(
-            `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
-              p.bucketsQueued,
-            )}`,
-          );
-        },
-      });
-    } catch (err) {
-      warnProviderParseFailure("Codex", err, opts);
+    for (const rolloutSource of ["codex", "every-code"]) {
+      try {
+        const sourceResult = await parseRolloutIncremental({
+          rolloutFiles: rolloutFiles.filter(entry => entry.source === rolloutSource),
+          source: rolloutSource,
+          cursors,
+          collectionStatus,
+          queuePath,
+          projectQueuePath,
+          onProgress: (p) => {
+            if (!progress?.enabled) return;
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            progress.update(
+              `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`,
+            );
+          },
+        });
+        for (const key of Object.keys(parseResult)) parseResult[key] += sourceResult[key] || 0;
+      } catch (err) {
+        warnProviderParseFailure(rolloutSource, err, opts);
+      }
     }
 
     let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
@@ -334,7 +352,7 @@ async function syncOnce(argv) {
     openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
     openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
 
-    const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
+    const claudeFiles = await discoverSourceFiles("claude", "Claude", () => listClaudeProjectFiles(claudeProjectsDir));
     await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath, queueStatePath });
     await repairClaudeQueueFromGroundTruth({
       cursors,
@@ -374,7 +392,7 @@ async function syncOnce(argv) {
       }
     }
 
-    const geminiFiles = await listGeminiSessionFiles(geminiTmpDir);
+    const geminiFiles = await discoverSourceFiles("gemini", "Gemini", () => listGeminiSessionFiles(geminiTmpDir));
     let geminiResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (geminiFiles.length > 0) {
       if (progress?.enabled) {
@@ -405,7 +423,7 @@ async function syncOnce(argv) {
       }
     }
 
-    const antigravityFiles = await listAntigravityTranscripts(antigravityHome);
+    const antigravityFiles = await discoverSourceFiles("antigravity", "Antigravity", () => listAntigravityTranscripts(antigravityHome));
     let antigravityResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (antigravityFiles.length > 0) {
       if (progress?.enabled) {
@@ -436,7 +454,7 @@ async function syncOnce(argv) {
       }
     }
 
-    const opencodeFiles = await listOpencodeMessageFiles(opencodeStorageDir);
+    const opencodeFiles = await discoverSourceFiles("opencode", "OpenCode", () => listOpencodeMessageFiles(opencodeStorageDir));
     let opencodeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (opencodeFiles.length > 0) {
       if (progress?.enabled) {
@@ -709,9 +727,9 @@ async function syncOnce(argv) {
 
     // ── DeepSeek Harness — passive DSH_HOME/~/.dsh JSONL(.zstd) sessions ──
     const deepSeekHarnessHome = resolveDeepSeekHarnessHome(process.env, home);
-    const deepSeekHarnessSessionFiles = await listDeepSeekHarnessSessionFiles(
+    const deepSeekHarnessSessionFiles = await discoverSourceFiles("deepseek-harness", "DeepSeek Harness", () => listDeepSeekHarnessSessionFiles(
       deepSeekHarnessHome,
-    );
+    ));
     let deepSeekHarnessResult = {
       filesProcessed: 0,
       eventsAggregated: 0,
@@ -1368,7 +1386,11 @@ async function syncOnce(argv) {
     throw error;
   } finally {
     try {
-      if (collectionStatus) await writeJson(collectionStatusPath, collectionStatus);
+      if (collectionStatus) {
+        // Success on another root/format cannot erase a failed discovery in this run.
+        for (const [source, failure] of discoveryFailures) collectionStatus[source] = failure;
+        await writeJson(collectionStatusPath, collectionStatus);
+      }
     } catch (healthError) {
       if (syncError) throw new AggregateError([syncError, healthError], "Sync and health persistence failed");
       throw healthError;
@@ -1433,8 +1455,9 @@ async function listConfiguredOpenclawSessionFiles(openclawHome) {
   let agentEntries = [];
   try {
     agentEntries = await fs.readdir(agentsDir, { withFileTypes: true });
-  } catch {
-    return files;
+  } catch (error) {
+    if (error.code === "ENOENT") return files;
+    throw error;
   }
   for (const agentEntry of agentEntries) {
     if (!agentEntry.isDirectory()) continue;
@@ -1442,8 +1465,9 @@ async function listConfiguredOpenclawSessionFiles(openclawHome) {
     let sessionEntries = [];
     try {
       sessionEntries = await fs.readdir(sessionsDir, { withFileTypes: true });
-    } catch {
-      continue;
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
     }
     for (const sessionEntry of sessionEntries) {
       if (!sessionEntry.isFile() || !sessionEntry.name.toLowerCase().endsWith(".jsonl")) continue;

@@ -183,7 +183,7 @@ test("parseRolloutIncremental upgrades legacy timestamp-only Codex dedup without
   }
 });
 
-test("parseRolloutIncremental lets an old timestamp cursor resume a later same-timestamp snapshot", async () => {
+for (const archiveFirst of [true, false]) test(`parseRolloutIncremental lets an old timestamp cursor resume a later same-timestamp snapshot (archive first: ${archiveFirst})`, async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-legacy-resume-"));
   try {
     const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893797";
@@ -196,6 +196,11 @@ test("parseRolloutIncremental lets an old timestamp cursor resume a later same-t
     await fs.writeFile(rolloutPath, buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }) + "\n", "utf8");
     await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
     cursors.codexHashes = [`${sessionId}:2026-09-22T00:00:00.000Z`];
+    const legacyBytes = await fs.readFile(rolloutPath);
+    const legacySize = Math.min(256, legacyBytes.length);
+    cursors.files[rolloutPath].fingerprint = require("node:crypto").createHash("sha256")
+      .update(legacyBytes.subarray(0, legacySize)).update(legacyBytes.subarray(legacyBytes.length - legacySize)).digest("hex");
+    for (const key of ["size", "mtimeMs", "ctimeMs"]) delete cursors.files[rolloutPath][key];
     const before = { ...cursors.files[rolloutPath] };
     await fs.appendFile(rolloutPath, [
       buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
@@ -206,6 +211,48 @@ test("parseRolloutIncremental lets an old timestamp cursor resume a later same-t
     assert.equal(cursors.files[rolloutPath].inode, before.inode, "normal continuation keeps the original inode");
     assert.ok(cursors.files[rolloutPath].offset > before.offset, "normal continuation advances the original offset");
     assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens, 170);
+    const cursorPath = path.join(tmp, "cursors.json");
+    await fs.writeFile(cursorPath, JSON.stringify(cursors));
+    let reloaded = JSON.parse(await fs.readFile(cursorPath, "utf8"));
+    const archivedPath = path.join(tmp, "archived_sessions", path.basename(rolloutPath));
+    await fs.mkdir(path.dirname(archivedPath));
+    await fs.copyFile(rolloutPath, archivedPath);
+    const { collectRolloutRequestUsageRecords, collectRolloutQueueRows } = require("../src/lib/rollout");
+    async function verifyReaders(expected) {
+      const firstOrder = archiveFirst ? [archivedPath, rolloutPath] : [rolloutPath, archivedPath];
+      for (const files of [firstOrder, [...firstOrder].reverse()]) {
+        if (archiveFirst) {
+          await fs.writeFile(cursorPath, JSON.stringify(reloaded));
+          const script = 'const fs=require("node:fs"); const [modulePath,cursorPath,queuePath,files]=process.argv.slice(1); const cursors=JSON.parse(fs.readFileSync(cursorPath,"utf8")); require(modulePath).parseRolloutIncremental({rolloutFiles:JSON.parse(files),cursors,queuePath}).then(()=>fs.writeFileSync(cursorPath,JSON.stringify(cursors))).catch(error=>{console.error(error);process.exitCode=1});';
+          const child = cp.spawnSync(process.execPath, ["-e", script, require.resolve("../src/lib/rollout"), cursorPath, queuePath, JSON.stringify(files)], { windowsHide: true, encoding: "utf8", timeout: 10000 });
+          assert.equal(child.status, 0, child.stderr);
+          reloaded = JSON.parse(await fs.readFile(cursorPath, "utf8"));
+        } else {
+          await parseRolloutIncremental({ rolloutFiles: files, cursors: reloaded, queuePath });
+        }
+        assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens, expected, "persisted incremental total survives archive order");
+        const requests = await collectRolloutRequestUsageRecords({ rolloutFiles: files });
+        assert.equal(requests.totals.total_tokens, expected);
+        const aggregates = await collectRolloutQueueRows(files);
+        assert.equal(aggregates.reduce((sum, row) => sum + row.total_tokens, 0), expected);
+      }
+    }
+    await verifyReaders(170);
+    assert.ok(!reloaded.codexHashes.includes(`${sessionId}:2026-09-22T00:00:00.000Z`), "archive scan resolves the legacy marker to its old source snapshot");
+    await fs.appendFile(rolloutPath, buildTokenCountLine({
+      ts: "2026-09-22T00:00:02.000Z",
+      last: { ...oneHundred, input_tokens: 30, total_tokens: 30 },
+      total: { ...oneHundred, input_tokens: 200, total_tokens: 200 },
+    }) + "\n", "utf8");
+    await verifyReaders(200);
+    const queueBeforeRepeat = await fs.readFile(queuePath, "utf8");
+    await fs.appendFile(rolloutPath, buildTokenCountLine({
+      ts: "2026-09-22T00:00:02.000Z",
+      last: { ...oneHundred, input_tokens: 30, total_tokens: 30 },
+      total: { ...oneHundred, input_tokens: 200, total_tokens: 200 },
+    }) + "\n", "utf8");
+    await verifyReaders(200);
+    assert.equal(await fs.readFile(queuePath, "utf8"), queueBeforeRepeat, "an exact duplicate does not append accounting rows");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

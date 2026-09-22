@@ -405,6 +405,8 @@ it("shows one access and risk marker on the collapsed provider, never inside its
 });
 
 it("separates compact tags, plan count, and starting price while showing verified public prices", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-27T08:05:00.000Z"));
   renderPage();
 
   const grok = screen.getByTestId("plan-market-provider-grok");

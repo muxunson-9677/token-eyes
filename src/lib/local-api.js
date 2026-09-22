@@ -199,6 +199,7 @@ function queueFileMtimeKey(queuePath) {
 
 function buildRequestUsageRecordsListCacheKey({
   queuePath,
+  collectionStatusPath,
   pricingOptions,
   effectiveSources,
   from,
@@ -214,6 +215,7 @@ function buildRequestUsageRecordsListCacheKey({
   return [
     queuePath,
     queueFileMtimeKey(queuePath),
+    queueFileMtimeKey(collectionStatusPath),
     JSON.stringify(pricingOptions || {}),
     sourcesKey,
     from || "",
@@ -351,6 +353,7 @@ async function buildRequestUsageRecordsList({
     try {
       const rolloutFiles = await listCodexRolloutFilesFromHomes(
         dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome],
+        { forceRefresh: true },
       );
 
       const codexResult = await collectRolloutRequestUsageRecords({
@@ -9147,6 +9150,7 @@ function createLocalApiHandler({
         try {
           const listCacheKey = buildRequestUsageRecordsListCacheKey({
             queuePath: qp,
+            collectionStatusPath: path.join(trackerDataDir, "collection-status.json"),
             pricingOptions,
             effectiveSources,
             from,

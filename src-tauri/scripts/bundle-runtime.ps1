@@ -90,9 +90,13 @@ $gitHeadSha = $null
 $previousErrorActionPreference = $ErrorActionPreference
 try {
     $ErrorActionPreference = 'Continue'
-    $gitCandidate = (git -C $RepoRoot rev-parse HEAD 2>$null | Out-String).Trim()
-    if ($LASTEXITCODE -eq 0 -and $gitCandidate -match '^[0-9a-fA-F]{40}$') {
-        $gitHeadSha = $gitCandidate.ToLowerInvariant()
+    $gitTopLevel = (git -C $RepoRoot rev-parse --show-toplevel 2>$null | Out-String).Trim()
+    # An exported source tree nested in another checkout must not borrow its HEAD.
+    if ($LASTEXITCODE -eq 0 -and [System.IO.Path]::GetFullPath($gitTopLevel) -eq [System.IO.Path]::GetFullPath($RepoRoot)) {
+        $gitCandidate = (git -C $RepoRoot rev-parse HEAD 2>$null | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $gitCandidate -match '^[0-9a-fA-F]{40}$') {
+            $gitHeadSha = $gitCandidate.ToLowerInvariant()
+        }
     }
 } catch {
     $gitHeadSha = $null

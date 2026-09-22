@@ -155,7 +155,7 @@ async function parseRolloutIncremental({
 
     const key = filePath;
     let prev = cursors.files[key] || null;
-    if (prev && (prev.offset > st.size || (prev.fingerprint && prev.fingerprint !== await checkpointFingerprint(filePath, prev.offset)))) prev = null;
+    if (prev && !await checkpointMatches(filePath, prev, st)) prev = null;
     const inode = st.ino || 0;
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
     const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
@@ -203,7 +203,10 @@ async function parseRolloutIncremental({
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
-      fingerprint: await checkpointFingerprint(filePath, result.endOffset),
+      fingerprint: prev && prev.offset === result.endOffset && unchangedCheckpoint(prev, st) ? prev.fingerprint : await checkpointFingerprint(filePath, result.endOffset),
+      size: st.size,
+      mtimeMs: st.mtimeMs,
+      ctimeMs: st.ctimeMs,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
       sessionId: result.sessionId,
@@ -288,7 +291,7 @@ async function parseClaudeIncremental({
 
     const key = filePath;
     let prev = cursors.files[key] || null;
-    if (prev && (prev.offset > st.size || (prev.fingerprint && prev.fingerprint !== await checkpointFingerprint(filePath, prev.offset)))) prev = null;
+    if (prev && !await checkpointMatches(filePath, prev, st)) prev = null;
     const inode = st.ino || 0;
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
 
@@ -321,7 +324,10 @@ async function parseClaudeIncremental({
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
-      fingerprint: await checkpointFingerprint(filePath, result.endOffset),
+      fingerprint: prev && prev.offset === result.endOffset && unchangedCheckpoint(prev, st) ? prev.fingerprint : await checkpointFingerprint(filePath, result.endOffset),
+      size: st.size,
+      mtimeMs: st.mtimeMs,
+      ctimeMs: st.ctimeMs,
       updatedAt: new Date().toISOString(),
     };
 
@@ -906,10 +912,34 @@ function createForkReplayTracker({ sessionId, rolloutDate, forked = false, repla
   };
 }
 
-async function checkpointFingerprint(filePath, offset) {
+function unchangedCheckpoint(prev, stat) {
+  return prev.fingerprint?.startsWith("sha256:") && prev.inode === (stat.ino || 0) &&
+    prev.size === stat.size && prev.mtimeMs === stat.mtimeMs && prev.ctimeMs === stat.ctimeMs;
+}
+
+async function checkpointMatches(filePath, prev, stat) {
+  if (prev.offset > stat.size) return false;
+  if (!prev.fingerprint || unchangedCheckpoint(prev, stat)) return true;
+  return prev.fingerprint === await checkpointFingerprint(filePath, prev.offset, !prev.fingerprint.startsWith("sha256:"));
+}
+
+async function checkpointFingerprint(filePath, offset, legacy = false) {
   if (!offset) return null;
   const handle = await fs.open(filePath, "r");
   try {
+    if (!legacy) {
+      const hash = crypto.createHash("sha256");
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, offset));
+      for (let position = 0; position < offset;) {
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, offset - position), position);
+        if (!bytesRead) throw Object.assign(new Error("Source changed while fingerprinting checkpoint"), { code: "ESTALE" });
+        hash.update(chunk.subarray(0, bytesRead));
+        position += bytesRead;
+      }
+      return "sha256:" + hash.digest("hex");
+    }
+    // Old cursors used only the first/last 256 bytes. Compare their actual
+    // format once, then persist the full-prefix digest without clearing state.
     const size = Math.min(256, offset);
     const head = Buffer.alloc(size), tail = Buffer.alloc(size);
     const first = await handle.read(head, 0, size, 0);
@@ -1115,14 +1145,17 @@ async function parseRolloutFile({
       // A legacy cursor only records a timestamp. It represents this snapshot
       // during a full re-scan (or when its cumulative baseline matches), but a
       // normal offset continuation can append a distinct correction at the same
-      // timestamp. Upgrade the legacy marker either way; only suppress it when
-      // it can actually represent the current snapshot.
+      // timestamp. Keep that old contribution's marker across continuation and
+      // persistence until a re-scan can bind it to its source snapshot. New
+      // snapshots get precise keys independently; they do not consume the marker.
       if (seenCodexEvents.has(legacyDedupKey)) {
-        seenCodexEvents.delete(legacyDedupKey);
-        seenCodexEvents.add(dedupKey);
         const legacySnapshotMatches = isNonEmptyObject(previousTotals)
           && JSON.stringify(normalizeUsage(previousTotals)) === JSON.stringify(normalizeUsage(usageForIdentity));
-        if (startOffset === 0 || !isNonEmptyObject(previousTotals) || legacySnapshotMatches) continue;
+        if (startOffset === 0 || !isNonEmptyObject(previousTotals) || legacySnapshotMatches) {
+          seenCodexEvents.delete(legacyDedupKey);
+          seenCodexEvents.add(dedupKey);
+          continue;
+        }
       }
       seenCodexEvents.add(dedupKey);
     }
@@ -9737,12 +9770,12 @@ function resolveAntigravityBrainDirs(geminiHome) {
 async function listAntigravitySessionFiles(brainDir) {
   const out = [];
   if (!brainDir || typeof brainDir !== "string") return out;
-  const entries = await safeReadDir(brainDir).catch(() => []);
+  const entries = await safeReadDir(brainDir);
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const logsDir = path.join(brainDir, entry.name, ".system_generated", "logs");
     const transcriptPath = path.join(logsDir, "transcript.jsonl");
-    const st = await fs.stat(transcriptPath).catch(() => null);
+    const st = await fs.stat(transcriptPath).catch(missingFileOrThrow);
     if (st && st.isFile()) {
       out.push(transcriptPath);
     }
@@ -9910,7 +9943,7 @@ async function parseAntigravityFile({
   projectKey,
   repoRoot,
 }) {
-  const raw = await fs.readFile(filePath, "utf8").catch(() => "");
+  const raw = await fs.readFile(filePath, "utf8");
   if (!raw.trim()) {
     return {
       lastLine: 0,

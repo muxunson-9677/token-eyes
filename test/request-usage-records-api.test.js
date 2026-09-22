@@ -92,6 +92,27 @@ for(const source of ['codex','claude'])test(`request records ${source} read fail
  const recovered=await callEndpoint(queuePath,`/functions/tokentracker-request-usage-records?sources=${source}`);assert.equal(recovered.ok,true);assert.equal(recovered.page.totals_scope,'all_matching');
 });
 
+for(const source of ['codex','claude'])for(const method of ['stat','readdir'])test(`cached ${source} requests recheck ${method} after failed sync without queue changes`,async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-health-cache-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);
+ const folder=path.join(dir,source,source==='codex'?'sessions':'projects','fixture');await fs.promises.mkdir(folder,{recursive:true});
+ const file=path.join(folder,source==='codex'?'rollout-fixture.jsonl':'session.jsonl');
+ const usage={input_tokens:100,output_tokens:0,total_tokens:100};
+ const record=source==='codex'?buildCodexTokenCountLine({ts:FIXED_HOUR,usage}):JSON.stringify({type:'assistant',timestamp:FIXED_HOUR,message:{id:'m',model:'fixture',usage}});
+ await fs.promises.writeFile(file,record+'\n');
+ const endpoint=`/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=${source}&record_kind=request_event`;
+ const first=await callEndpoint(queuePath,endpoint);assert.equal(first.totals.total_tokens,100);
+ const before=await fs.promises.stat(queuePath);
+ await fs.promises.writeFile(path.join(dir,'collection-status.json'),JSON.stringify({[source]:{status:'error',error_code:'EACCES'}}));
+ const original=fs.promises[method],target=method==='stat'?file:path.dirname(folder);
+ fs.promises[method]=async(p,...args)=>{if(p===target)throw Object.assign(new Error('fixture denied'),{code:'EACCES'});return original(p,...args);};
+ let failed;try{failed=await callEndpoint(queuePath,endpoint);}finally{fs.promises[method]=original;}
+ assert.equal(failed.ok,false);assert.equal(failed.totals,undefined);
+ assert.equal((await fs.promises.stat(queuePath)).mtimeMs,before.mtimeMs);
+ await fs.promises.writeFile(path.join(dir,'collection-status.json'),JSON.stringify({[source]:{status:'ok'}}));
+ const recovered=await callEndpoint(queuePath,endpoint);assert.equal(recovered.totals.total_tokens,100);
+});
+
 test('Codex discovery directory failure is visible before any raw file is read',async t=>{
  const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-discovery-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
  const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);await fs.promises.mkdir(path.join(dir,'codex'));
