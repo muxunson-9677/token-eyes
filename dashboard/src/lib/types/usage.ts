@@ -193,6 +193,7 @@ export interface RequestUsageRecordsResponse {
   availability: RequestUsageRecordsAvailability;
   page: RequestUsageRecordsPage;
   queue_baseline_totals?: TokenTotals & PricingCoverageFields;
+  queue_history_record_count?: number;
 }
 
 export interface UsageSummary extends TokenTotals, PricingCoverageFields {

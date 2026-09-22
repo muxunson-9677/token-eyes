@@ -89,7 +89,10 @@ async function collectClaudeRequestUsageRecords(options) {
   const { computeRowCostDetailed } = require("./pricing");
 
   for (const filePath of files) {
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(error => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
     if (!st || !st.isFile()) continue;
     // A session file's mtime is >= its newest event timestamp, so files last
     // written before the range start cannot contain in-range events.

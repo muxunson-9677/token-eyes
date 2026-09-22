@@ -50,3 +50,46 @@ test('Gemini conflicting copies without revision evidence fail without publishin
   assert.deepEqual(cursors,{files:{}});await assert.rejects(fs.stat(queuePath),{code:'ENOENT'});
  }
 });
+
+for (const withTimestamp of [true,false]) test(`Gemini v1 contributed state seeds only an unchanged original source (${withTimestamp})`,async t=>{
+ const fixture=require('./fixtures/gemini/message-usage-v1.json');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-gemini-v1-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'session.json'),queuePath=path.join(dir,'queue.jsonl');
+ const session=structuredClone(fixture.input);if(!withTimestamp)delete session.lastUpdated;
+ await fs.writeFile(file,JSON.stringify(session));await fs.writeFile(queuePath,fixture.queue);
+ const cursors=structuredClone(fixture.cursors);cursors.files[file]={...cursors.files.__SOURCE__,inode:(await fs.stat(file)).ino};delete cursors.files.__SOURCE__;
+ const run=()=>parseGeminiIncremental({sessionFiles:[file],queuePath,cursors});
+ await run();assert.equal(await fs.readFile(queuePath,'utf8'),fixture.queue,'baseline seeding does not re-add old consumption');
+ session.messages[0].tokens={input:150,output:0,total:150};if(withTimestamp)session.lastUpdated='2026-09-22T01:02:00Z';
+ await fs.writeFile(file,JSON.stringify(session));await run();await run();
+ const {readQueueData}=require('../src/lib/local-api');assert.equal(readQueueData(queuePath).reduce((sum,row)=>sum+row.total_tokens,0),150);
+ session.messages[0].tokens={input:0,output:0,total:0};if(withTimestamp)session.lastUpdated='2026-09-22T01:03:00Z';
+ await fs.writeFile(file,JSON.stringify(session));await run();assert.equal(readQueueData(queuePath).reduce((sum,row)=>sum+row.total_tokens,0),0);
+});
+
+for(const order of [['copy','original'],['original','copy']])test(`Gemini v1 upgrade stages known baseline before revisions: ${order}`,async t=>{
+ const fixture=require('./fixtures/gemini/message-usage-v1.json');const {readQueueData}=require('../src/lib/local-api');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-gemini-v1-order-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const files={original:path.join(dir,'original.json'),copy:path.join(dir,'copy.json')},queuePath=path.join(dir,'queue.jsonl');
+ await fs.writeFile(files.original,JSON.stringify(fixture.input));const updated=structuredClone(fixture.input);updated.lastUpdated='2026-09-22T01:02:00Z';updated.messages[0].tokens={input:150,output:0,total:150};await fs.writeFile(files.copy,JSON.stringify(updated));
+ const cursors=structuredClone(fixture.cursors);cursors.files[files.original]={...cursors.files.__SOURCE__,inode:(await fs.stat(files.original)).ino};delete cursors.files.__SOURCE__;await fs.writeFile(queuePath,fixture.queue);
+ await parseGeminiIncremental({sessionFiles:order.map(name=>files[name]),queuePath,cursors});assert.equal(readQueueData(queuePath).reduce((n,row)=>n+row.total_tokens,0),150);
+});
+
+test('Gemini v1 cannot infer a missing original baseline from an untracked equal copy',async t=>{
+ const fixture=require('./fixtures/gemini/message-usage-v1.json');const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-gemini-v1-guard-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'untracked-copy.json'),queuePath=path.join(dir,'queue.jsonl'),cursors=structuredClone(fixture.cursors);delete cursors.files.__SOURCE__;
+ await fs.writeFile(file,JSON.stringify(fixture.input));await fs.writeFile(queuePath,fixture.queue);
+ const options={sessionFiles:[file],queuePath,cursors};await parseGeminiIncremental(options);await parseGeminiIncremental(options);
+ assert.equal(Object.values(cursors.geminiMessageUsage)[0].revision,undefined);
+ const changed=structuredClone(fixture.input);changed.lastUpdated='2026-09-22T01:02:00Z';changed.messages[0].tokens={input:150,output:0,total:150};await fs.writeFile(file,JSON.stringify(changed));
+ const before=structuredClone(cursors);await assert.rejects(parseGeminiIncremental(options),/revision conflict/);assert.deepEqual(cursors,before);assert.equal(await fs.readFile(queuePath,'utf8'),fixture.queue);
+});
+
+test('Gemini v1 original already changed at first upgrade cannot reconstruct an old revision',async t=>{
+ const fixture=require('./fixtures/gemini/message-usage-v1.json');const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-gemini-v1-changed-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'original.json'),queuePath=path.join(dir,'queue.jsonl'),session=structuredClone(fixture.input);
+ session.lastUpdated='2026-09-22T01:02:00Z';session.messages[0].tokens={input:150,output:0,total:150};await fs.writeFile(file,JSON.stringify(session));await fs.writeFile(queuePath,fixture.queue);
+ const cursors=structuredClone(fixture.cursors);cursors.files[file]={...cursors.files.__SOURCE__,inode:(await fs.stat(file)).ino};delete cursors.files.__SOURCE__;const before=structuredClone(cursors);
+ await assert.rejects(parseGeminiIncremental({sessionFiles:[file],queuePath,cursors}),/revision conflict/);assert.deepEqual(cursors,before);assert.equal(await fs.readFile(queuePath,'utf8'),fixture.queue);
+});

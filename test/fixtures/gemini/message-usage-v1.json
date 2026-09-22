@@ -1,0 +1,86 @@
+{
+  "generated_from": "1df7fc77a406faca0db84b95dd3e1e2a8fb223b1:src/lib/rollout.js",
+  "input": {
+    "sessionId": "upgrade-session",
+    "lastUpdated": "2026-09-22T01:01:00Z",
+    "messages": [
+      {
+        "id": "m",
+        "type": "gemini",
+        "model": "gemini-3-flash-preview",
+        "timestamp": "2026-09-22T01:00:00Z",
+        "tokens": {
+          "input": 100,
+          "output": 0,
+          "total": 100
+        }
+      }
+    ]
+  },
+  "cursors": {
+    "files": {
+      "__SOURCE__": {
+        "inode": 0,
+        "messageUsageVersion": 1,
+        "legacy_unreconciled": false,
+        "lastIndex": 0,
+        "lastTotals": {
+          "input_tokens": 100,
+          "cached_input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 0,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 100
+        },
+        "lastModel": "gemini-3-flash-preview",
+        "updatedAt": "2026-09-22T09:50:46.178Z"
+      }
+    },
+    "hourly": {
+      "version": 3,
+      "buckets": {
+        "gemini|gemini-3-flash-preview|2026-09-22T01:00:00.000Z": {
+          "totals": {
+            "input_tokens": 100,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 100,
+            "billable_total_tokens": 100,
+            "conversation_count": 1
+          },
+          "queuedKey": "100|0|0|0|0|100|100|1",
+          "attributionQueuedKeys": {
+            "unknown": "100|0|0|0|0|100|100|1|gemini-3-flash-preview|unknown|{\"billing_mode\":\"unknown\",\"billing_mode_confidence\":\"unavailable\"}"
+          }
+        }
+      },
+      "groupQueued": {},
+      "attributionMigrationVersion": 1,
+      "pendingAttributionRetractions": {},
+      "updatedAt": "2026-09-22T09:50:46.180Z"
+    },
+    "geminiMessageUsage": {
+      "[\"upgrade-session\",\"m\"]": {
+        "model": "gemini-3-flash-preview",
+        "bucketStart": "2026-09-22T01:00:00.000Z",
+        "totals": {
+          "input_tokens": 100,
+          "cached_input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 0,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 100,
+          "conversation_count": 1
+        },
+        "upstream_tokens": {
+          "input": 100,
+          "output": 0,
+          "total": 100
+        }
+      }
+    }
+  },
+  "queue": "{\"source\":\"gemini\",\"model\":\"gemini-3-flash-preview\",\"hour_start\":\"2026-09-22T01:00:00.000Z\",\"input_tokens\":100,\"cached_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":0,\"reasoning_output_tokens\":0,\"total_tokens\":100,\"billable_total_tokens\":100,\"conversation_count\":1,\"billing_mode\":\"unknown\",\"billing_mode_confidence\":\"unavailable\"}\n"
+}

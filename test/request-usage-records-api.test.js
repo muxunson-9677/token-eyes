@@ -81,6 +81,24 @@ YESTERDAY.setUTCDate(YESTERDAY.getUTCDate() - 1);
 const YESTERDAY_HOUR = YESTERDAY.toISOString().slice(0, 13) + ":00:00.000Z";
 const YESTERDAY_STR = YESTERDAY.toISOString().slice(0, 10);
 
+for(const source of ['codex','claude'])test(`request records ${source} read failure cannot become a complete empty success`,async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-failure-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);
+ const folder=path.join(dir,source,source==='codex'?'sessions':'projects','fixture');await fs.promises.mkdir(folder,{recursive:true});
+ const file=path.join(folder,source==='codex'?'rollout-fixture.jsonl':'session.jsonl');await fs.promises.writeFile(file,'{}\n');
+ const stat=fs.promises.stat;fs.promises.stat=async(p,...args)=>{if(String(p)===file)throw Object.assign(new Error('fixture-private-path'),{code:'EACCES'});return stat(p,...args);};
+ let failed;try{failed=await callEndpoint(queuePath,`/functions/tokentracker-request-usage-records?sources=${source}`);}finally{fs.promises.stat=stat;}
+ assert.equal(failed.ok,false);assert.ok(failed.error);assert.equal(failed.totals,undefined);assert.doesNotMatch(JSON.stringify(failed),/fixture-private-path/);
+ const recovered=await callEndpoint(queuePath,`/functions/tokentracker-request-usage-records?sources=${source}`);assert.equal(recovered.ok,true);assert.equal(recovered.page.totals_scope,'all_matching');
+});
+
+test('Codex discovery directory failure is visible before any raw file is read',async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-discovery-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);await fs.promises.mkdir(path.join(dir,'codex'));
+ await fs.promises.writeFile(path.join(dir,'codex','sessions'),'not-a-directory');
+ const failed=await callEndpoint(queuePath,'/functions/tokentracker-request-usage-records?sources=codex');assert.equal(failed.ok,false);assert.ok(failed.error);
+});
+
 function makeRow(overrides = {}) {
   return {
     hour_start: TODAY_HOUR,
@@ -522,4 +540,17 @@ for (const source of ['codex','claude']) for (const [label,queued,raw] of [['que
  assert.equal(body.page.totals_scope,'unknown');
  const summary=await callEndpoint(queuePath,'/functions/tokentracker-usage-summary'+query);
  assert.equal(Number(summary.total_tokens ?? summary.totals?.total_tokens),queued);
+});
+
+test('Codex historical queue survives absent or partial raw logs and requests-only filtering',async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-codex-history-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');const query=`/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=codex&tz=UTC`;
+ await writeQueue(queuePath,[makeRow({source:'codex',model:'gpt-5',hour_start:FIXED_HOUR,input_tokens:100,output_tokens:0,cached_input_tokens:0,total_tokens:100}),makeRow({source:'codex',model:'gpt-5',hour_start:`${FIXED_DAY}T13:00:00.000Z`,input_tokens:200,output_tokens:0,cached_input_tokens:0,total_tokens:200})]);
+ const all=await callEndpoint(queuePath,query);assert.equal(all.records.length,2);assert.ok(all.records.every(r=>r.record_kind==='aggregate_bucket'));assert.equal(all.totals.total_tokens,300);
+ const requests=await callEndpoint(queuePath,query+'&record_kind=request_event');assert.equal(requests.records.length,0);assert.equal(requests.queue_history_record_count,2);assert.equal(requests.queue_baseline_totals.total_tokens,300);assert.equal(requests.page.totals_scope,'unknown');
+ const sessions=path.join(dir,'codex','sessions');await fs.promises.mkdir(sessions,{recursive:true});await fs.promises.writeFile(path.join(sessions,'rollout-history.jsonl'),JSON.stringify({type:'session_meta',payload:{id:'fixture',model:'gpt-5'}})+'\n'+buildCodexTokenCountLine({ts:FIXED_HOUR,usage:{input_tokens:80,output_tokens:0,total_tokens:80}})+'\n');clearRequestUsageRecordsListCacheForTests();
+ const realNow=Date.now;Date.now=()=>realNow()+61_000;let partial;
+ try{partial=await callEndpoint(queuePath,query);}finally{Date.now=realNow;}
+ assert.equal(partial.records.length,2);assert.equal(partial.totals.total_tokens,280);assert.equal(partial.records.find(r=>r.record_kind==='aggregate_bucket').total_tokens,200);assert.equal(partial.queue_baseline_totals.total_tokens,300);assert.equal(partial.page.totals_scope,'unknown');
+ const empty=await callEndpoint(queuePath,query.replace(FIXED_DAY,'2025-01-01').replace(FIXED_DAY,'2025-01-01')+'&record_kind=request_event');assert.equal(empty.records.length,0);assert.equal(empty.queue_history_record_count,0);assert.equal(empty.page.totals_scope,'all_matching');
 });

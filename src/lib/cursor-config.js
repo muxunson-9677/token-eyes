@@ -289,7 +289,7 @@ async function fetchCursorAuthenticated({
 }
 
 /**
- * Fetch full usage CSV from Cursor API.
+ * Fetch usage CSV from Cursor API. The response has no verified coverage marker.
  * Returns raw CSV string or throws on error.
  */
 function fetchCursorUsageCsv({ cookie, timeoutMs = 30000, dnsLookup, requestImpl }) {
@@ -371,6 +371,7 @@ async function fetchCursorUsageSummary({ cookie, timeoutMs = 30000, fetchImpl = 
  */
 function parseCursorCsv(csvText, { strict = false } = {}) {
   const lines = csvText.split("\n").filter((l) => l.trim().length > 0);
+  if (!lines.length && strict) throw new Error("Cursor export empty without schema");
   if (!lines.length || (lines.length < 2 && !strict)) return [];
 
   const headerFields = parseCsvLine(lines[0]).map((f) => stripQuotes(f));
@@ -406,6 +407,10 @@ function parseCursorCsv(csvText, { strict = false } = {}) {
       continue;
     }
     if (strict && !Number.isFinite(Date.parse(stripQuotes(fields[dateIdx])))) throw new Error("Cursor export date invalid");
+    if (strict && [inputWithIdx, inputWithoutIdx, cacheReadIdx, outputIdx, totalIdx].some(idx => {
+      const value = stripQuotes(fields[idx]);
+      return value === "" || !Number.isSafeInteger(Number(value)) || Number(value) < 0;
+    })) throw new Error("Cursor export count invalid");
 
     const inputWithCache = toNum(fields[inputWithIdx]);
     const inputWithoutCache = toNum(fields[inputWithoutIdx]);
@@ -426,7 +431,7 @@ function parseCursorCsv(csvText, { strict = false } = {}) {
       cost: toFloat(fields[costIdx]),
     };
 
-    if (record.totalTokens <= 0 && record.inputTokens <= 0 && record.outputTokens <= 0) continue;
+    if (!strict && record.totalTokens <= 0 && record.inputTokens <= 0 && record.outputTokens <= 0) continue;
 
     records.push(record);
   }
@@ -532,7 +537,8 @@ async function collectCursorAccountUsage({ homes, home,
     records.push(...parseCursorCsv(csv, { strict: true }).map(record => ({ ...record, provider_id: "cursor", account_ref: `account/cursor/${key}` })));
     accountKeys.add(key);
   }
-  return { records, accountKeys: [...accountKeys] };
+  // Neither HTTP 200 nor CSV row presence proves complete account/time coverage.
+  return { records, accountKeys: [...accountKeys], coverage: [] };
 }
 
 module.exports = {

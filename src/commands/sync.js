@@ -263,8 +263,9 @@ async function syncOnce(argv) {
       }
     }
 
-    await migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles });
-    await repairCodexRescanInflation({ cursors, queuePath, queueStatePath, rolloutFiles });
+    // Historical rebuilds require independently verified coverage. Discovery of
+    // some (or no) logs cannot authorize replacing the only surviving totals.
+    // Keep the repair helpers available for explicit, scoped history repair.
 
     const openclawFiles = await listConfiguredOpenclawSessionFiles(dataDirectoryPaths.openclawHome);
     if (openclawSignal?.sessionFile && !openclawFiles.some((entry) => entry.path === openclawSignal.sessionFile)) {
@@ -748,11 +749,8 @@ async function syncOnce(argv) {
     }
 
     // ── Cursor (API-based) ──
-    // One-time migration: earlier CLI versions mis-parsed the Cursor CSV after
-    // Cursor inserted new "Cloud Agent ID"/"Automation ID" columns, writing
-    // cursor records under model="unknown". Purge those local buckets, emit
-    // zero retractions so the cloud upserts overwrite them to zero, and reset
-    // the incremental cursor so the fixed parser re-fetches all affected rows.
+    // Preserve anonymous historical totals until replacement coverage and
+    // account ownership can be demonstrated. CSV availability is not proof.
     await migrateCursorUnknownBuckets({ cursors, queuePath });
 
     let cursorResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
@@ -763,9 +761,11 @@ async function syncOnce(argv) {
       const snapshot = await require("../lib/cursor-config").collectCursorAccountUsage({
         homes: cursorHomes, home, previousAccountKeys: cursors.cursorApi?.accountKeys || [],
       });
-      if (snapshot.records.length) {
-        cursorResult = await parseCursorApiIncremental({ records: snapshot.records, cursors, collectionStatus, queuePath, source: "cursor" });
+      if (snapshot.accountKeys.length) {
+        cursorResult = await parseCursorApiIncremental({ records: snapshot.records, coverage: snapshot.coverage, cursors, collectionStatus, queuePath, source: "cursor" });
         cursors.cursorApi.accountKeys = snapshot.accountKeys;
+      } else {
+        collectionStatus.cursor = { ...collectionStatus.cursor, status: "missing", last_attempt_at: new Date().toISOString(), error_code: null };
       }
     } catch (error) {
       collectionStatus.cursor = { ...collectionStatus.cursor, status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || "cursor_export_incomplete" };
@@ -2514,47 +2514,12 @@ async function applyCloudConversationsBackfill({ cursors, queueStatePath }) {
   return prevOffset > 0;
 }
 
-async function migrateCursorUnknownBuckets({ cursors, queuePath }) {
-  if (!cursors || typeof cursors !== "object") return;
-  cursors.migrations = cursors.migrations || {};
-  if (cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY]) return;
-
-  const buckets = cursors.hourly?.buckets;
-  if (!buckets || typeof buckets !== "object") {
-    cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY] = new Date().toISOString();
-    return;
-  }
-
-  const retractions = [];
-  for (const key of Object.keys(buckets)) {
-    if (!key.startsWith("cursor|unknown|")) continue;
-    const hourStart = key.split("|").slice(2).join("|");
-    retractions.push(
-      JSON.stringify({
-        source: "cursor",
-        model: "unknown",
-        hour_start: hourStart,
-        input_tokens: 0,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        output_tokens: 0,
-        reasoning_output_tokens: 0,
-        total_tokens: 0,
-        conversation_count: 0,
-      }),
-    );
-    delete buckets[key];
-  }
-
-  if (retractions.length > 0) {
-    await ensureDir(path.dirname(queuePath));
-    await fs.appendFile(queuePath, retractions.join("\n") + "\n");
-    if (cursors.cursorApi) {
-      cursors.cursorApi.lastRecordTimestamp = null;
-    }
-  }
-
-  cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY] = new Date().toISOString();
+async function migrateCursorUnknownBuckets({ cursors }) {
+  // A model-label correction cannot prove that a later export covers old usage.
+  // Keep the old entry point read-only; explicit history repair needs evidence.
+  return Object.entries(cursors?.hourly?.buckets || {})
+    .filter(([key]) => key.startsWith("cursor|unknown|"))
+    .map(([key, bucket]) => ({ key, previous_tokens: bucket.totals?.total_tokens ?? null, reason: "cursor_legacy_account_unresolved" }));
 }
 
 async function migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles }) {

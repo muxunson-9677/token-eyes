@@ -20,85 +20,18 @@ async function makeTempDir() {
 }
 
 describe("migrateCursorUnknownBuckets", () => {
-  it("purges cursor|unknown buckets, emits zero retractions, resets cursorApi", async () => {
+  it("previews unknown history without retracting or advancing migration state", async () => {
     const dir = await makeTempDir();
-    const queuePath = path.join(dir, "queue.jsonl");
-    const cursors = {
-      hourly: {
-        buckets: {
-          "cursor|unknown|2026-04-13T05:30:00.000Z": {
-            totals: { total_tokens: 58396, conversation_count: 2 },
-          },
-          "cursor|unknown|2026-04-14T10:00:00.000Z": {
-            totals: { total_tokens: 234247, conversation_count: 7 },
-          },
-          "cursor|composer-2-fast|2026-04-14T10:00:00.000Z": {
-            totals: { total_tokens: 123, conversation_count: 1 },
-          },
-          "codex|unknown|2026-04-14T10:00:00.000Z": {
-            totals: { total_tokens: 456, conversation_count: 1 },
-          },
-        },
-      },
-      cursorApi: { lastRecordTimestamp: "2026-04-16T03:32:33.284Z" },
-    };
-
-    await migrateCursorUnknownBuckets({ cursors, queuePath });
-
-    assert.equal(cursors.hourly.buckets["cursor|unknown|2026-04-13T05:30:00.000Z"], undefined);
-    assert.equal(cursors.hourly.buckets["cursor|unknown|2026-04-14T10:00:00.000Z"], undefined);
-    assert.ok(cursors.hourly.buckets["cursor|composer-2-fast|2026-04-14T10:00:00.000Z"]);
-    assert.ok(cursors.hourly.buckets["codex|unknown|2026-04-14T10:00:00.000Z"]);
-    assert.equal(cursors.cursorApi.lastRecordTimestamp, null);
-    assert.ok(cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY]);
-
-    const queueText = await fs.readFile(queuePath, "utf8");
-    const lines = queueText.trim().split("\n");
-    assert.equal(lines.length, 2);
-    for (const line of lines) {
-      const row = JSON.parse(line);
-      assert.equal(row.source, "cursor");
-      assert.equal(row.model, "unknown");
-      assert.equal(row.total_tokens, 0);
-      assert.equal(row.conversation_count, 0);
-    }
-
-    await fs.rm(dir, { recursive: true, force: true });
-  });
-
-  it("is idempotent — second call is a no-op", async () => {
-    const dir = await makeTempDir();
-    const queuePath = path.join(dir, "queue.jsonl");
-    const cursors = {
-      hourly: { buckets: { "cursor|unknown|2026-04-13T05:30:00.000Z": { totals: {} } } },
-      cursorApi: { lastRecordTimestamp: "x" },
-    };
-    await migrateCursorUnknownBuckets({ cursors, queuePath });
-    const firstSize = fssync.statSync(queuePath).size;
-
-    // Re-add a fresh unknown bucket post-migration; the marker must prevent re-purge.
-    cursors.hourly.buckets["cursor|unknown|2026-04-20T00:00:00.000Z"] = { totals: {} };
-    await migrateCursorUnknownBuckets({ cursors, queuePath });
-
-    const secondSize = fssync.statSync(queuePath).size;
-    assert.equal(secondSize, firstSize);
-    assert.ok(cursors.hourly.buckets["cursor|unknown|2026-04-20T00:00:00.000Z"]);
-
-    await fs.rm(dir, { recursive: true, force: true });
-  });
-
-  it("no-op and still records marker when there are no unknown buckets", async () => {
-    const dir = await makeTempDir();
-    const queuePath = path.join(dir, "queue.jsonl");
-    const cursors = {
-      hourly: { buckets: { "cursor|composer-2-fast|2026-04-14T10:00:00.000Z": { totals: {} } } },
-      cursorApi: { lastRecordTimestamp: "2026-04-16T03:32:33.284Z" },
-    };
-    await migrateCursorUnknownBuckets({ cursors, queuePath });
-    assert.equal(fssync.existsSync(queuePath), false);
-    assert.equal(cursors.cursorApi.lastRecordTimestamp, "2026-04-16T03:32:33.284Z");
-    assert.ok(cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY]);
-    await fs.rm(dir, { recursive: true, force: true });
+    try {
+      const queuePath = path.join(dir, "queue.jsonl");
+      const cursors = {hourly:{buckets:{"cursor|unknown|2026-04-13T05:30:00.000Z":{totals:{total_tokens:58396}},"codex|unknown|2026-04-13T05:30:00.000Z":{totals:{total_tokens:456}}}},cursorApi:{lastRecordTimestamp:"2026-04-16T03:32:33.284Z"}};
+      const before=structuredClone(cursors);
+      const result=await migrateCursorUnknownBuckets({cursors,queuePath});
+      assert.deepEqual(result,[{key:"cursor|unknown|2026-04-13T05:30:00.000Z",previous_tokens:58396,reason:"cursor_legacy_account_unresolved"}]);
+      assert.deepEqual(cursors,before);assert.equal(fssync.existsSync(queuePath),false);
+      assert.deepEqual(await migrateCursorUnknownBuckets({cursors,queuePath}),result);
+      assert.deepEqual(await migrateCursorUnknownBuckets({cursors:{},queuePath}),[]);
+    } finally { await fs.rm(dir,{recursive:true,force:true}); }
   });
 });
 
@@ -415,7 +348,7 @@ describe("repairGrokQueueFromSessionSnapshots", () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it("regular sync does not run Grok history repair unless explicitly requested", async () => {
+  it("regular sync preserves queue-only Codex, Every Code and Grok history without implicit repair", async () => {
     const dir = await makeTempDir();
     const originalHomedir = os.homedir;
     const prevHome = process.env.HOME;
@@ -442,8 +375,9 @@ describe("repairGrokQueueFromSessionSnapshots", () => {
           model: "grok-build",
           hour_start: "2026-04-05T14:00:00.000Z",
           total_tokens: 999,
-        }) + "\n";
+        }) + "\n" + ['codex','every-code'].map(source=>JSON.stringify({source,model:'gpt-5',hour_start:'2026-04-05T14:00:00.000Z',total_tokens:123})).join('\n') + '\n';
       await fs.writeFile(queuePath, queueText, "utf8");
+      await fs.writeFile(path.join(trackerDir,'collection-status.json'),JSON.stringify({cursor:{status:'ok',last_successful_at:'2026-04-01T00:00:00Z'}}));
       await fs.writeFile(
         cursorsPath,
         JSON.stringify({
@@ -467,6 +401,8 @@ describe("repairGrokQueueFromSessionSnapshots", () => {
 
       const queueAfter = await fs.readFile(queuePath, "utf8");
       assert.equal(queueAfter, queueText);
+      const health=JSON.parse(await fs.readFile(path.join(trackerDir,'collection-status.json'),'utf8'));
+      assert.equal(health.cursor.status,'missing');assert.equal(health.cursor.last_successful_at,'2026-04-01T00:00:00Z');
       const cursorsAfter = JSON.parse(await fs.readFile(cursorsPath, "utf8"));
       assert.equal(
         cursorsAfter.grok.migrations?.[GROK_APPEND_ONLY_REPAIR_MIGRATION_KEY],

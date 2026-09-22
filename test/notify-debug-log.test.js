@@ -96,6 +96,8 @@ async function setupInitEnv() {
     APPDATA: path.join(tmp, "AppData", "Roaming"),
     LOCALAPPDATA: path.join(tmp, "AppData", "Local"),
     CODEX_HOME: codexHome,
+    GEMINI_HOME: path.join(tmp, ".gemini"),
+    CLAUDE_CONFIG_DIR: path.join(tmp, ".claude"),
     OPENCODE_CONFIG_DIR: path.join(tmp, ".config", "opencode"),
   };
   delete env.TOKENTRACKER_DEVICE_TOKEN;

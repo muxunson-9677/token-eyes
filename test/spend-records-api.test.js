@@ -41,6 +41,17 @@ async function call(handler, pathName, options) {
   return res;
 }
 
+test('unpriced saved usage cannot become zero monthly or lifetime equivalent cost',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-spend-unpriced-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');const row={source:'codex',model:'unpriced-fixture-model',hour_start:'2026-09-22T01:00:00Z',input_tokens:100,output_tokens:0,total_tokens:100};
+ const handler=createLocalApiHandler({queuePath,trackerDataDir:dir,nowProvider:()=>Date.parse('2026-09-22T12:00:00Z')});
+ const read=async()=>readJsonResponse(await call(handler,'/functions/tokentracker-spend-records?from=2026-09-01&to=2026-09-30'));
+ await fs.writeFile(queuePath,JSON.stringify(row)+'\n');const missing=await read();
+ for(const key of ['api_usd','api_cny','combined_usd','combined_cny','lifetime_api_usd','lifetime_api_cny','lifetime_combined_usd','lifetime_combined_cny'])assert.equal(missing.totals[key],null,key);
+ assert.equal(missing.totals.subscription_usd,0);assert.equal(missing.by_source[0].api_usd,null);assert.equal(missing.by_source[0].combined_usd,null);
+ await fs.writeFile(queuePath,JSON.stringify({...row,input_tokens:0,total_tokens:0})+'\n');const zero=await read();assert.equal(zero.totals.api_usd,0);assert.equal(zero.totals.combined_usd,0);
+});
+
 test("G04: spend records API POST/GET/PUT/DELETE full CRUD", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-spend-"));
   try {

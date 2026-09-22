@@ -1351,7 +1351,7 @@ test("parseGeminiIncremental defaults missing model to unknown", async () => {
   }
 });
 
-test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces prior cursor buckets", async () => {
+test("parseCursorApiIncremental uses evidenced complete Cursor exports and replaces prior cursor buckets", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-cursor-reconcile-"));
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
@@ -1361,7 +1361,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       records: [
         {
           date: "2026-04-01T10:00:00.000Z",
-          model: "auto",
+          model: "auto", account_ref:'account/cursor/fixture',
           kind: "Included",
           inputTokens: 100,
           cacheReadTokens: 10,
@@ -1373,6 +1373,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     assert.equal(first.eventsAggregated, 1);
 
@@ -1380,7 +1381,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       records: [
         {
           date: "2026-04-01T10:00:00.000Z",
-          model: "auto",
+          model: "auto", account_ref:'account/cursor/fixture',
           kind: "Included",
           inputTokens: 40,
           cacheReadTokens: 4,
@@ -1392,6 +1393,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     assert.equal(second.eventsAggregated, 1);
 
@@ -1418,7 +1420,7 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
     const cursors = { version: 1, files: {}, updatedAt: null };
     const mkRecord = (date, inputTokens) => ({
       date,
-      model: "auto",
+      model: "auto", account_ref:'account/cursor/fixture',
       kind: "Included",
       inputTokens,
       cacheReadTokens: 0,
@@ -1436,6 +1438,7 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     const oldKey = "cursor|auto|2026-01-05T09:00:00.000Z";
     assert.equal(cursors.hourly.buckets[oldKey].totals.total_tokens, 1000);
@@ -1446,6 +1449,7 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     assert.equal(
       cursors.hourly.buckets[oldKey].totals.total_tokens,
@@ -1459,12 +1463,13 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
     );
 
     // Malformed export (records without parseable dates): wipe nothing.
-    await parseCursorApiIncremental({
-      records: [{ model: "auto", kind: "Included", inputTokens: 5 }],
+    await assert.rejects(parseCursorApiIncremental({
+      records: [{ model: "auto", account_ref:'account/cursor/fixture', kind: "Included", inputTokens: 5 }],
       cursors,
       queuePath,
       source: "cursor",
-    });
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
+    }), /timestamp/);
     assert.equal(cursors.hourly.buckets[oldKey].totals.total_tokens, 1000);
     assert.equal(
       cursors.hourly.buckets["cursor|auto|2026-04-01T10:00:00.000Z"].totals.total_tokens,

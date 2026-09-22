@@ -388,6 +388,18 @@ async function parseGeminiIncremental({
     cursors.files = {};
   }
 
+  // Upgrade only known files whose unchanged contributions can anchor revision
+  // order. Prime them before processing copies, regardless of traversal order.
+  for (const entry of files) {
+    const filePath = typeof entry === "string" ? entry : entry?.path;
+    const previous = cursors.files[filePath];
+    if (previous?.messageUsageVersion !== 1) continue;
+    const stat = await fs.stat(filePath).catch(missingFileOrThrow);
+    if (!stat?.isFile() || previous.inode !== (stat.ino || 0)) continue;
+    await parseGeminiFile({ filePath, messageUsage, revisionBaselineCursor: previous,
+      baselineOnly: true, lastModel: previous.lastModel, lastTotals: previous.lastTotals });
+  }
+
   for (let idx = 0; idx < files.length; idx++) {
     const entry = files[idx];
     const filePath = typeof entry === "string" ? entry : entry?.path;
@@ -423,6 +435,7 @@ async function parseGeminiIncremental({
       filePath,
       messageUsage,
       legacyCursor: prev && !prev.messageUsageVersion ? prev : null,
+      revisionBaselineCursor: prev?.messageUsageVersion === 1 && prev.inode === inode ? prev : null,
       startIndex,
       lastTotals,
       lastModel,
@@ -438,7 +451,7 @@ async function parseGeminiIncremental({
 
     cursors.files[key] = {
       inode,
-      messageUsageVersion: 1,
+      messageUsageVersion: 2,
       legacy_unreconciled: Boolean(prev?.legacy_unreconciled || (prev && !prev.messageUsageVersion)),
       lastIndex: result.lastIndex,
       lastTotals: result.lastTotals,
@@ -1238,6 +1251,8 @@ async function parseGeminiFile({
   filePath,
   messageUsage,
   legacyCursor,
+  revisionBaselineCursor,
+  baselineOnly = false,
   startIndex,
   lastTotals,
   lastModel,
@@ -1273,6 +1288,10 @@ async function parseGeminiFile({
     const revision = { filePath, updatedAt: Number.isFinite(revisionMs) ? revisionMs : null };
     const { revision: previousRevision, legacy, ...previousUsage } = previous || {};
     const sameUsage = previous && JSON.stringify(previousUsage) === JSON.stringify(next);
+    if (baselineOnly) {
+      if (sameUsage && !legacy && !previousRevision && idx <= revisionBaselineCursor.lastIndex) previous.revision = revision;
+      continue;
+    }
     if (previous && !legacy) {
       const ordered = revision.updatedAt != null && previousRevision?.updatedAt != null;
       if (ordered && revision.updatedAt < previousRevision.updatedAt) continue;
@@ -1281,7 +1300,8 @@ async function parseGeminiFile({
         throw new Error("Gemini message revision conflict: copies lack an unambiguous update order");
       }
       if (sameUsage) {
-        if (ordered && revision.updatedAt > previousRevision.updatedAt) previous.revision = revision;
+        if ((!previousRevision && revisionBaselineCursor && idx <= revisionBaselineCursor.lastIndex) ||
+            (ordered && revision.updatedAt > previousRevision.updatedAt)) previous.revision = revision;
         continue;
       }
     }
@@ -1426,7 +1446,7 @@ function addAttributedTotals(bucket, delta, evidence) {
     };
   }
   const attributedBucket = bucket.attributionBuckets[mode];
-  if (attributedBucket.identityBuckets || attribution.account_ref || attribution.credential_ref || attribution.plan_ref) {
+  if (attributedBucket.identityBuckets || attribution.provider_id || attribution.account_ref || attribution.credential_ref || attribution.plan_ref) {
     if (!attributedBucket.identityBuckets) {
       attributedBucket.identityBuckets = {};
       if (!isAllZeroUsage(attributedBucket.totals)) {
@@ -3151,29 +3171,41 @@ async function resolveProjectContextForDb({
  */
 async function parseCursorApiIncremental({
   records,
+  coverage = [],
+  previewOnly = false,
   cursors,
   queuePath,
   onProgress,
   source,
 }) {
-  await ensureDir(path.dirname(queuePath));
+  if (!previewOnly) await ensureDir(path.dirname(queuePath));
   const defaultSource = normalizeSourceInput(source) || "cursor";
   const hourlyState = normalizeHourlyState(cursors?.hourly);
   const touchedBuckets = new Set();
 
-  // Cursor's CSV is an account-level API export, not an append-only local log.
-  // Treat the fetched CSV as authoritative so historical backfills and row
-  // corrections replace prior local bucket totals instead of being skipped.
+  // CSV rows alone do not prove a bucket is complete. Only an explicit,
+  // evidenced account/time range may retract absent events or revise totals.
   const lastTs = cursors?.cursorApi?.lastRecordTimestamp || null;
   let latestTs = lastTs;
   let eventsAggregated = 0;
   const cb = typeof onProgress === "function" ? onProgress : null;
   const total = records.length;
 
-  if (records.some(record => record.account_ref)) {
+  if (!Array.isArray(coverage) || coverage.some(range => range.complete !== true || !range.account_ref || !range.evidence || !Number.isFinite(Date.parse(range.from)) || !Number.isFinite(Date.parse(range.to)) || Date.parse(range.from) >= Date.parse(range.to))) {
+    throw new Error("Cursor export coverage invalid");
+  }
+  if (records.some(record => record.account_ref) || coverage.length > 0) {
     if (records.some(record => !record.account_ref)) throw new Error("Cursor export contains unscoped account usage");
     const accountBuckets = cursors.cursorApi?.accountBuckets || {};
+    const eventGroups = cursors.cursorApi?.eventGroups || {};
+    const coveredBuckets = cursors.cursorApi?.coveredBuckets || {};
     const fetched = new Map();
+    const fetchedEvents = new Map();
+    const pairs = new Map();
+    const pairKey = slice => JSON.stringify([slice.key, slice.attribution.account_ref]);
+    const complete = slice => coverage.some(range => range.account_ref === slice.attribution.account_ref && Date.parse(range.from) <= Date.parse(slice.hourStart) && Date.parse(range.to) >= Date.parse(slice.hourStart) + 1800000);
+    const signature = slices => JSON.stringify(slices.map(slice => [usageAttributionIdentity(slice.attribution), slice.totals]).sort((a,b) => a[0].localeCompare(b[0])));
+    const reconciliation = [...(cursors.cursorApi?.reconciliation || [])];
     for (const record of records) {
       const hourStart = toUtcHalfHourStart(record.date);
       if (!hourStart) throw new Error("Cursor export timestamp unavailable");
@@ -3186,23 +3218,68 @@ async function parseCursorApiIncremental({
       const delta = require("./cursor-config").normalizeCursorUsage(record);
       delta.conversation_count = 1;
       addTotals(fetched.get(sliceKey).totals, delta);
+      const eventKey = JSON.stringify([key, attribution.account_ref, new Date(record.date).toISOString()]);
+      if (!fetchedEvents.has(eventKey)) fetchedEvents.set(eventKey, {});
+      const event = fetchedEvents.get(eventKey);
+      event[identity] ||= { key, model, hourStart, attribution, totals: initTotals() };
+      addTotals(event[identity].totals, delta);
+      pairs.set(pairKey(fetched.get(sliceKey)), fetched.get(sliceKey));
       if (!latestTs || record.date > latestTs) latestTs = record.date;
     }
-    for (const slice of fetched.values()) {
-      const existing = hourlyState.buckets[slice.key];
-      if (existing?.totals?.total_tokens > 0 && !Object.values(accountBuckets).some(entry => entry.key === slice.key)) {
-        throw new Error("Cursor legacy account coverage requires history reconciliation");
+    for (const slice of Object.values(accountBuckets)) if (complete(slice)) pairs.set(pairKey(slice), slice);
+    for (const [pair, slice] of pairs) {
+      const unknownKey = bucketKey(defaultSource, DEFAULT_MODEL, slice.hourStart);
+      const unknown = hourlyState.buckets[unknownKey];
+      const legacyUnknown = unknown?.totals?.total_tokens > 0 && !Object.values(accountBuckets).some(entry => entry.key === unknownKey);
+      const existing = legacyUnknown ? unknown : hourlyState.buckets[slice.key];
+      const oldSlices = Object.values(accountBuckets).filter(entry => pairKey(entry) === pair);
+      const nextSlices = [...fetched.values()].filter(entry => pairKey(entry) === pair);
+      const warn = reason => reconciliation.push({ reason, source: defaultSource, model: slice.model, hour_start: slice.hourStart, account_ref: slice.attribution.account_ref, previous_tokens: oldSlices.length ? oldSlices.reduce((n,s)=>n+s.totals.total_tokens,0) : existing?.totals?.total_tokens || 0, observed_tokens: nextSlices.reduce((n,s)=>n+s.totals.total_tokens,0) });
+      if (legacyUnknown || (existing?.totals?.total_tokens > 0 && !Object.values(accountBuckets).some(entry => entry.key === slice.key))) {
+        warn("cursor_legacy_account_unresolved");
+        continue;
+      }
+      const oldEvents = Object.entries(eventGroups).filter(([, entries]) => entries.length && pairKey(entries[0]) === pair);
+      const incomingEvents = [...fetchedEvents].filter(([, entries]) => pairKey(Object.values(entries)[0]) === pair);
+      if (complete(slice)) {
+        for (let i = reconciliation.length - 1; i >= 0; i--) {
+          const pending = reconciliation[i];
+          if (pending.model === slice.model && pending.hour_start === slice.hourStart && pending.account_ref === slice.attribution.account_ref) reconciliation.splice(i,1);
+        }
+        for (const [eventKey] of oldEvents) delete eventGroups[eventKey];
+        for (const [eventKey, entries] of incomingEvents) eventGroups[eventKey] = Object.values(entries);
+        coveredBuckets[pair] = true;
+      } else if (oldSlices.length && !oldEvents.length) {
+        // Previous releases kept bucket snapshots without event provenance.
+        if (signature(oldSlices) !== signature(nextSlices)) warn("cursor_export_coverage_unknown");
+        continue;
+      } else {
+        for (const [eventKey, entries] of incomingEvents) {
+          const next = Object.values(entries);
+          if (!eventGroups[eventKey] && coveredBuckets[pair]) {
+            warn("cursor_export_coverage_unknown");
+            continue;
+          }
+          if (eventGroups[eventKey] && signature(eventGroups[eventKey]) !== signature(next)) {
+            warn("cursor_export_coverage_unknown");
+            continue;
+          }
+          eventGroups[eventKey] = next;
+        }
+      }
+      for (const [sliceKey, entry] of Object.entries(accountBuckets)) if (pairKey(entry) === pair) delete accountBuckets[sliceKey];
+      for (const entries of Object.values(eventGroups)) for (const entry of entries) {
+        if (pairKey(entry) !== pair) continue;
+        const sliceKey = JSON.stringify([entry.key, usageAttributionIdentity(entry.attribution)]);
+        accountBuckets[sliceKey] ||= { ...entry, totals: initTotals() };
+        addTotals(accountBuckets[sliceKey].totals, entry.totals);
       }
       touchedBuckets.add(slice.key);
     }
-    const representedAccounts = new Set([...fetched.values()].map(slice => JSON.stringify([slice.key, slice.attribution.account_ref])));
-    for (const [sliceKey, slice] of Object.entries(accountBuckets)) {
-      if (representedAccounts.has(JSON.stringify([slice.key, slice.attribution.account_ref]))) delete accountBuckets[sliceKey];
-    }
-    for (const [sliceKey, slice] of fetched) accountBuckets[sliceKey] = slice;
+    if (previewOnly) return { recordsProcessed: total, eventsAggregated: 0, bucketsQueued: 0, reconciliation, readErrorCodes: [...new Set(reconciliation.map(row=>row.reason))] };
     for (const key of touchedBuckets) {
       const slices = Object.values(accountBuckets).filter(entry => entry.key === key);
-      const { model, hourStart } = slices[0];
+      const { model, hourStart } = slices[0] || [...pairs.values()].find(slice => slice.key === key);
       const bucket = getHourlyBucket(hourlyState, defaultSource, model, hourStart);
       const previousModes = Object.keys(bucket.attributionBuckets || {});
       bucket.totals = initTotals();
@@ -3221,10 +3298,13 @@ async function parseCursorApiIncremental({
     }
     const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
     cursors.hourly = hourlyState;
-    cursors.cursorApi = { ...cursors.cursorApi, accountBuckets, lastRecordTimestamp: latestTs, updatedAt: new Date().toISOString() };
-    return { recordsProcessed: total, eventsAggregated: records.length, bucketsQueued };
+    const unique = [...new Map(reconciliation.map(row=>[JSON.stringify([row.reason,row.model,row.hour_start,row.account_ref]),row])).values()];
+    cursors.cursorApi = { ...cursors.cursorApi, accountBuckets, eventGroups, coveredBuckets, reconciliation: unique, lastRecordTimestamp: latestTs, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: total, eventsAggregated: records.length, bucketsQueued, reconciliation, readErrorCodes: [...new Set(reconciliation.map(row=>row.reason))] };
   }
 
+  const reconciliation = [...(cursors.cursorApi?.reconciliation || [])];
+  const retainedBuckets = new Set();
   if (records.length > 0) {
     // An export does not prove coverage outside the buckets it actually carries.
     const represented = new Set(records.map(record => {
@@ -3233,8 +3313,8 @@ async function parseCursorApiIncremental({
     }).filter(Boolean));
     for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
       if (!represented.has(key) || !bucket?.totals) continue;
-      bucket.totals = initTotals();
-      touchedBuckets.add(key);
+      retainedBuckets.add(key);
+      reconciliation.push({ reason: "cursor_legacy_account_unresolved", source: defaultSource, model: key.split("|")[1], hour_start: key.split("|").slice(2).join("|"), previous_tokens: bucket.totals.total_tokens });
     }
   }
 
@@ -3253,6 +3333,7 @@ async function parseCursorApiIncremental({
     if (!bucketStart) continue;
 
     const model = normalizeModelInput(record.model) || DEFAULT_MODEL;
+    if (retainedBuckets.has(bucketKey(defaultSource, model, bucketStart))) continue;
     const bucket = getHourlyBucket(hourlyState, defaultSource, model, bucketStart);
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey(defaultSource, model, bucketStart));
@@ -3274,6 +3355,7 @@ async function parseCursorApiIncremental({
     }
   }
 
+  if (previewOnly) return { recordsProcessed: total, eventsAggregated: 0, bucketsQueued: 0, reconciliation };
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
   hourlyState.updatedAt = new Date().toISOString();
   cursors.hourly = hourlyState;
@@ -3285,7 +3367,7 @@ async function parseCursorApiIncremental({
   }
   cursors.cursorApi.updatedAt = new Date().toISOString();
 
-  return { recordsProcessed: total, eventsAggregated, bucketsQueued };
+  return { recordsProcessed: total, eventsAggregated, bucketsQueued, reconciliation, readErrorCodes: [...new Set(reconciliation.map(row=>row.reason))] };
 }
 
 // ---------------------------------------------------------------------------
@@ -3333,12 +3415,17 @@ function readKiroDbTokens(dbPath, sinceId, sqliteOptions = {}) {
 // cursor so it never shares state with the SQLite path.
 function countKiroJsonlLines(jsonlPath) {
   if (!jsonlPath || !fssync.existsSync(jsonlPath)) return 0;
-  try {
-    const raw = fssync.readFileSync(jsonlPath, "utf8");
-    return raw.split("\n").filter((l) => l.trim()).length;
-  } catch (_e) {
-    return 0;
+  return readKiroJsonlLines(jsonlPath).length;
+}
+
+function readKiroJsonlLines(jsonlPath) {
+  const lines = fssync.readFileSync(jsonlPath, "utf8").split("\n");
+  // A valid final JSON value is complete even without a newline. An incomplete
+  // tail must not advance the line cursor before the writer finishes it.
+  if (lines.at(-1).trim()) {
+    try { JSON.parse(lines.at(-1)); } catch (_) { lines.pop(); }
   }
+  return lines.filter(line => line.trim());
 }
 
 function readKiroJsonlTokens(jsonlPath, sinceLineIndex) {
@@ -3346,23 +3433,12 @@ function readKiroJsonlTokens(jsonlPath, sinceLineIndex) {
     return { rows: [], lineCount: 0, reset: false };
   }
   const startLine = Number.isFinite(sinceLineIndex) && sinceLineIndex > 0 ? sinceLineIndex : 0;
-  let raw;
-  try {
-    raw = fssync.readFileSync(jsonlPath, "utf8");
-  } catch (_e) {
-    return { rows: [], lineCount: 0, reset: false };
-  }
-  const lines = raw.split("\n").filter((l) => l.trim());
+  const lines = readKiroJsonlLines(jsonlPath);
   const lineCount = lines.length;
   if (startLine > lineCount) {
     return { rows: [], lineCount, reset: true };
   }
-  let mtime;
-  try {
-    mtime = fssync.statSync(jsonlPath).mtime.toISOString();
-  } catch (_e) {
-    mtime = new Date().toISOString();
-  }
+  const mtime = fssync.statSync(jsonlPath).mtime.toISOString();
   const timestamp = mtime.replace("T", " ").replace("Z", "").slice(0, 19);
   const rows = [];
   for (let i = startLine; i < lines.length; i++) {
@@ -10569,6 +10645,7 @@ function transactionalIncremental(parse) {
   return async function (options = {}) {
     if (!options.cursors) return parse(options);
     const staged = structuredClone(options.cursors);
+    if (parse.name === "parseCursorApiIncremental" && options.previewOnly) return parse({ ...options, cursors: staged });
     const files = [];
     const source = options.source || require("../../shared/agent-registry.json").adapters.find(entry => entry.parser_export === parse.name)?.queue_source || parse.name;
     const health = options.collectionStatus;

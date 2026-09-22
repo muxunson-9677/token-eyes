@@ -322,7 +322,7 @@ async function buildRequestUsageRecordsList({
         sourceTruncated ||= Boolean(claudeResult.truncated);
       }
     } catch (e) {
-      console.error("[LocalAPI] request-usage-records claude branch error:", e?.message || e);
+      throw new Error("Request usage source unavailable: claude", { cause: e });
     }
   }
   // Keep historical buckets unless the selected raw records prove full bucket coverage.
@@ -335,6 +335,7 @@ async function buildRequestUsageRecordsList({
     pricingOptions,
     sources: aggregateOnlySources.length > 0 ? aggregateOnlySources : [],
     models,
+    includeCodex: true,
   });
   allRecords.push(...aggregateRecords);
 
@@ -371,7 +372,7 @@ async function buildRequestUsageRecordsList({
         allRecords.push(record);
       }
     } catch (e) {
-      console.error("[LocalAPI] request-usage-records codex branch error:", e?.message || e);
+      throw new Error("Request usage source unavailable: codex", { cause: e });
     }
   }
 
@@ -400,7 +401,7 @@ async function buildRequestUsageRecordsList({
   const hasMore = sourceTruncated || allRecords.length > limit;
   if (allRecords.length > limit) allRecords.length = limit;
 
-  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur, hasMore, queueBaselineRecords };
+  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur, hasMore, queueBaselineRecords, queueHistoryRecordCount: aggregateRecords.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -585,7 +586,7 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     // don't want to hide behind an empty array forever 鈥?the dashboard would
     // otherwise render "0 tokens" with no clue the queue was unreadable.
     if (e?.code !== "ENOENT") {
-      console.error("[LocalAPI] readQueueData: failed to read queue:", e?.message || e);
+      throw Object.assign(new Error("Usage queue unavailable", { cause: e }), { code: e.code || "queue_read_error" });
     }
     return [];
   }
@@ -910,7 +911,7 @@ async function listCodexRolloutFilesFromHome(codexHome) {
   const seen = new Set();
   const files = [];
   for (const dir of dirs) {
-    const found = await listRolloutFilesDeep(dir).catch(() => []);
+    const found = await listRolloutFilesDeep(dir);
     for (const filePath of found) {
       const key = String(filePath || "").toLowerCase();
       if (!key || seen.has(key)) continue;
@@ -5443,11 +5444,10 @@ function createLocalApiHandler({
         rows = rows.filter((r) => sourcesSet.has((r.source || "").toLowerCase()));
       }
       const pricingOptions = getPricingOptions();
-      const daily = aggregateByDay(rows, timeZoneContext, pricingOptions).filter((d) => d.day >= fromDate.toISOString().slice(0, 10) && d.day <= toDate.toISOString().slice(0, 10));
-      return daily.reduce((sum, d) => sum + (d.total_cost_usd || 0), 0);
+      const totals = computeQueueTotals(rows, { fromKey: fromDate.toISOString().slice(0,10), toKey: toDate.toISOString().slice(0,10), timeZoneContext, pricingOptions });
+      return totals.unpriced_tokens > 0 ? null : totals.cost_usd;
     } catch (e) {
-      // If queue data is unavailable, return 0 (no API cost data)
-      return 0;
+      return null;
     }
   }
 
@@ -5540,17 +5540,17 @@ function createLocalApiHandler({
 
     const periodSubscriptionCny = periodSubscriptionUsd * usdToCny;
     const periodOtherAiCny = periodOtherAiUsd * usdToCny;
-    const periodApiCny = periodApiUsd * usdToCny;
-    const periodCombinedUsd = periodSubscriptionUsd + periodOtherAiUsd + periodApiUsd;
-    const periodCombinedCny = periodCombinedUsd * usdToCny;
+    const periodApiCny = periodApiUsd === null ? null : periodApiUsd * usdToCny;
+    const periodCombinedUsd = periodApiUsd === null ? null : periodSubscriptionUsd + periodOtherAiUsd + periodApiUsd;
+    const periodCombinedCny = periodCombinedUsd === null ? null : periodCombinedUsd * usdToCny;
 
     const lifetimeSubscriptionCny = lifetimeSubscriptionUsd * usdToCny;
     const lifetimeOtherAiCny = lifetimeOtherAiUsd * usdToCny;
-    const lifetimeApiCny = lifetimeApiUsd * usdToCny;
-    const lifetimeCombinedUsd = lifetimeSubscriptionUsd + lifetimeOtherAiUsd + lifetimeApiUsd;
-    const lifetimeCombinedCny = lifetimeCombinedUsd * usdToCny;
+    const lifetimeApiCny = lifetimeApiUsd === null ? null : lifetimeApiUsd * usdToCny;
+    const lifetimeCombinedUsd = lifetimeApiUsd === null ? null : lifetimeSubscriptionUsd + lifetimeOtherAiUsd + lifetimeApiUsd;
+    const lifetimeCombinedCny = lifetimeCombinedUsd === null ? null : lifetimeCombinedUsd * usdToCny;
 
-    const round6 = (v) => Number(v.toFixed(6));
+    const round6 = (v) => v === null ? null : Number(v.toFixed(6));
 
     // Build by_source array
     const bySource = Array.from(bySourceMap.values())
@@ -5562,9 +5562,9 @@ function createLocalApiHandler({
         other_ai_usd: round6(entry.other_ai_usd),
         other_ai_cny: round6(entry.other_ai_usd * usdToCny),
         api_usd: round6(entry.api_usd),
-        api_cny: round6(entry.api_usd * usdToCny),
-        combined_usd: round6(entry.subscription_usd + entry.other_ai_usd + entry.api_usd),
-        combined_cny: round6((entry.subscription_usd + entry.other_ai_usd + entry.api_usd) * usdToCny),
+        api_cny: entry.api_usd === null ? null : round6(entry.api_usd * usdToCny),
+        combined_usd: entry.api_usd === null ? null : round6(entry.subscription_usd + entry.other_ai_usd + entry.api_usd),
+        combined_cny: entry.api_usd === null ? null : round6((entry.subscription_usd + entry.other_ai_usd + entry.api_usd) * usdToCny),
       }));
 
     return {
@@ -9155,6 +9155,7 @@ function createLocalApiHandler({
           let toKeyRur;
           let hasMore;
           let queueBaselineRecords;
+          let queueHistoryRecordCount;
 
           const cachedList = readRequestUsageRecordsListCache(listCacheKey);
           if (cachedList) {
@@ -9165,6 +9166,7 @@ function createLocalApiHandler({
             toKeyRur = cachedList.toKeyRur;
             hasMore = cachedList.hasMore;
             queueBaselineRecords = cachedList.queueBaselineRecords;
+            queueHistoryRecordCount = cachedList.queueHistoryRecordCount;
           } else {
             const built = await buildRequestUsageRecordsList({
               qp,
@@ -9186,6 +9188,7 @@ function createLocalApiHandler({
             toKeyRur = built.toKeyRur;
             hasMore = built.hasMore;
             queueBaselineRecords = built.queueBaselineRecords;
+            queueHistoryRecordCount = built.queueHistoryRecordCount;
             writeRequestUsageRecordsListCache(listCacheKey, {
               allRecords,
               aggregateOnlySources,
@@ -9194,6 +9197,7 @@ function createLocalApiHandler({
               toKeyRur,
               hasMore,
               queueBaselineRecords,
+              queueHistoryRecordCount,
             });
           }
 
@@ -9257,7 +9261,7 @@ function createLocalApiHandler({
               limit: Number(limit),
               returned_count: pagedRecords.length,
               total_count: totalCount,
-              totals_scope: queueBaselineRecords.length > 0 || totals.usage_coverage !== "complete" ? "unknown" : hasMore ? "returned_subset" : "all_matching",
+              totals_scope: queueBaselineRecords.length > 0 || (recordKindFilter === "request_event" && queueHistoryRecordCount > 0) || totals.usage_coverage !== "complete" ? "unknown" : hasMore ? "returned_subset" : "all_matching",
               has_more: Boolean(hasMore),
             },
             availability: {
@@ -9267,36 +9271,10 @@ function createLocalApiHandler({
             },
             queue_baseline_totals: queueBaselineTotals,
             queue_baseline_records: queueBaselineRecords,
+            queue_history_record_count: queueHistoryRecordCount,
           });
         } catch (e) {
-          console.error("[LocalAPI] tokentracker-request-usage-records error:", e?.message || e);
-          json(res, {
-            ok: false,
-            source: singleSource || "all",
-            from: from || null,
-            to: to || null,
-            records: [],
-            items: [],
-            totals: computeRecordTotals([]),
-            granularity: "request_event",
-            aggregate_only_sources: [],
-            page: {
-              page: 1,
-              pageSize: pageSize,
-              total: 0,
-              total_pages: 1,
-              limit: Number(limit),
-              returned_count: 0,
-              total_count: 0,
-              totals_scope: "all_matching",
-            },
-            availability: {
-              request_records: "unavailable",
-              status: "unavailable",
-              latency: "unavailable",
-            },
-            queue_baseline_totals: computeQueueTotals([], {}),
-          });
+          json(res, { ok: false, error: "request_usage_source_unavailable" }, 503);
         }
         return true;
       }

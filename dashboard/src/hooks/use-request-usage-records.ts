@@ -45,7 +45,8 @@ interface UseRequestUsageRecordsParams {
 type RequestUsageRecordsSource = "edge" | "cache" | "mock";
 
 type TotalsScope = "all_matching" | "returned_subset" | "unknown";
-type PageMeta = { page: number; totalPages: number; total: number; totalsScope: TotalsScope };
+type QueueHistory = { recordCount: number; tokens: number | null };
+type PageMeta = { page: number; totalPages: number; total: number; totalsScope: TotalsScope; queueHistory?: QueueHistory | null };
 function totalsScope(value: unknown): TotalsScope { return value === "all_matching" || value === "returned_subset" ? value : "unknown"; }
 
 type MergedTotals = RequestUsageRecordsTotals;
@@ -65,6 +66,7 @@ interface UseRequestUsageRecordsReturn {
   /** 总记录数。 */
   total: number;
   totalsScope: TotalsScope;
+  queueHistory: QueueHistory | null;
 }
 
 const EMPTY_TOTALS: MergedTotals = {
@@ -119,6 +121,12 @@ function safeNullableNum(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function queueHistory(recordCount: unknown, tokens: unknown): QueueHistory | null {
+  if (typeof recordCount !== "number" || !Number.isSafeInteger(recordCount) || recordCount < 0) return null;
+  const value = safeNullableNum(tokens);
+  return { recordCount, tokens: value !== null && value >= 0 ? value : null };
 }
 
 export function useRequestUsageRecords({
@@ -214,6 +222,7 @@ export function useRequestUsageRecords({
           totalPages: safeNum(parsed.pageMeta?.totalPages) || Math.max(1, Math.ceil(cachedTotal / pageSize)),
           total: cachedTotal,
           totalsScope: totalsScope(parsed.pageMeta?.totalsScope),
+          queueHistory: queueHistory(parsed.pageMeta?.queueHistory?.recordCount, parsed.pageMeta?.queueHistory?.tokens),
         },
       };
     } catch {
@@ -306,16 +315,17 @@ export function useRequestUsageRecords({
         totalPages: pageInfo.total_pages || 1,
         total: pageInfo.total ?? allRecords.length,
         totalsScope: totalsScope(pageInfo.totals_scope),
+        queueHistory: queueHistory(result.queue_history_record_count, result.queue_baseline_totals?.total_tokens),
       };
 
       const mergedTotals: MergedTotals = { ...EMPTY_TOTALS };
       if (totals) {
-        mergedTotals.input_tokens = safeNum(totals.input_tokens);
-        mergedTotals.output_tokens = safeNum(totals.output_tokens);
-        mergedTotals.cached_input_tokens = safeNum(totals.cached_input_tokens);
-        mergedTotals.cache_creation_input_tokens = safeNum(totals.cache_creation_input_tokens);
-        mergedTotals.reasoning_output_tokens = safeNum(totals.reasoning_output_tokens);
-        mergedTotals.total_tokens = safeNum(totals.total_tokens);
+        mergedTotals.input_tokens = safeNullableNum(totals.input_tokens);
+        mergedTotals.output_tokens = safeNullableNum(totals.output_tokens);
+        mergedTotals.cached_input_tokens = safeNullableNum(totals.cached_input_tokens);
+        mergedTotals.cache_creation_input_tokens = safeNullableNum(totals.cache_creation_input_tokens);
+        mergedTotals.reasoning_output_tokens = safeNullableNum(totals.reasoning_output_tokens);
+        mergedTotals.total_tokens = safeNullableNum(totals.total_tokens);
         mergedTotals.cost_usd = safeNullableNum(totals.cost_usd);
         mergedTotals.request_count = safeNum(totals.request_count);
         mergedTotals.priced_tokens = safeNum(totals.priced_tokens);
@@ -327,7 +337,7 @@ export function useRequestUsageRecords({
         mergedTotals.failure_count = safeNum(totals.failure_count);
         mergedTotals.success_rate = totals.success_rate ?? null;
         mergedTotals.avg_latency_ms = totals.avg_latency_ms ?? null;
-        mergedTotals.cache_hit_rate = safeNum(totals.cache_hit_rate);
+        mergedTotals.cache_hit_rate = safeNullableNum(totals.cache_hit_rate);
         mergedTotals.pricing_coverage = totals.pricing_coverage || "complete";
         mergedTotals.pricing_source = totals.pricing_source ?? null;
         mergedTotals.pricing_version = totals.pricing_version ?? null;
@@ -361,7 +371,7 @@ export function useRequestUsageRecords({
           setTotals(cached.totals);
           setPageMeta(cached.pageMeta);
           setSource("cache");
-          setError(null);
+          setError(message);
         } else {
           setError(message);
         }
@@ -443,5 +453,6 @@ export function useRequestUsageRecords({
     totalPages: pageMeta.totalPages,
     total: pageMeta.total,
     totalsScope: pageMeta.totalsScope,
+    queueHistory: pageMeta.queueHistory ?? null,
   };
 }
