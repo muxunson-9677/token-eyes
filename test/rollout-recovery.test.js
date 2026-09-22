@@ -131,6 +131,27 @@ test('Codex read-only consumers retain a same-timestamp cumulative correction on
  assert.equal(rows.reduce((sum,row)=>sum+row.total_tokens,0),170);
 });
 
+test('Codex consumers retain distinct equal deltas at one timestamp through the parser callback identity',async t=>{
+ const {collectRolloutQueueRows,collectRolloutRequestUsageRecords}=require('../src/lib/rollout');
+ const f=await fixture(t),at='2026-09-22T01:20:00.000Z';
+ const token=(total,last)=>({type:'event_msg',timestamp:at,payload:{type:'token_count',info:{total_token_usage:{input_tokens:total,output_tokens:0,total_tokens:total},last_token_usage:{input_tokens:last,output_tokens:0,total_tokens:last}}}});
+ await fs.writeFile(f.file,[
+   {type:'session_meta',payload:{id:'equal-delta-reader'}},token(100,100),token(150,50),token(200,50),token(200,50),
+ ].map(JSON.stringify).join('\n')+'\n');
+ const parsed=await parseRolloutIncremental({...f,rolloutFiles:[f.file]});
+ assert.equal(parsed.eventsAggregated,3);
+ assert.equal(latestTotal(await rows(f.queuePath)),200);
+ const copy=f.file+'.archived';await fs.copyFile(f.file,copy);
+ const reread=await parseRolloutIncremental({...f,rolloutFiles:[copy,f.file]});
+ assert.equal(reread.eventsAggregated,0);
+ assert.equal(latestTotal(await rows(f.queuePath)),200);
+ const raw=await collectRolloutRequestUsageRecords({rolloutFiles:[f.file,copy],source:'codex'});
+ assert.equal(raw.records.length,3);
+ assert.equal(raw.totals.total_tokens,200);
+ const aggregate=await collectRolloutQueueRows([f.file,copy]);
+ assert.equal(aggregate.reduce((sum,row)=>sum+row.total_tokens,0),200);
+});
+
 test('request collector uses cumulative/reset accounting and deduplicates archive copies',async t=>{
   const {collectRolloutRequestUsageRecords}=require('../src/lib/rollout');const f=await fixture(t);
   await fs.writeFile(f.file,[{type:'session_meta',payload:{id:'request-session',model:'gpt-5'}},codex('10',100),codex('10',100),codex('11',150),codex('12',20)].map(JSON.stringify).join('\n')+'\n');

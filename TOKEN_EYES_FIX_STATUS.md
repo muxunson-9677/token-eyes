@@ -756,3 +756,13 @@ D01/D10：现有kiro-fallback仅有DB切换用例且缺sqlite3时跳过。直接
 阶段复核：生产代码只改`src/lib/local-api.js`与`src/lib/rollout.js`；一个前端Hook断言确认现有显示入口传递`recordKind`（`close-d09-display-consumer.log` 14通过），没有改动页面结构、导航、业务字段或样式。关联D05/D09聚焦回归、`git diff --check`均通过。本轮没有提交、推送、安装、登录、部署、线上schema或真实账本改写；其余原编号继续按上方“未解决/未验证范围”保留。
 
 收口回归：Node全量`close-final-node.log`为2613项、2598通过、7失败；7项均为既有leaderboard迁移/SQL契约6项和Windows未知构建身份1项。前端首次并行全量因`tinypool`工作线程资源耗尽产生105个环境错误（`close-final-dashboard.log`，不作为产品失败）；单工作线程独立重跑`close-final-dashboard-sequential.log`为1909项、1908通过、1项既有PlanMarketPage Grok标签断言失败。`close-final-typecheck.log`与`close-final-build.log`均退出0，构建仅保留既有大chunk警告。没有执行安装版、真实账号、线上来源或真实历史写入验证，故整体仍不能标为验收通过。
+
+## D05 续修：旧游标正常续读与只读回调身份（82966e2a 之后）
+
+当前工作树：`D:/04-AI-Project/010-Token eye/.worktrees/token-eyes-05450-fixes`；分支`codex/token-eyes-05450-fixes`；本节开始基线为`82966e2a6cceb667b1199a22cdf786dc7ce48571`且工作树干净。当前有未提交的D05最小修改，仅影响`src/lib/rollout.js`与两份隔离测试；旧文中“未提交/未推送”均为当时历史记录，不是当前阻塞结论。
+
+- **旧游标正常续读**：RED `d05-legacy-callback-red.log`复现旧键、原inode、原offset、`lastTotal=100`后追加同刻150和T+1 170时漏为120。现仅在从头重扫、没有旧累计基线、或当前累计确实等于旧基线时把旧时间戳键视为已消费；正常offset续读的不同累计快照计入并升级为精确键。GREEN `d05-legacy-callback-green.log`与第二组`d05-legacy-callback-second.log`均252通过，最终170。
+- **只读汇总身份**：RED同日志复现T累计100/150/200的100/50/50增量，`collectRolloutQueueRows`仅150。解析器现通过既有`onUsage`回调传递源累计快照身份；只读汇总优先复用它，未以增量字段猜键。主解析、请求明细、只读汇总均200；精确重复、归档副本与跨次重读均不增加。
+- **关联范围与保留行为**：同组回归覆盖完全重复、旧状态、归档副本、fork和累计重置；D09类型筛选/缓存代码、UI、架构和真实历史均未改动。原D05的真实污染历史、真实账号日志、安装版强杀恢复仍未验证；D03/C02、D06/D07/C01、C03/C04、D01/D02/D10—D16及U01—U05继续按上方各自的来源证据、历史权限或原生验收缺口保留，未被降级或关闭。
+
+收口代码回归：`d05-legacy-callback-final-node.log`为2615项、2600通过、7失败；失败仍是既有leaderboard迁移/SQL契约6项与Windows未知构建身份1项，未修改或掩盖。`git diff --check`通过。本节只证明隔离生产模块/读取入口的代码行为；不把D05或原25项标为全部完成，也不替代真实来源、历史处理或原生安装验收条件。

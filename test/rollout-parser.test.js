@@ -183,6 +183,34 @@ test("parseRolloutIncremental upgrades legacy timestamp-only Codex dedup without
   }
 });
 
+test("parseRolloutIncremental lets an old timestamp cursor resume a later same-timestamp snapshot", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-legacy-resume-"));
+  try {
+    const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893797";
+    const rolloutPath = path.join(tmp, `rollout-2026-09-22T00-00-00-${sessionId}.jsonl`);
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const oneHundred = { input_tokens: 100, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 100 };
+    const oneFifty = { input_tokens: 150, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 150 };
+    const oneSeventy = { input_tokens: 170, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 170 };
+    await fs.writeFile(rolloutPath, buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }) + "\n", "utf8");
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    cursors.codexHashes = [`${sessionId}:2026-09-22T00:00:00.000Z`];
+    const before = { ...cursors.files[rolloutPath] };
+    await fs.appendFile(rolloutPath, [
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:01.000Z", last: { ...oneSeventy, input_tokens: 20, total_tokens: 20 }, total: oneSeventy }),
+    ].join("\n") + "\n", "utf8");
+    const resumed = await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal(resumed.eventsAggregated, 2);
+    assert.equal(cursors.files[rolloutPath].inode, before.inode, "normal continuation keeps the original inode");
+    assert.ok(cursors.files[rolloutPath].offset > before.offset, "normal continuation advances the original offset");
+    assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens, 170);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental does not re-count a session file rewritten with a new inode (issue #187)", async () => {
   // Codex-Manager atomically rewrites session rollout files (new inode, same
   // token data) when switching account/channel. The parser keys incremental

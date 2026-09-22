@@ -1072,6 +1072,7 @@ async function parseRolloutFile({
 
     const lastUsage = info.last_token_usage;
     const totalUsage = info.total_token_usage;
+    const previousTotals = totals;
 
     const delta = pickDelta(lastUsage, totalUsage, totals);
     if (!delta) continue;
@@ -1111,18 +1112,23 @@ async function parseRolloutFile({
       const usageForIdentity = isNonEmptyObject(totalUsage) ? totalUsage : lastUsage;
       const dedupKey = `${legacyDedupKey}:${JSON.stringify(normalizeUsage(usageForIdentity))}`;
       if (seenCodexEvents.has(dedupKey)) continue;
-      // A legacy cursor only records the first snapshot at this timestamp. Keep
-      // that contribution idempotent once, then upgrade it to the precise key
-      // so a distinct later snapshot is not suppressed by the old marker.
+      // A legacy cursor only records a timestamp. It represents this snapshot
+      // during a full re-scan (or when its cumulative baseline matches), but a
+      // normal offset continuation can append a distinct correction at the same
+      // timestamp. Upgrade the legacy marker either way; only suppress it when
+      // it can actually represent the current snapshot.
       if (seenCodexEvents.has(legacyDedupKey)) {
         seenCodexEvents.delete(legacyDedupKey);
         seenCodexEvents.add(dedupKey);
-        continue;
+        const legacySnapshotMatches = isNonEmptyObject(previousTotals)
+          && JSON.stringify(normalizeUsage(previousTotals)) === JSON.stringify(normalizeUsage(usageForIdentity));
+        if (startOffset === 0 || !isNonEmptyObject(previousTotals) || legacySnapshotMatches) continue;
       }
       seenCodexEvents.add(dedupKey);
     }
 
-    if (onUsage) onUsage({ ...delta, ...normalizeUsageAttribution(info), source, model: model || DEFAULT_MODEL, hour_start: bucketStart, session_id: sessionId || null, last_activity_at: tokenTimestamp });
+    const eventIdentity = `${sessionId || filePath}:${tokenTimestamp}:${JSON.stringify(normalizeUsage(isNonEmptyObject(totalUsage) ? totalUsage : lastUsage))}`;
+    if (onUsage) onUsage({ ...delta, ...normalizeUsageAttribution(info), source, model: model || DEFAULT_MODEL, hour_start: bucketStart, session_id: sessionId || null, last_activity_at: tokenTimestamp, event_identity: eventIdentity });
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addAttributedTotals(bucket, delta, info);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
@@ -10475,7 +10481,7 @@ async function collectRolloutQueueRows(files, { dayKey = timestamp => timestamp.
       while (rolloutReadCache.size > 256) rolloutReadCache.delete(rolloutReadCache.keys().next().value);
     }
     for (const event of cached.events) {
-      const eventId = JSON.stringify([
+      const eventId = event.event_identity || JSON.stringify([
         event.session_id || filePath,
         event.last_activity_at,
         normalizeUsage(event),
