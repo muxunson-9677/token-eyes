@@ -125,6 +125,64 @@ test("parseRolloutIncremental ignores repeated token_count records with unchange
   }
 });
 
+test("parseRolloutIncremental counts distinct cumulative snapshots sharing a timestamp exactly once", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-same-timestamp-"));
+  try {
+    const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893799";
+    const rolloutPath = path.join(tmp, `rollout-2026-09-22T00-00-00-${sessionId}.jsonl`);
+    const archivedPath = path.join(tmp, "archived", path.basename(rolloutPath));
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const oneHundred = { input_tokens: 100, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 100 };
+    const oneFifty = { input_tokens: 150, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 150 };
+    const oneSeventy = { input_tokens: 170, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 170 };
+    await fs.writeFile(rolloutPath, [
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:01.000Z", last: { ...oneSeventy, input_tokens: 20, total_tokens: 20 }, total: oneSeventy }),
+    ].join("\n") + "\n", "utf8");
+
+    const first = await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal(first.eventsAggregated, 3);
+    const rows = await readJsonLines(queuePath);
+    assert.equal(rows.at(-1).total_tokens, 170);
+    await fs.mkdir(path.dirname(archivedPath));
+    await fs.copyFile(rolloutPath, archivedPath);
+    const reread = await parseRolloutIncremental({ rolloutFiles: [archivedPath, rolloutPath], cursors, queuePath });
+    assert.equal(reread.eventsAggregated, 0,'archive copies of all three snapshots remain duplicates');
+    assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens,170);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental upgrades legacy timestamp-only Codex dedup without losing a same-timestamp correction", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-legacy-same-timestamp-"));
+  try {
+    const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893798";
+    const rolloutPath = path.join(tmp, `rollout-2026-09-22T00-00-00-${sessionId}.jsonl`);
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const oneHundred = { input_tokens: 100, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 100 };
+    const oneFifty = { input_tokens: 150, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 150 };
+    const oneSeventy = { input_tokens: 170, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 170 };
+    await fs.writeFile(rolloutPath, buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }) + "\n", "utf8");
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    cursors.codexHashes = [`${sessionId}:2026-09-22T00:00:00.000Z`];
+    cursors.files[rolloutPath].inode += 1_000_000;
+    await fs.writeFile(rolloutPath, [
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:01.000Z", last: { ...oneSeventy, input_tokens: 20, total_tokens: 20 }, total: oneSeventy }),
+    ].join("\n") + "\n", "utf8");
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens,170);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental does not re-count a session file rewritten with a new inode (issue #187)", async () => {
   // Codex-Manager atomically rewrites session rollout files (new inode, same
   // token data) when switching account/channel. The parser keys incremental

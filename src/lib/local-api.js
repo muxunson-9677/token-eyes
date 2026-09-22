@@ -207,6 +207,7 @@ function buildRequestUsageRecordsListCacheKey({
   tzOffset,
   models,
   limit,
+  recordKindFilter,
 }) {
   const sourcesKey = effectiveSources ? effectiveSources.slice().sort().join(",") : "__all__";
   const modelsKey = models && models.length > 0 ? models.slice().sort().join(",") : "";
@@ -221,6 +222,7 @@ function buildRequestUsageRecordsListCacheKey({
     String(tzOffset ?? ""),
     modelsKey,
     String(limit),
+    recordKindFilter || "",
   ].join("\u0001");
 }
 
@@ -270,6 +272,7 @@ async function buildRequestUsageRecordsList({
   limit,
   models,
   pricingOptions,
+  recordKindFilter,
 }) {
   const allRecords = [];
   let sourceTruncated = false;
@@ -387,6 +390,12 @@ async function buildRequestUsageRecordsList({
   }).filter(row => rawKeys.has(identity(row)));
   const merged = allRecords.filter(row => row.record_kind !== "aggregate_bucket" || !rawKeys.has(identity(row)));
   allRecords.splice(0, allRecords.length, ...merged);
+  if (recordKindFilter) {
+    allRecords.splice(0, allRecords.length, ...allRecords.filter((row) => {
+      const kind = row.record_kind === "aggregate_bucket" ? "aggregate_bucket" : "request_event";
+      return kind === recordKindFilter;
+    }));
+  }
   aggregateOnlySources = [...new Set(allRecords.filter(row => row.record_kind === "aggregate_bucket").map(row => row.source))];
   for (const record of allRecords) {
     if (record.usage_available !== false) Object.assign(record, computeRowCostDetailed(record, pricingOptions));
@@ -9146,6 +9155,7 @@ function createLocalApiHandler({
             tzOffset: Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : null,
             models,
             limit,
+            recordKindFilter,
           });
 
           let allRecords;
@@ -9179,6 +9189,7 @@ function createLocalApiHandler({
               timeZoneContext,
               limit,
               models,
+              recordKindFilter,
               pricingOptions,
             });
             allRecords = built.allRecords;

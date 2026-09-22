@@ -1097,17 +1097,28 @@ async function parseRolloutFile({
     // provider on every account/channel switch — so without dedup each switch
     // double-counts the rewritten sessions. `totals` is already advanced above,
     // so skipping an already-seen event keeps the cumulative-delta chain intact
-    // while preventing the re-add; genuinely new turns carry new timestamps and
-    // are still counted. Key = sessionUUID:eventTimestamp (both stable across the
-    // rewrite and across a sessions/ -> archived_sessions/ move).
+    // while preventing the re-add. A timestamp alone is not an event identity:
+    // some valid writers emit a corrected cumulative snapshot at the same instant.
+    // Key = sessionUUID:eventTimestamp:normalized cumulative usage, stable across
+    // rewrites and sessions/ -> archived_sessions/ moves.
     //
     // Scoped to the `codex` source: Codex-Manager (the tool that does the atomic
     // rewrite) manages Codex. Other rollout-format sources (e.g. every-code) have
     // their own model re-alignment that legitimately re-reads prior events, which
     // this dedup would otherwise suppress.
     if (seenCodexEvents && source === "codex") {
-      const dedupKey = `${sessionId || filePath}:${tokenTimestamp}`;
+      const legacyDedupKey = `${sessionId || filePath}:${tokenTimestamp}`;
+      const usageForIdentity = isNonEmptyObject(totalUsage) ? totalUsage : lastUsage;
+      const dedupKey = `${legacyDedupKey}:${JSON.stringify(normalizeUsage(usageForIdentity))}`;
       if (seenCodexEvents.has(dedupKey)) continue;
+      // A legacy cursor only records the first snapshot at this timestamp. Keep
+      // that contribution idempotent once, then upgrade it to the precise key
+      // so a distinct later snapshot is not suppressed by the old marker.
+      if (seenCodexEvents.has(legacyDedupKey)) {
+        seenCodexEvents.delete(legacyDedupKey);
+        seenCodexEvents.add(dedupKey);
+        continue;
+      }
       seenCodexEvents.add(dedupKey);
     }
 
@@ -10344,14 +10355,20 @@ async function collectRolloutRequestUsageRecords(options) {
         if (!usage || forkTracker.replaying || isAllZeroUsage(usage)) continue;
         if (fromTs != null && ts < fromTs) continue;
         if (toTs != null && ts > toTs) continue;
-        const eventKey = JSON.stringify([sessionId, tokenTimestamp]);
+        // A corrected cumulative snapshot can share its source timestamp with
+        // the earlier snapshot. Preserve that delta once while still making an
+        // archive copy of the exact snapshot idempotent.
+        const snapshotUsage = isNonEmptyObject(info.total_token_usage)
+          ? info.total_token_usage
+          : info.last_token_usage;
+        const eventKey = JSON.stringify([sessionId, tokenTimestamp, normalizeUsage(snapshotUsage)]);
         if (seenEvents.has(eventKey)) continue;
         seenEvents.add(eventKey);
 
         const hourStart = toUtcHalfHourStart(tokenTimestamp);
 
         const record = {
-          id: `${normalizedSource}:${sessionId}:${tokenTimestamp}`,
+          id: `${normalizedSource}:${sessionId}:${tokenTimestamp}:${JSON.stringify(normalizeUsage(snapshotUsage))}`,
           timestamp: tokenTimestamp,
           hour_start: hourStart || tokenTimestamp,
           source: normalizedSource,
@@ -10458,7 +10475,11 @@ async function collectRolloutQueueRows(files, { dayKey = timestamp => timestamp.
       while (rolloutReadCache.size > 256) rolloutReadCache.delete(rolloutReadCache.keys().next().value);
     }
     for (const event of cached.events) {
-      const eventId = JSON.stringify([event.session_id || filePath, event.last_activity_at]);
+      const eventId = JSON.stringify([
+        event.session_id || filePath,
+        event.last_activity_at,
+        normalizeUsage(event),
+      ]);
       if (seen.has(eventId)) continue;
       seen.add(eventId);
       const row = { ...event, codex_usage_day: dayKey(event.last_activity_at) };

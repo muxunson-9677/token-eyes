@@ -165,6 +165,21 @@ describe("useRequestUsageRecords", () => {
     expect(sources).toContain("hermes");
   });
 
+  it("passes the selected record kind to the current request API", async () => {
+    getRequestUsageRecords.mockResolvedValue({
+      records: [makeRecord("codex", "gpt-5", "2026-06-24T01:00:00.000Z")],
+      totals: makeTotals(),
+      page: { page: 1, pageSize: 10, total: 1, total_pages: 1 },
+    });
+
+    const { result } = setup(["codex"], { recordKind: "request_event" });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(getRequestUsageRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ recordKind: "request_event" }),
+    );
+  });
+
   it("returns totals from single backend response", async () => {
     getRequestUsageRecords.mockResolvedValue({
       records: [

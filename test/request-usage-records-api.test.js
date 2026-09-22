@@ -554,3 +554,34 @@ test('Codex historical queue survives absent or partial raw logs and requests-on
  assert.equal(partial.records.length,2);assert.equal(partial.totals.total_tokens,280);assert.equal(partial.records.find(r=>r.record_kind==='aggregate_bucket').total_tokens,200);assert.equal(partial.queue_baseline_totals.total_tokens,300);assert.equal(partial.page.totals_scope,'unknown');
  const empty=await callEndpoint(queuePath,query.replace(FIXED_DAY,'2025-01-01').replace(FIXED_DAY,'2025-01-01')+'&record_kind=request_event');assert.equal(empty.records.length,0);assert.equal(empty.queue_history_record_count,0);assert.equal(empty.page.totals_scope,'all_matching');
 });
+
+test('request-kind filter keeps an older Codex request when newer aggregate buckets reach the list limit', async t => {
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-kind-truncation-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');
+ const rows=Array.from({length:100},(_,index)=>makeRow({
+   source:'codex',model:`aggregate-${index}`,hour_start:`${FIXED_DAY}T23:00:00.000Z`,
+   input_tokens:index+1,output_tokens:0,cached_input_tokens:0,total_tokens:index+1,
+ }));
+ await writeQueue(queuePath,rows);
+ const sessions=path.join(dir,'codex','sessions');await fs.promises.mkdir(sessions,{recursive:true});
+ await fs.promises.writeFile(path.join(sessions,'rollout-older-request.jsonl'),
+   JSON.stringify({type:'session_meta',payload:{id:'kind-filter-session',model:'gpt-5'}})+'\n'+
+   buildCodexTokenCountLine({ts:`${FIXED_DAY}T00:00:00.000Z`,usage:{input_tokens:7,output_tokens:0,total_tokens:7}})+'\n');
+ clearRequestUsageRecordsListCacheForTests();
+ const query=`/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=codex&tz=UTC&limit=100&pageSize=100`;
+ const all=await callEndpoint(queuePath,query);
+ assert.equal(all.records.length,100,'mixed list remains bounded at its existing capacity');
+ assert.ok(all.records.every(row=>row.record_kind==='aggregate_bucket'),'newer aggregates occupy the mixed page');
+ const requests=await callEndpoint(queuePath,query+'&record_kind=request_event');
+ assert.equal(requests.records.length,1,'request-kind filtering must happen before mixed-list truncation');
+ assert.equal(requests.records[0].total_tokens,7);
+ assert.equal(requests.page.total_count,1);
+ assert.equal(requests.totals.total_tokens,7);
+ const aggregates=await callEndpoint(queuePath,query+'&record_kind=aggregate_bucket');
+ assert.equal(aggregates.records.length,100,'request-kind cache entries must not replace aggregate pagination');
+ assert.ok(aggregates.records.every(row=>row.record_kind==='aggregate_bucket'));
+ assert.equal(aggregates.page.total_count,100);
+ const allAgain=await callEndpoint(queuePath,query);
+ assert.equal(allAgain.records.length,100,'switching modes retains the mixed-list capacity');
+ assert.ok(allAgain.records.every(row=>row.record_kind==='aggregate_bucket'));
+});

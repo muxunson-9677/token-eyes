@@ -114,6 +114,23 @@ test('read-only Codex collection shares cumulative reset and duplicate semantics
   await assert.rejects(fs.stat(f.queuePath),{code:'ENOENT'});
 });
 
+test('Codex read-only consumers retain a same-timestamp cumulative correction once',async t=>{
+ const {collectRolloutQueueRows,collectRolloutRequestUsageRecords}=require('../src/lib/rollout');
+ const f=await fixture(t);const at='2026-09-22T01:10:00.000Z';
+ const token=(timestamp,total,last)=>({type:'event_msg',timestamp,payload:{type:'token_count',info:{total_token_usage:{input_tokens:total,output_tokens:0,total_tokens:total},last_token_usage:{input_tokens:last,output_tokens:0,total_tokens:last}}}});
+ await fs.writeFile(f.file,[
+   {type:'session_meta',payload:{id:'same-time-reader'}},
+   token(at,100,100),token(at,150,50),token(at,150,50),token('2026-09-22T01:10:01.000Z',170,20),
+ ].map(JSON.stringify).join('\n')+'\n');
+ const copy=f.file+'.archived';await fs.copyFile(f.file,copy);
+ const raw=await collectRolloutRequestUsageRecords({rolloutFiles:[f.file,copy],source:'codex'});
+ assert.equal(raw.records.length,3);
+ assert.equal(raw.totals.total_tokens,170);
+ assert.equal(new Set(raw.records.map(row=>row.id)).size,3,'distinct same-timestamp snapshots need distinct display identities');
+ const rows=await collectRolloutQueueRows([f.file,copy]);
+ assert.equal(rows.reduce((sum,row)=>sum+row.total_tokens,0),170);
+});
+
 test('request collector uses cumulative/reset accounting and deduplicates archive copies',async t=>{
   const {collectRolloutRequestUsageRecords}=require('../src/lib/rollout');const f=await fixture(t);
   await fs.writeFile(f.file,[{type:'session_meta',payload:{id:'request-session',model:'gpt-5'}},codex('10',100),codex('10',100),codex('11',150),codex('12',20)].map(JSON.stringify).join('\n')+'\n');
