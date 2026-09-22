@@ -78,8 +78,10 @@ function readSqliteRowsWithNode(dbPath, sql, { requireFn }) {
 function readSqliteJsonRows(dbPath, sql, options = {}) {
   if (!dbPath || !sql) return [];
   try {
-    if (!fssync.existsSync(dbPath)) return [];
-  } catch (_e) {
+    if (options.strict) fssync.statSync(dbPath);
+    else if (!fssync.existsSync(dbPath)) return [];
+  } catch (error) {
+    if (options.strict) throw error;
     return [];
   }
   const execFileSync = options.execFileSync || cp.execFileSync;
@@ -101,6 +103,18 @@ function readSqliteJsonRows(dbPath, sql, options = {}) {
     return readSqliteRowsWithNode(dbPath, sql, { requireFn });
   } catch (err) {
     nodeSqliteError = err;
+  }
+
+  if (options.strict) {
+    const errors = [cliError, nodeSqliteError];
+    const details = errors.map(error => `${error?.code || ""} ${formatError(error)}`).join(" ");
+    const code = /SQLITE_BUSY|SQLITE_LOCKED|database is locked/iu.test(details) ? "SQLITE_BUSY"
+      : /EACCES|EPERM|permission denied|SQLITE_AUTH|SQLITE_PERM/iu.test(details) ? "SQLITE_PERMISSION"
+      : /no such table|no such column|SQLITE_SCHEMA/iu.test(details) ? "SQLITE_SCHEMA"
+      : /not a database|malformed|SQLITE_CORRUPT|SQLITE_NOTADB/iu.test(details) ? "SQLITE_CORRUPT"
+      : isSqliteCliUnavailable(cliError) && isNodeSqliteUnavailable(nodeSqliteError) ? "SQLITE_READER_UNAVAILABLE"
+      : "SQLITE_READ_FAILED";
+    throw Object.assign(new AggregateError(errors, `Cannot read ${label} SQLite: ${formatError(nodeSqliteError)}`), { code });
   }
 
   if (isSqliteCliUnavailable(cliError) && isNodeSqliteUnavailable(nodeSqliteError)) {

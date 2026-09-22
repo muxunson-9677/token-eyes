@@ -11,6 +11,8 @@ const {
   normalizeAttributionProviderId,
   normalizeBillingMode,
   normalizeUsageAttribution,
+  parseAttributionTimestamp,
+  queueUsageIdentity,
 } = require("./usage-attribution");
 
 const DEFAULT_SOURCE = "codex";
@@ -151,7 +153,8 @@ async function parseRolloutIncremental({
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
-    const prev = cursors.files[key] || null;
+    let prev = cursors.files[key] || null;
+    if (prev && (prev.offset > st.size || (prev.fingerprint && prev.fingerprint !== await checkpointFingerprint(filePath, prev.offset)))) prev = null;
     const inode = st.ino || 0;
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
     const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
@@ -193,14 +196,16 @@ async function parseRolloutIncremental({
       publicRepoCache,
       publicRepoResolver,
       seenCodexEvents,
-      sessionId: codexSessionIdFromPath(filePath),
+      sessionId: prev?.sessionId || codexSessionIdFromPath(filePath),
     });
 
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
+      fingerprint: await checkpointFingerprint(filePath, result.endOffset),
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      sessionId: result.sessionId,
       forked: result.forked === true,
       replayDone: result.replayDone === true,
       updatedAt: new Date().toISOString(),
@@ -281,7 +286,8 @@ async function parseClaudeIncremental({
     if (!st || !st.isFile()) continue;
 
     const key = filePath;
-    const prev = cursors.files[key] || null;
+    let prev = cursors.files[key] || null;
+    if (prev && (prev.offset > st.size || (prev.fingerprint && prev.fingerprint !== await checkpointFingerprint(filePath, prev.offset)))) prev = null;
     const inode = st.ino || 0;
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
 
@@ -307,12 +313,14 @@ async function parseClaudeIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      repoRoot: projectContext?.repoRoot || null,
       seenMessageHashes,
     });
 
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
+      fingerprint: await checkpointFingerprint(filePath, result.endOffset),
       updatedAt: new Date().toISOString(),
     };
 
@@ -372,6 +380,7 @@ async function parseGeminiIncremental({
   const projectMetaCache = projectEnabled ? new Map() : null;
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
+  const messageUsage = cursors.geminiMessageUsage || {};
   const defaultSource = normalizeSourceInput(source) || "gemini";
 
   if (!cursors.files || typeof cursors.files !== "object") {
@@ -392,7 +401,7 @@ async function parseGeminiIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const inode = st.ino || 0;
-    let startIndex = prev && prev.inode === inode ? Number(prev.lastIndex || -1) : -1;
+    let startIndex = prev && prev.inode === inode ? Number(prev.lastIndex ?? -1) : -1;
     let lastTotals = prev && prev.inode === inode ? prev.lastTotals || null : null;
     let lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
 
@@ -411,6 +420,8 @@ async function parseGeminiIncremental({
 
     const result = await parseGeminiFile({
       filePath,
+      messageUsage,
+      legacyCursor: prev && !prev.messageUsageVersion ? prev : null,
       startIndex,
       lastTotals,
       lastModel,
@@ -426,6 +437,8 @@ async function parseGeminiIncremental({
 
     cursors.files[key] = {
       inode,
+      messageUsageVersion: 1,
+      legacy_unreconciled: Boolean(prev?.legacy_unreconciled || (prev && !prev.messageUsageVersion)),
       lastIndex: result.lastIndex,
       lastTotals: result.lastTotals,
       lastModel: result.lastModel,
@@ -453,6 +466,7 @@ async function parseGeminiIncremental({
     : 0;
   hourlyState.updatedAt = new Date().toISOString();
   cursors.hourly = hourlyState;
+  cursors.geminiMessageUsage = messageUsage;
   if (projectState) {
     projectState.updatedAt = new Date().toISOString();
     cursors.projectHourly = projectState;
@@ -878,6 +892,51 @@ function createForkReplayTracker({ sessionId, rolloutDate, forked = false, repla
   };
 }
 
+async function checkpointFingerprint(filePath, offset) {
+  if (!offset) return null;
+  const handle = await fs.open(filePath, "r");
+  try {
+    const size = Math.min(256, offset);
+    const head = Buffer.alloc(size), tail = Buffer.alloc(size);
+    const first = await handle.read(head, 0, size, 0);
+    const last = await handle.read(tail, 0, size, offset - size);
+    if (first.bytesRead !== size || last.bytesRead !== size) return null;
+    return crypto.createHash("sha256").update(head).update(tail).digest("hex");
+  } finally { await handle.close(); }
+}
+
+async function* readCompleteJsonl(filePath, startOffset) {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const { size } = await handle.stat();
+    let position = startOffset > size ? 0 : startOffset;
+    let pending = Buffer.alloc(0);
+    let consumed = position;
+    while (position < size) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, size - position));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
+      if (!bytesRead) break;
+      position += bytesRead;
+      pending = Buffer.concat([pending, chunk.subarray(0, bytesRead)]);
+      let newline;
+      while ((newline = pending.indexOf(0x0a)) !== -1) {
+        const line = pending.subarray(0, newline).toString("utf8").replace(/\r$/, "");
+        consumed += newline + 1;
+        pending = pending.subarray(newline + 1);
+        yield { line, endOffset: consumed };
+      }
+    }
+    // Some exporters omit the last newline. A valid JSON record is still complete.
+    if (pending.length) {
+      const line = pending.toString("utf8");
+      try { JSON.parse(line); } catch (_) { return; }
+      yield { line, endOffset: consumed + pending.length };
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
 async function parseRolloutFile({
   filePath,
   startOffset,
@@ -896,6 +955,7 @@ async function parseRolloutFile({
   publicRepoResolver,
   seenCodexEvents,
   sessionId,
+  onUsage,
 }) {
   const forkTracker = createForkReplayTracker({
     sessionId,
@@ -904,8 +964,9 @@ async function parseRolloutFile({
     replayDone: forkedState?.replayDone === true,
   });
   const st = await fs.stat(filePath);
-  const endOffset = st.size;
-  if (startOffset >= endOffset) {
+  if (startOffset > st.size) { startOffset = 0; lastTotal = null; }
+  let endOffset = startOffset;
+  if (startOffset >= st.size) {
     return {
       endOffset,
       lastTotal,
@@ -916,8 +977,6 @@ async function parseRolloutFile({
     };
   }
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let model = typeof lastModel === "string" ? lastModel : null;
   let totals = lastTotal && typeof lastTotal === "object" ? lastTotal : null;
@@ -927,13 +986,15 @@ async function parseRolloutFile({
   let currentRepoRoot = null;
   let eventsAggregated = 0;
 
-  for await (const line of rl) {
+  for await (const record of readCompleteJsonl(filePath, startOffset)) {
+    const { line } = record;
+    endOffset = record.endOffset;
     if (!line) continue;
     const maybeTokenCount = line.includes('"token_count"');
     const maybeTurnContext =
       !maybeTokenCount &&
       (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
-      (line.includes('"model"') ||
+      (line.includes('"id"') || line.includes('"model"') ||
         line.includes('"cwd"') ||
         line.includes('"current_date"') ||
         line.includes('"turn_id"') ||
@@ -946,6 +1007,7 @@ async function parseRolloutFile({
     } catch (_e) {
       continue;
     }
+    if (obj?.type === "session_meta" && typeof obj.payload?.id === "string") sessionId = obj.payload.id;
 
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
@@ -1030,6 +1092,7 @@ async function parseRolloutFile({
       seenCodexEvents.add(dedupKey);
     }
 
+    if (onUsage) onUsage({ ...delta, ...normalizeUsageAttribution(info), source, model: model || DEFAULT_MODEL, hour_start: bucketStart, session_id: sessionId || null, last_activity_at: tokenTimestamp });
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addAttributedTotals(bucket, delta, info);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
@@ -1053,6 +1116,7 @@ async function parseRolloutFile({
     endOffset,
     lastTotal: totals,
     lastModel: model,
+    sessionId,
     eventsAggregated,
     forked: forkTracker.forked,
     replayDone: forkTracker.replayDone,
@@ -1069,20 +1133,22 @@ async function parseClaudeFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  repoRoot,
   seenMessageHashes,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
   if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
 
-  const endOffset = st.size;
-  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0 };
+  if (startOffset > st.size) startOffset = 0;
+  let endOffset = startOffset;
+  if (startOffset >= st.size) return { endOffset, eventsAggregated: 0 };
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
-  const isMainSession = !filePath.includes("/subagents/");
-  for await (const line of rl) {
+  const isMainSession = !/[\\/]subagents[\\/]/.test(filePath);
+  for await (const record of readCompleteJsonl(filePath, startOffset)) {
+    const { line } = record;
+    endOffset = record.endOffset;
     if (!line) continue;
 
     // Count user-typed messages as conversations (main sessions only).
@@ -1159,13 +1225,13 @@ async function parseClaudeFile({
     eventsAggregated += 1;
   }
 
-  rl.close();
-  stream.close?.();
   return { endOffset, eventsAggregated };
 }
 
 async function parseGeminiFile({
   filePath,
+  messageUsage,
+  legacyCursor,
   startIndex,
   lastTotals,
   lastModel,
@@ -1178,72 +1244,48 @@ async function parseGeminiFile({
   projectKey,
   repoRoot,
 }) {
-  const raw = await fs.readFile(filePath, "utf8").catch(() => "");
-  if (!raw.trim()) return { lastIndex: startIndex, lastTotals, lastModel, eventsAggregated: 0 };
-
-  let session;
-  try {
-    session = JSON.parse(raw);
-  } catch (_e) {
-    return { lastIndex: startIndex, lastTotals, lastModel, eventsAggregated: 0 };
-  }
-
-  const messages = Array.isArray(session?.messages) ? session.messages : [];
-  if (startIndex >= messages.length) {
-    startIndex = -1;
-    lastTotals = null;
-    lastModel = null;
-  }
-
+  const raw = await fs.readFile(filePath, "utf8");
+  const session = JSON.parse(raw);
+  if (!Array.isArray(session?.messages)) throw new Error("Unsupported Gemini session format");
+  const messages = session.messages;
   let eventsAggregated = 0;
   let model = typeof lastModel === "string" ? lastModel : null;
-  let totals = lastTotals && typeof lastTotals === "object" ? lastTotals : null;
-  const begin = Number.isFinite(startIndex) ? startIndex + 1 : 0;
-
-  for (let idx = begin; idx < messages.length; idx++) {
+  let totals = lastTotals || null;
+  const sessionKey = session.sessionId || filePath;
+  for (let idx = 0; idx < messages.length; idx++) {
     const msg = messages[idx];
     if (!msg || typeof msg !== "object") continue;
-
-    const normalizedModel = normalizeModelInput(msg.model);
-    if (normalizedModel) model = normalizedModel;
-
-    const timestamp = typeof msg.timestamp === "string" ? msg.timestamp : null;
+    model = normalizeModelInput(msg.model) || model;
     const currentTotals = normalizeGeminiTokens(msg.tokens);
-    if (!timestamp || !currentTotals) {
-      totals = currentTotals || totals;
+    const bucketStart = msg.timestamp ? toUtcHalfHourStart(msg.timestamp) : null;
+    if (!currentTotals || !bucketStart) continue;
+    const key = JSON.stringify([sessionKey, msg.id || [msg.timestamp, idx]]);
+    const upstreamTokens = Object.fromEntries(["input", "output", "cached", "thoughts", "tool", "total"].filter(field => msg.tokens[field] != null).map(field => [field, msg.tokens[field]]));
+    const next = { model: model || DEFAULT_MODEL, bucketStart, totals: { ...currentTotals, conversation_count: 1 }, upstream_tokens: upstreamTokens };
+    const previous = messageUsage[key];
+    // Legacy cursors cannot establish earlier per-message contributions. Preserve history;
+    // seed identities without re-adding it, and explicitly retain the unreconciled marker.
+    if (!previous && legacyCursor && idx <= legacyCursor.lastIndex) { messageUsage[key] = { ...next, legacy: true }; continue; }
+    if (previous?.legacy) {
+      const { legacy, ...baseline } = previous;
+      if (JSON.stringify(baseline) !== JSON.stringify(next)) throw new Error("Gemini legacy message revision requires history reconciliation");
       continue;
     }
-
-    const delta = diffGeminiTotals(currentTotals, totals);
-    if (!delta || isAllZeroUsage(delta)) {
-      totals = currentTotals;
-      continue;
+    if (previous && JSON.stringify(previous) === JSON.stringify(next)) continue;
+    for (const [entry, sign] of [[previous, -1], [next, 1]]) {
+      if (!entry) continue;
+      const delta = Object.fromEntries(Object.entries(entry.totals).filter(([,value]) => typeof value === "number").map(([field,value]) => [field, sign * value]));
+      const bucket = getHourlyBucket(hourlyState, source, entry.model, entry.bucketStart);
+      addTotals(bucket.totals, delta);
+      touchedBuckets.add(bucketKey(source, entry.model, entry.bucketStart));
+      if (projectKey && projectState && projectTouchedBuckets) {
+        const projectBucket = getProjectBucket(projectState, projectKey, source, entry.bucketStart, projectRef, repoRoot, entry.model);
+        addTotals(projectBucket.totals, delta);
+        projectTouchedBuckets.add(projectBucketKey(projectKey, source, entry.bucketStart, entry.model));
+      }
     }
-    delta.conversation_count = 1;
-
-    const bucketStart = toUtcHalfHourStart(timestamp);
-    if (!bucketStart) {
-      totals = currentTotals;
-      continue;
-    }
-
-    const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
-    addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
-    if (projectKey && projectState && projectTouchedBuckets) {
-      const projectBucket = getProjectBucket(
-        projectState,
-        projectKey,
-        source,
-        bucketStart,
-        projectRef,
-        repoRoot,
-        model,
-      );
-      addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart, model));
-    }
-    eventsAggregated += 1;
+    messageUsage[key] = next;
+    eventsAggregated++;
     totals = currentTotals;
   }
 
@@ -1401,6 +1443,12 @@ function mergeProviderAttribution(target, nextAttribution, nextAmbiguous = false
   target.attribution = next;
   target.providerAttributionAmbiguous = ambiguous;
   if (ambiguous) delete target.attribution.provider_id;
+  const conflicted = new Set(target.ambiguousAttributionFields || []);
+  for (const field of ["account_ref", "credential_ref", "plan_ref", "endpoint_origin"]) {
+    if (previous[field] !== next[field] || (previousProvider && nextProvider && previousProvider !== nextProvider)) conflicted.add(field);
+    if (conflicted.has(field)) delete target.attribution[field];
+  }
+  target.ambiguousAttributionFields = [...conflicted];
 }
 
 function attributionSlices(bucket) {
@@ -1438,7 +1486,7 @@ function mergeAttributionSlices(...buckets) {
 
 function attributionQueuedKey(bucket, outputModel, slice) {
   const mode = slice.attribution.billing_mode;
-  const key = `${totalsKey(slice.totals)}|${outputModel}|${mode}`;
+  const key = `${totalsKey(slice.totals)}|${outputModel}|${mode}|${JSON.stringify(slice.attribution)}`;
   if (!bucket.attributionQueuedKeys || typeof bucket.attributionQueuedKeys !== "object") {
     bucket.attributionQueuedKeys = {};
   }
@@ -2558,20 +2606,24 @@ function canonicalizeProjectRef(remoteUrl) {
 
 function normalizeGeminiTokens(tokens) {
   if (!tokens || typeof tokens !== "object") return null;
+  for (const field of ["input", "output", "cached", "thoughts", "tool", "total"]) {
+    if (tokens[field] != null && (!Number.isSafeInteger(tokens[field]) || tokens[field] < 0)) throw new Error(`Invalid Gemini token field: ${field}`);
+  }
+  if (![tokens.input, tokens.output, tokens.total].some(value => typeof value === "number" && Number.isFinite(value))) {
+    throw new Error("Unsupported Gemini token fields");
+  }
   const input = toNonNegativeInt(tokens.input);
   const cached = toNonNegativeInt(tokens.cached);
   const output = toNonNegativeInt(tokens.output);
-  const tool = toNonNegativeInt(tokens.tool);
   const thoughts = toNonNegativeInt(tokens.thoughts);
-  const reportedTotal = toNonNegativeInt(tokens.total);
-  const computedTotal = input + cached + output + tool + thoughts;
-  const total = Math.max(reportedTotal, computedTotal);
-
+  if (cached > input) throw new Error("Gemini cached tokens exceed inclusive prompt tokens");
+  const total = input + output + thoughts;
+  if (tokens.total != null && toNonNegativeInt(tokens.total) !== total) throw new Error("Gemini reported total disagrees with usage components");
   return {
-    input_tokens: input,
+    input_tokens: input - cached,
     cached_input_tokens: cached,
     cache_creation_input_tokens: 0,
-    output_tokens: output + tool,
+    output_tokens: output,
     reasoning_output_tokens: thoughts,
     total_tokens: total,
   };
@@ -3081,32 +3133,15 @@ async function parseCursorApiIncremental({
   const total = records.length;
 
   if (records.length > 0) {
-    // Guard (2026-06 audit): only wipe buckets the fetched export can
-    // actually rebuild. The wipe-then-refill design assumes the CSV is a
-    // FULL-history export; if Cursor ever windows or truncates the export,
-    // unconditionally zeroing every bucket would erase (and upload zeros
-    // over) all history older than the response. Wiping from the earliest
-    // record onward is identical for full exports and fail-safe for
-    // partial ones.
-    let earliestBucketStart = null;
-    for (const record of records) {
-      if (!record?.date) continue;
-      const b = toUtcHalfHourStart(record.date);
-      if (b && (!earliestBucketStart || b < earliestBucketStart)) earliestBucketStart = b;
-    }
-    // No parseable record date at all means the export is malformed —
-    // refilling would add nothing, so wiping would zero out (and upload
-    // zeros over) the entire history. Skip the wipe entirely.
-    if (earliestBucketStart) {
-      for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
-        const parsed = parseBucketKey(key);
-        const sourceKey = normalizeSourceInput(parsed.source) || DEFAULT_SOURCE;
-        if (sourceKey !== defaultSource) continue;
-        if (!bucket?.totals) continue;
-        if (parsed.hourStart && parsed.hourStart < earliestBucketStart) continue;
-        bucket.totals = initTotals();
-        touchedBuckets.add(key);
-      }
+    // An export does not prove coverage outside the buckets it actually carries.
+    const represented = new Set(records.map(record => {
+      const time = toUtcHalfHourStart(record?.date);
+      return time ? bucketKey(defaultSource, normalizeModelInput(record.model) || DEFAULT_MODEL, time) : null;
+    }).filter(Boolean));
+    for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
+      if (!represented.has(key) || !bucket?.totals) continue;
+      bucket.totals = initTotals();
+      touchedBuckets.add(key);
     }
   }
 
@@ -3164,8 +3199,9 @@ async function parseCursorApiIncremental({
 // Kiro token tracking (reads from devdata.sqlite or tokens_generated.jsonl)
 // ---------------------------------------------------------------------------
 
-function resolveKiroBasePath() {
-  const home = require("node:os").homedir();
+function resolveKiroBasePath({ basePath, home = require("node:os").homedir(), env = process.env, platform = process.platform } = {}) {
+  if (basePath || env.KIRO_IDE_STORAGE_DIR) return basePath || env.KIRO_IDE_STORAGE_DIR;
+  if (platform === "win32") return path.join(env.APPDATA || path.join(home, "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent");
   return path.join(
     home,
     "Library",
@@ -3177,12 +3213,12 @@ function resolveKiroBasePath() {
   );
 }
 
-function resolveKiroDbPath() {
-  return path.join(resolveKiroBasePath(), "dev_data", "devdata.sqlite");
+function resolveKiroDbPath(options) {
+  return path.join(resolveKiroBasePath(options), "dev_data", "devdata.sqlite");
 }
 
-function resolveKiroJsonlPath() {
-  return path.join(resolveKiroBasePath(), "dev_data", "tokens_generated.jsonl");
+function resolveKiroJsonlPath(options) {
+  return path.join(resolveKiroBasePath(options), "dev_data", "tokens_generated.jsonl");
 }
 
 function readKiroDbTokens(dbPath, sinceId, sqliteOptions = {}) {
@@ -3336,7 +3372,7 @@ function normalizeKiroModelName(raw) {
   return name || null;
 }
 
-async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onProgress, sqliteOptions } = {}) {
+async function parseKiroIncremental({ dbPath, jsonlPath, basePath, cursors, queuePath, onProgress, sqliteOptions } = {}) {
   await ensureDir(path.dirname(queuePath));
   const kiroState = cursors.kiro && typeof cursors.kiro === "object" ? cursors.kiro : {};
   const lastDbId = typeof kiroState.lastDbId === "number"
@@ -3345,8 +3381,8 @@ async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onP
   const jsonlState = kiroState.jsonl && typeof kiroState.jsonl === "object" ? kiroState.jsonl : {};
   const lastJsonlLine = typeof jsonlState.lastLine === "number" ? jsonlState.lastLine : 0;
 
-  const resolvedDbPath = dbPath || resolveKiroDbPath();
-  const resolvedJsonlPath = jsonlPath || resolveKiroJsonlPath();
+  const resolvedDbPath = dbPath || resolveKiroDbPath({ basePath });
+  const resolvedJsonlPath = jsonlPath || resolveKiroJsonlPath({ basePath });
 
   // Try SQLite first, fall back to JSONL.
   let rows = [];
@@ -3391,8 +3427,8 @@ async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onP
   }
 
   // Build model timeline from .chat files for model name resolution
-  const basePath = resolveKiroBasePath();
-  const modelTimeline = buildKiroModelTimeline(basePath);
+  const storagePath = basePath || path.dirname(path.dirname(dbPath || resolvedJsonlPath));
+  const modelTimeline = buildKiroModelTimeline(storagePath);
 
   const hourlyState = normalizeHourlyState(cursors?.hourly);
   const touchedBuckets = new Set();
@@ -5721,7 +5757,8 @@ function readTraeTurnsFromSqlite(dbPath, sqliteOptions) {
   let rows;
   try {
     rows = readSqliteJsonRows(dbPath, sql, sqliteOptions);
-  } catch {
+  } catch (error) {
+    if (sqliteOptions?.strict) throw error;
     return [];
   }
   const out = [];
@@ -9904,29 +9941,8 @@ function isCjkCodePoint(code) {
 }
 
 function parseRequestUsageBoundary(value, { end = false, timeZoneContext = null } = {}) {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    const [year, month, day] = text.split("-").map((part) => Number(part));
-    if ([year, month, day].every((n) => Number.isFinite(n))) {
-      const ms = Date.UTC(
-        year,
-        month - 1,
-        day,
-        end ? 23 : 0,
-        end ? 59 : 0,
-        end ? 59 : 0,
-        end ? 999 : 0,
-      );
-      const offset = Number(timeZoneContext?.offsetMinutes);
-      return Number.isFinite(offset) ? ms - offset * 60_000 : ms;
-    }
-  }
-
-  const ms = new Date(text).getTime();
-  return Number.isFinite(ms) ? ms : null;
+  const timestamp = parseAttributionTimestamp(value, { ...timeZoneContext, endOfDate: end });
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 async function collectRolloutRequestUsageRecords(options) {
@@ -9937,6 +9953,7 @@ async function collectRolloutRequestUsageRecords(options) {
     to,
     timeZoneContext,
     limit = 500,
+    models,
     pricingOptions = {},
   } = options || {};
 
@@ -9983,17 +10000,12 @@ async function collectRolloutRequestUsageRecords(options) {
   }
   candidateFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-  let oldestKeptTimestamp = null;
-  for (const { filePath, mtimeMs } of candidateFiles) {
-    if (
-      records.length >= maxLimit &&
-      oldestKeptTimestamp != null &&
-      mtimeMs < oldestKeptTimestamp
-    ) {
-      break;
-    }
+  let truncated = false;
+  const seenEvents = new Set();
+  for (const { filePath } of candidateFiles) {
 
-    const sessionId = codexSessionIdFromPath(filePath) || path.basename(filePath);
+    let sessionId = codexSessionIdFromPath(filePath) || path.basename(filePath);
+    let lastTotal = null;
     const forkTracker = createForkReplayTracker({
       sessionId: codexSessionIdFromPath(filePath),
       rolloutDate: rolloutDateFromPath(filePath),
@@ -10019,7 +10031,7 @@ async function collectRolloutRequestUsageRecords(options) {
         const maybeTurnContext =
           !maybeTokenCount &&
           (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
-          (line.includes('"model"') ||
+          (line.includes('"id"') || line.includes('"model"') ||
             line.includes('"turn_id"') ||
             line.includes('"forked_from_id"'));
 
@@ -10039,6 +10051,7 @@ async function collectRolloutRequestUsageRecords(options) {
         ) {
           if (obj.type === "session_meta") {
             forkTracker.onSessionMeta(obj.payload);
+            if (typeof obj.payload.id === "string") sessionId = obj.payload.id;
           }
           if (obj.type === "turn_context") {
             forkTracker.onTurnContext(obj.payload);
@@ -10052,7 +10065,7 @@ async function collectRolloutRequestUsageRecords(options) {
         // Replayed fork history: both its token_count events (usage already
         // recorded in the parent session) and its lifecycle events (stale
         // task_started/task_complete copies) must not produce records.
-        if (forkTracker.replaying) continue;
+        if (forkTracker.replaying && !maybeTokenCount) continue;
 
         const lifecycleType = String(obj?.payload?.type || "");
         if (lifecycleType === "task_started") {
@@ -10107,7 +10120,7 @@ async function collectRolloutRequestUsageRecords(options) {
           const terminalInRange = Number.isFinite(terminalTs)
             && (fromTs == null || terminalTs >= fromTs)
             && (toTs == null || terminalTs <= toTs);
-          if (!record && terminalTimestamp && terminalInRange) {
+          if (!record && terminalTimestamp && terminalInRange && (!models?.length || models.includes(model.toLowerCase()))) {
             record = {
               id: `${normalizedSource}:${sessionId}:${taskId || terminalTimestamp}:lifecycle`,
               timestamp: terminalTimestamp,
@@ -10115,16 +10128,17 @@ async function collectRolloutRequestUsageRecords(options) {
               source: normalizedSource,
               agent: "Codex",
               model: model || DEFAULT_MODEL,
-              input_tokens: 0,
-              cached_input_tokens: 0,
-              cache_creation_input_tokens: 0,
-              output_tokens: 0,
-              reasoning_output_tokens: 0,
-              total_tokens: 0,
-              cost_usd: 0,
+              usage_available: false,
+              input_tokens: null,
+              cached_input_tokens: null,
+              cache_creation_input_tokens: null,
+              output_tokens: null,
+              reasoning_output_tokens: null,
+              total_tokens: null,
+              cost_usd: null,
               priced_tokens: 0,
               unpriced_tokens: 0,
-              pricing_coverage: "complete",
+              pricing_coverage: "unpriced",
               origin: "codex_rollout_lifecycle",
             };
             records.push(record);
@@ -10155,16 +10169,14 @@ async function collectRolloutRequestUsageRecords(options) {
         const ts = new Date(tokenTimestamp).getTime();
         if (!Number.isFinite(ts)) continue;
 
+        const usage = pickDelta(info.last_token_usage, info.total_token_usage, lastTotal);
+        if (info.total_token_usage && typeof info.total_token_usage === "object") lastTotal = info.total_token_usage;
+        if (!usage || forkTracker.replaying || isAllZeroUsage(usage)) continue;
         if (fromTs != null && ts < fromTs) continue;
         if (toTs != null && ts > toTs) continue;
-
-        const lastUsage = info.last_token_usage;
-
-        if (!isNonEmptyObject(lastUsage)) continue;
-
-        const usage = normalizeUsage(lastUsage);
-
-        if (isAllZeroUsage(usage)) continue;
+        const eventKey = JSON.stringify([sessionId, tokenTimestamp]);
+        if (seenEvents.has(eventKey)) continue;
+        seenEvents.add(eventKey);
 
         const hourStart = toUtcHalfHourStart(tokenTimestamp);
 
@@ -10195,6 +10207,7 @@ async function collectRolloutRequestUsageRecords(options) {
         record.unpriced_tokens = costResult.unpriced_tokens;
         record.pricing_coverage = costResult.pricing_coverage;
 
+        if (models?.length && !models.includes(String(record.model).toLowerCase())) continue;
         records.push(record);
         const task = currentTaskId ? tasks.get(currentTaskId) : null;
         if (task) task.recordIndexes.push(records.length - 1);
@@ -10206,9 +10219,8 @@ async function collectRolloutRequestUsageRecords(options) {
 
     if (records.length >= maxLimit) {
       records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      if (records.length > maxLimit) truncated = true;
       records.length = maxLimit;
-      const candidateTimestamp = new Date(records[records.length - 1]?.timestamp || "").getTime();
-      oldestKeptTimestamp = Number.isFinite(candidateTimestamp) ? candidateTimestamp : null;
     }
   }
 
@@ -10240,6 +10252,7 @@ async function collectRolloutRequestUsageRecords(options) {
     from: from || null,
     to: to || null,
     records: limitedRecords,
+    truncated,
     totals: {
       input_tokens: totals.input_tokens,
       cached_input_tokens: totals.cached_input_tokens,
@@ -10255,7 +10268,42 @@ async function collectRolloutRequestUsageRecords(options) {
   };
 }
 
+const rolloutReadCache = new Map();
+async function collectRolloutQueueRows(files, { dayKey = timestamp => timestamp.slice(0, 10) } = {}) {
+  const buckets = new Map();
+  const seen = new Set();
+  for (const filePath of [...new Set(files)]) {
+    const stat = fssync.statSync(filePath);
+    const signature = [stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":");
+    let cached = rolloutReadCache.get(filePath);
+    if (!cached || cached.signature !== signature) {
+      const events = [];
+      await parseRolloutFile({
+        filePath, startOffset: 0, source: "codex", hourlyState: { buckets: {} }, touchedBuckets: new Set(),
+        seenCodexEvents: new Set(), sessionId: codexSessionIdFromPath(filePath),
+        onUsage: row => events.push(row),
+      });
+      cached = { signature, events };
+      rolloutReadCache.set(filePath, cached);
+      while (rolloutReadCache.size > 256) rolloutReadCache.delete(rolloutReadCache.keys().next().value);
+    }
+    for (const event of cached.events) {
+      const eventId = JSON.stringify([event.session_id || filePath, event.last_activity_at]);
+      if (seen.has(eventId)) continue;
+      seen.add(eventId);
+      const row = { ...event, codex_usage_day: dayKey(event.last_activity_at) };
+      const key = queueUsageIdentity(row, { dimensionsKey: JSON.stringify([row.session_id || filePath, row.codex_usage_day]) });
+      if (!buckets.has(key)) buckets.set(key, { ...row, ...initTotals() });
+      const bucket = buckets.get(key);
+      addTotals(bucket, row);
+      bucket.last_activity_at = row.last_activity_at;
+    }
+  }
+  return [...buckets.values()];
+}
+
 module.exports = {
+  collectRolloutQueueRows,
   listRolloutFiles,
   listRolloutFilesDeep,
   codexSessionIdFromPath,
@@ -10383,3 +10431,83 @@ module.exports = {
   estimateAntigravityTokens,
   isCjkCodePoint,
 };
+
+async function recoverQueueTail(filePath) {
+  const handle = await fs.open(filePath, "r+").catch(error => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!handle) return null;
+  try {
+    const { size } = await handle.stat();
+    if (!size) return size;
+    const lastByte = Buffer.alloc(1);
+    await handle.read(lastByte, 0, 1, size - 1);
+    if (lastByte[0] === 10) return size;
+    const buffer = Buffer.alloc(Math.min(size, 1024 * 1024));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, size - buffer.length);
+    const bytes = buffer.subarray(0, bytesRead);
+    if (bytes.at(-1) === 10) return size;
+    const newline = bytes.lastIndexOf(10);
+    if (newline < 0 && size > buffer.length) throw new Error("Usage queue tail exceeds recovery limit");
+    const tail = bytes.subarray(newline + 1);
+    let complete = false;
+    try { JSON.parse(tail.toString("utf8")); complete = true; } catch {}
+    if (complete || !tail.toString("utf8").trim()) {
+      await handle.write(Buffer.from("\n"), 0, 1, size);
+      return size + 1;
+    }
+    // Preserve the torn fragment before removing only the uncommitted final line.
+    const digest = require("node:crypto").createHash("sha256").update(tail).digest("hex");
+    await fs.writeFile(`${filePath}.torn-${digest}`, tail, { flag: "wx", mode: 0o600 }).catch(error => {
+      if (error.code !== "EEXIST") throw error;
+    });
+    const recoveredSize = size - tail.length;
+    await handle.truncate(recoveredSize);
+    return recoveredSize;
+  } finally {
+    await handle.close();
+  }
+}
+
+// A failed source must not publish cursors or leave half of a multi-queue write.
+function transactionalIncremental(parse) {
+  return async function (options = {}) {
+    if (!options.cursors) return parse(options);
+    const staged = structuredClone(options.cursors);
+    const files = [];
+    const source = options.source || require("../../shared/agent-registry.json").adapters.find(entry => entry.parser_export === parse.name)?.queue_source || parse.name;
+    const health = options.collectionStatus;
+    const attemptedAt = new Date().toISOString();
+    let result;
+    try {
+      for (const filePath of new Set([options.queuePath, options.projectQueuePath].filter(Boolean))) {
+        files.push({ filePath, size: await recoverQueueTail(filePath) });
+      }
+      result = await parse({ ...options, sqliteOptions: { ...options.sqliteOptions, strict: true }, cursors: staged });
+    } catch (error) {
+      if (health) health[source] = { ...health[source], status: "error", last_attempt_at: attemptedAt, error_code: error.code || error.name || "read_error" };
+      for (const { filePath, size } of files) {
+        try {
+          if (size === null) await fs.unlink(filePath);
+          else await fs.truncate(filePath, size);
+        } catch (rollbackError) {
+          if (rollbackError.code !== "ENOENT") {
+            throw new AggregateError([error, rollbackError], "Usage queue rollback failed");
+          }
+        }
+      }
+      throw error;
+    }
+    for (const key of Object.keys(options.cursors)) delete options.cursors[key];
+    Object.assign(options.cursors, staged);
+    if (health) {
+      const readable = result.filesProcessed > 0 || result.recordsProcessed > 0 || result.messagesProcessed > 0 || [options.dbPath, options.jsonlPath].some(file => file && fssync.existsSync(file) && fssync.statSync(file).isFile()) || Array.isArray(options.records);
+      health[source] = { ...health[source], status: readable ? "ok" : "missing", last_attempt_at: attemptedAt, ...(readable ? { last_successful_at: attemptedAt } : {}), error_code: null };
+    }
+    return result;
+  };
+}
+for (const [name, parse] of Object.entries(module.exports)) {
+  if (/^parse.*Incremental$/.test(name)) module.exports[name] = transactionalIncremental(parse);
+}

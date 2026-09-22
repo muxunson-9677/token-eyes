@@ -103,9 +103,19 @@ function sum(rows, key) {
 function buildSessionActivityPoints(rows) {
   return rows
     .map((row) => ({ observed_at: safeText(row.hour_start) || rowTime(row), total_tokens: finiteNumber(row.total_tokens) }))
-    .filter((point) => point.observed_at && point.total_tokens !== null)
+    .filter((point) => point.observed_at)
     .sort((left, right) => timestampMs(left.observed_at) - timestampMs(right.observed_at))
     .slice(-48);
+}
+
+function tokenMetric(rows, key, evidence = null) {
+  const contributors = rows.filter(row => row.record_kind !== "lifecycle_metadata");
+  const known = contributors.filter(row => finiteNumber(row[key]) !== null);
+  if (!known.length) return metric(null, "tokens", "connected_no_exact_data", evidence);
+  const states = known.map(row => row.token_evidence_state || row.evidence_state || "exact");
+  const state = known.length !== contributors.length || states.some(value => !["exact", "estimated"].includes(value))
+    ? "partial" : states.includes("estimated") ? "estimated" : "exact";
+  return metric(sum(known, key), "tokens", state, evidence);
 }
 
 function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = null, agentDayRows = []) {
@@ -115,10 +125,6 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
   const usageTime = rowTime(latest);
   const hasCost = rows.some((row) => finiteNumber(row.cost_usd) !== null);
   const evidence = buildEvidence(rows, lifecycle, latest);
-  function tokenMetric(metricRows, key, metricEvidence = evidence) {
-    const hasValue = metricRows.some((row) => finiteNumber(row[key]) !== null);
-    return metric(hasValue ? sum(metricRows, key) : null, "tokens", hasValue ? "exact" : "connected_no_exact_data", metricEvidence);
-  }
   function requestMetric(metricRows, metricEvidence = evidence) {
     const known = metricRows.length > 0 && metricRows.every((row) => (
       Number.isInteger(row.request_count) && row.request_count >= 0
@@ -144,12 +150,12 @@ function buildSession(rows, lifecycle, lifecycleSessionId = null, todayKey = nul
     state: lifecycleStatus || "recent_activity",
     last_activity_at: timestampMs(lifecycleTime) > timestampMs(usageTime)
       ? lifecycleTime : usageTime || lifecycleTime,
-    total_tokens: tokenMetric(rows, "total_tokens"),
-    input_tokens: tokenMetric(rows, "input_tokens"),
-    output_tokens: tokenMetric(rows, "output_tokens"),
-    cached_input_tokens: tokenMetric(rows, "cached_input_tokens"),
-    cache_creation_input_tokens: tokenMetric(rows, "cache_creation_input_tokens"),
-    reasoning_output_tokens: tokenMetric(rows, "reasoning_output_tokens"),
+    total_tokens: tokenMetric(rows, "total_tokens", evidence),
+    input_tokens: tokenMetric(rows, "input_tokens", evidence),
+    output_tokens: tokenMetric(rows, "output_tokens", evidence),
+    cached_input_tokens: tokenMetric(rows, "cached_input_tokens", evidence),
+    cache_creation_input_tokens: tokenMetric(rows, "cache_creation_input_tokens", evidence),
+    reasoning_output_tokens: tokenMetric(rows, "reasoning_output_tokens", evidence),
     request_count: requestMetric(rows),
     duration_minutes: durationMetric(rows, todayKey, evidence, lifecycle),
     api_equivalent_usd: metric(hasCost ? sum(rows, "cost_usd") : null, "USD", hasCost ? "estimated" : "connected_no_exact_data", evidence),
@@ -195,7 +201,7 @@ function buildNativeResources(nativeResources = []) {
 }
 
 function buildAgentHistory(agentHistory = [], runtimeBySource = new Map()) {
-  const allowedStates = new Set(["exact", "estimated", "connected_no_exact_data"]);
+  const allowedStates = new Set(["exact", "partial", "estimated", "connected_no_exact_data"]);
   return (Array.isArray(agentHistory) ? agentHistory : [])
     .map((item) => {
       const tokenState = allowedStates.has(item?.total_tokens?.evidence_state) ? item.total_tokens.evidence_state : "connected_no_exact_data";
@@ -245,12 +251,7 @@ function buildUsageRecords(rows) {
         observed_at: observedAt,
         source: safeText(row.source) || "unknown",
         model: safeText(row.model),
-        total_tokens: metric(
-          finiteNumber(row.total_tokens),
-          "tokens",
-          finiteNumber(row.total_tokens) === null ? "connected_no_exact_data" : "exact",
-          buildEvidence([row], null, row),
-        ),
+        total_tokens: tokenMetric([row], "total_tokens", buildEvidence([row], null, row)),
         api_equivalent_usd: metric(
           finiteNumber(row.cost_usd),
           "USD",
@@ -388,7 +389,7 @@ function buildRealtimeSessionViewModel(input = {}) {
     agent_range_summary: agentRangeSummary,
     agent_history: buildAgentHistory(input.agentHistory, runtimeBySource),
     summary: {
-      active_agents: metric(new Set(sessions.filter((session) => session.state === "running").map((session) => session.source)).size, "agents", "partial", summaryEvidence),
+      active_agents: metric(runtimeBySource.size ? new Set(sessions.filter((session) => session.state === "running").map((session) => session.source)).size : null, "agents", runtimeBySource.size ? "partial" : "connected_no_exact_data", summaryEvidence),
       realtime_tokens: metric(totalTokens, "tokens", totalTokens === null ? "connected_no_exact_data" : "partial", summaryEvidence),
       api_equivalent_value: metric(totalCost, "USD", totalCost === null ? "connected_no_exact_data" : "estimated", summaryEvidence),
     },

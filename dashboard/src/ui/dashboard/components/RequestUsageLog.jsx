@@ -200,7 +200,7 @@ export function RequestUsageLog({
     [sourceFilter, visibleProviderIds],
   );
 
-  const { records, totals, loading, error, refresh, totalPages: serverTotalPages, total: serverTotal } = useRequestUsageRecords({
+  const { records, totals, loading, error, refresh, totalPages: serverTotalPages, total: serverTotal, totalsScope } = useRequestUsageRecords({
     baseUrl,
     accessToken,
     guestAllowed,
@@ -528,6 +528,7 @@ export function RequestUsageLog({
         </div>
       </div>
 
+      {totalsScope !== "all_matching" && <p role="status" className="mb-3 text-xs text-oai-gray-500">{copy(totalsScope === "returned_subset" ? "usage.request_log.coverage_subset" : "usage.request_log.coverage_unknown")}</p>}
       {totals && [totals.request_count, totals.success_rate, totals.avg_latency_ms].some(isProvidedNumber) && (
         <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
           {isProvidedNumber(totals.request_count) && (

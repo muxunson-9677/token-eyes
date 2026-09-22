@@ -3,7 +3,6 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
-const { readCodexUsageLines } = require("./codex-usage-lines");
 const agentRegistry = require("../../shared/agent-registry.json");
 const codexResetReviewed = require("../../shared/codex-reset-reviewed.json");
 const { verifySignedStaticFeed } = require("./signed-static-feed");
@@ -199,6 +198,7 @@ function queueFileMtimeKey(queuePath) {
 
 function buildRequestUsageRecordsListCacheKey({
   queuePath,
+  pricingOptions,
   effectiveSources,
   from,
   to,
@@ -212,6 +212,7 @@ function buildRequestUsageRecordsListCacheKey({
   return [
     queuePath,
     queueFileMtimeKey(queuePath),
+    JSON.stringify(pricingOptions || {}),
     sourcesKey,
     from || "",
     to || "",
@@ -270,17 +271,12 @@ async function buildRequestUsageRecordsList({
   pricingOptions,
 }) {
   const allRecords = [];
+  let sourceTruncated = false;
   const allRows = readQueueData(qp);
   let aggregateOnlySources = [];
 
-  const fromPartsRur = from
-    ? getZonedParts(new Date(`${from}T00:00:00Z`), timeZoneContext)
-    : null;
-  const toPartsRur = to
-    ? getZonedParts(new Date(`${to}T00:00:00Z`), timeZoneContext)
-    : null;
-  const fromKeyRur = fromPartsRur ? formatPartsDayKey(fromPartsRur) : null;
-  const toKeyRur = toPartsRur ? formatPartsDayKey(toPartsRur) : null;
+  const fromKeyRur = from || null;
+  const toKeyRur = to || null;
 
   const wantsCodex = !effectiveSources || effectiveSources.includes("codex");
   // V2 Task 6 (W3): Claude gets true message-level events from its session
@@ -318,17 +314,18 @@ async function buildRequestUsageRecordsList({
           to: to || undefined,
           timeZoneContext,
           limit,
+          models,
           pricingOptions,
         });
         claudeEventRecords = claudeResult.records || [];
+        sourceTruncated ||= Boolean(claudeResult.truncated);
       }
     } catch (e) {
       console.error("[LocalAPI] request-usage-records claude branch error:", e?.message || e);
     }
   }
-  if (claudeEventRecords.length > 0) {
-    aggregateOnlySources = aggregateOnlySources.filter((s) => s !== "claude");
-  }
+  // Keep historical buckets unless the selected raw records prove full bucket coverage.
+  aggregateOnlySources = effectiveSources || [...new Set(allRows.map(row => normalizeSource(row.source)))];
 
   const aggregateRecords = buildAggregateUsageRecords(allRows, {
     fromKey: fromKeyRur,
@@ -358,9 +355,11 @@ async function buildRequestUsageRecordsList({
         to: to || undefined,
         timeZoneContext,
         limit,
+        models,
         pricingOptions,
       });
 
+      sourceTruncated ||= Boolean(codexResult.truncated);
       for (const record of codexResult.records || []) {
         record.source_display_name = getSourceDisplayName("codex");
         if (record.status === undefined) record.status = null;
@@ -375,8 +374,24 @@ async function buildRequestUsageRecordsList({
     }
   }
 
+  const identity = row => JSON.stringify([row.source, row.model || "unknown", row.hour_start]);
+  const aggregateTotals = new Map(), rawTotals = new Map();
+  for (const row of allRecords) {
+    const target = row.record_kind === "aggregate_bucket" ? aggregateTotals : rawTotals;
+    const key = identity(row);
+    target.set(key, (target.get(key) || 0) + Number(row.total_tokens || 0));
+  }
+  const merged = allRecords.filter(row => {
+    if (row.usage_available === false) return true;
+    const key = identity(row);
+    if (!aggregateTotals.has(key) || !rawTotals.has(key)) return true;
+    const covered = aggregateTotals.get(key) === rawTotals.get(key);
+    return row.record_kind === "aggregate_bucket" ? !covered : covered;
+  });
+  allRecords.splice(0, allRecords.length, ...merged);
+  aggregateOnlySources = [...new Set(allRecords.filter(row => row.record_kind === "aggregate_bucket").map(row => row.source))];
   for (const record of allRecords) {
-    Object.assign(record, computeRowCostDetailed(record, pricingOptions));
+    if (record.usage_available !== false) Object.assign(record, computeRowCostDetailed(record, pricingOptions));
   }
 
   allRecords.sort((a, b) => {
@@ -385,11 +400,10 @@ async function buildRequestUsageRecordsList({
     if (ta === tb) return 0;
     return ta < tb ? 1 : -1;
   });
-  if (allRecords.length > limit) {
-    allRecords.length = limit;
-  }
+  const hasMore = sourceTruncated || allRecords.length > limit;
+  if (allRecords.length > limit) allRecords.length = limit;
 
-  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur };
+  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur, hasMore };
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +492,7 @@ function resolveQueuePath() {
   return path.join(home, ".tokentracker", "tracker", "queue.jsonl");
 }
 
-function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath()) {
+function readProjectQueueData(projectQueuePath) {
   let raw;
   try {
     raw = fs.readFileSync(projectQueuePath, "utf8");
@@ -494,36 +508,13 @@ function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath
     try {
       const row = JSON.parse(line);
       const billingMode = normalizeUsageAttribution(row).billing_mode;
-      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}|${billingMode}`;
+      const key = `${row.project_key || ""}|${row.source || ""}|${row.model || "unknown"}|${row.hour_start || ""}|${billingMode}`;
       seen.set(key, normalizeQueueRow(row));
     } catch {
       // skip malformed
     }
   }
-  const projectRows = Array.from(seen.values());
-  const missingModelRows = projectRows.filter((row) => !row.model);
-  if (missingModelRows.length > 0) {
-    const mainQueueRows = readQueueData(mainQueuePath);
-    const sourceHourModelMap = new Map();
-    for (const r of mainQueueRows) {
-      const mainKey = `${r.source || ""}|${r.hour_start || ""}`;
-      if (!r.model) continue;
-      if (!sourceHourModelMap.has(mainKey)) sourceHourModelMap.set(mainKey, new Map());
-      const models = sourceHourModelMap.get(mainKey);
-      models.set(r.model, (models.get(r.model) || 0) + Number(r.total_tokens || 0));
-    }
-    for (const row of missingModelRows) {
-      const mainKey = `${row.source || ""}|${row.hour_start || ""}`;
-      const models = sourceHourModelMap.get(mainKey);
-      if (!models || models.size === 0) continue;
-      if (models.size === 1) {
-        row.model = models.keys().next().value;
-        continue;
-      }
-      row.model_breakdown = Array.from(models.entries()).map(([model, tokens]) => ({ model, tokens }));
-    }
-  }
-  return projectRows;
+  return Array.from(seen.values());
 }
 
 function isLegacyInclusiveCodexRow(row) {
@@ -956,11 +947,6 @@ function shiftDayKey(dayKey, deltaDays) {
   return date.toISOString().slice(0, 10);
 }
 
-function codexRolloutFileDay(filePath) {
-  const match = path.basename(String(filePath || "")).match(/^rollout-(\d{4}-\d{2}-\d{2})T/);
-  return match ? match[1] : null;
-}
-
 async function collectCodexRolloutQueueRows({
   codexHome,
   codexHomes,
@@ -970,13 +956,6 @@ async function collectCodexRolloutQueueRows({
   timeZoneContext = null,
 } = {}) {
   const directFiles = Array.isArray(rolloutFiles) ? [...new Set(rolloutFiles)] : [];
-  if (directFiles.length > 1) {
-    const rows = [];
-    for (const filePath of directFiles) {
-      rows.push(...await collectCodexRolloutQueueRows({ codexHome, codexHomes, rolloutFiles: [filePath], from, to, timeZoneContext }));
-    }
-    return rows;
-  }
   const requestedFrom = from;
   const requestedTo = to;
   // A live parent's signature must not invalidate completed child files, and
@@ -1002,14 +981,7 @@ async function collectCodexRolloutQueueRows({
     const files = usesDirectRolloutFiles
       ? [...new Set(rolloutFiles.map((filePath) => path.resolve(String(filePath))))]
       : await listCodexRolloutFilesFromHomes(homes, { forceRefresh: true });
-    const minFileDay = from ? shiftDayKey(from, -1) : null;
-    const maxFileDay = to ? shiftDayKey(to, 1) : null;
-    const relevantFiles = usesDirectRolloutFiles ? files : files.filter((filePath) => {
-      const fileDay = codexRolloutFileDay(filePath);
-      if (fileDay && minFileDay && fileDay < minFileDay) return false;
-      if (fileDay && maxFileDay && fileDay > maxFileDay) return false;
-      return true;
-    });
+    const relevantFiles = files;
     if (relevantFiles.length === 0) return [];
     const cacheKey = [
       scanScopeKey,
@@ -1021,101 +993,7 @@ async function collectCodexRolloutQueueRows({
       CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, cached);
       return cached.rows;
     }
-    const buckets = new Map();
-
-    for (const filePath of relevantFiles) {
-      const stat = await fs.promises.stat(filePath).catch(() => null);
-      if (!stat || !stat.isFile()) continue;
-
-      let model = "unknown";
-      let sessionId = null;
-        for await (const line of readCodexUsageLines(filePath)) {
-          if (!line) continue;
-          if (
-            !line.includes('"token_count"') &&
-            !line.includes('"turn_context"') &&
-            !line.includes('"session_meta"')
-          ) {
-            continue;
-          }
-
-          let obj;
-          try {
-            obj = JSON.parse(line);
-          } catch {
-            continue;
-          }
-
-          if (
-            (obj?.type === "turn_context" || obj?.type === "session_meta") &&
-            obj?.payload &&
-            typeof obj.payload === "object"
-          ) {
-            if (typeof obj.payload.model === "string" && obj.payload.model.trim()) {
-              model = obj.payload.model.trim();
-            }
-            if (
-              obj.type === "session_meta" &&
-              typeof obj.payload.id === "string" &&
-              obj.payload.id.trim()
-            ) {
-              sessionId = obj.payload.id.trim();
-            }
-            continue;
-          }
-
-          const token = extractCodexTokenCount(obj);
-          if (!token?.info || typeof token.info !== "object") continue;
-          const timestamp = typeof token.timestamp === "string" ? token.timestamp : "";
-          if (!timestamp) continue;
-          const dayKey = codexTimestampDayKey(timestamp, timeZoneContext);
-          if (!dayKey) continue;
-          if (from && dayKey < from) continue;
-          if (to && dayKey > to) continue;
-
-          const usage = normalizeCodexUsage(token.info.last_token_usage);
-          if (!usage || !Number(usage.total_tokens || 0)) continue;
-          const hourStart = toUtcHalfHourStart(timestamp);
-          if (!hourStart) continue;
-
-          const bucketKey = `codex|${sessionId || "aggregate"}|${model}|${hourStart}|${dayKey}`;
-          if (!buckets.has(bucketKey)) {
-            buckets.set(bucketKey, {
-              hour_start: hourStart,
-              codex_usage_day: dayKey,
-              source: "codex",
-              ...(sessionId ? { session_id: sessionId } : {}),
-              model,
-              input_tokens: 0,
-              output_tokens: 0,
-              cached_input_tokens: 0,
-              cache_creation_input_tokens: 0,
-              reasoning_output_tokens: 0,
-              total_tokens: 0,
-              billable_total_tokens: 0,
-              conversation_count: 0,
-            });
-          }
-          const row = buckets.get(bucketKey);
-          if (!row.last_activity_at || Date.parse(timestamp) > Date.parse(row.last_activity_at)) {
-            row.last_activity_at = timestamp;
-          }
-          row.input_tokens += Number(usage.input_tokens || 0);
-          row.output_tokens += Number(usage.output_tokens || 0);
-          row.cached_input_tokens += Number(usage.cached_input_tokens || 0);
-          row.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
-          row.reasoning_output_tokens += Number(usage.reasoning_output_tokens || 0);
-          row.total_tokens += Number(usage.total_tokens || 0);
-          row.billable_total_tokens += Number(usage.total_tokens || 0);
-          row.conversation_count += 1;
-        }
-    }
-
-    const rows = Array.from(buckets.values()).sort((a, b) => {
-      const timeCmp = a.hour_start.localeCompare(b.hour_start);
-      if (timeCmp !== 0) return timeCmp;
-      return String(a.model || "").localeCompare(String(b.model || ""));
-    });
+    const rows = await require("./rollout").collectRolloutQueueRows(relevantFiles, { dayKey: timestamp => codexTimestampDayKey(timestamp, timeZoneContext) });
     // Keep only the latest signature for this file/range scope. A frequently
     // growing parent must not crowd unchanged children out of the bounded cache.
     for (const [key, entry] of CODEX_ROLLOUT_QUEUE_CACHE) {
@@ -1465,6 +1343,12 @@ function computeRecordTotals(records) {
     totals.pricing_coverage = "unpriced";
   } else {
     totals.pricing_coverage = "partial";
+  }
+  const knownUsageCount = records.filter(record => record.usage_available !== false).length;
+  totals.usage_coverage = knownUsageCount === records.length ? "complete" : knownUsageCount ? "partial" : "unavailable";
+  if (records.length && !knownUsageCount) {
+    for (const field of ["input_tokens", "cached_input_tokens", "cache_creation_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens", "cache_hit_rate"]) totals[field] = null;
+    totals.pricing_coverage = "unpriced";
   }
   return Object.assign(totals, summarizePricingProvenance(records));
 }
@@ -3569,7 +3453,6 @@ function createLocalApiHandler({
 
   async function withCodexRolloutRows(rows, { from = "", to = "", timeZoneContext = null, sources = null } = {}) {
     if (Array.isArray(sources) && !sources.includes("codex")) return rows;
-    if (hasCodexQueueRowsForRange(rows, { from, to, timeZoneContext })) return rows;
     const config = readTrackerConfig();
     const configuredCodexHome = normalizeDataDirectories(config.dataDirectories).codex;
     const usesDefaultQueue = path.resolve(qp).toLowerCase() === path.resolve(resolveQueuePath()).toLowerCase();
@@ -3588,10 +3471,12 @@ function createLocalApiHandler({
       timeZoneContext,
     });
     if (codexRows.length === 0) return rows;
-    return [
-      ...rows.filter((row) => normalizeSource(row.source) !== "codex"),
-      ...codexRows,
-    ];
+    const key = row => JSON.stringify([row.source, row.model || "unknown", row.hour_start]);
+    const queued = new Map(), raw = new Map();
+    for (const row of rows.filter(row => row.source === "codex")) queued.set(key(row), (queued.get(key(row)) || 0) + Number(row.total_tokens || 0));
+    for (const row of codexRows) raw.set(key(row), (raw.get(key(row)) || 0) + Number(row.total_tokens || 0));
+    const replace = new Set([...queued.keys()].filter(id => raw.get(id) === queued.get(id)));
+    return [...rows.filter(row => !replace.has(key(row))), ...codexRows.filter(row => !queued.has(key(row)) || replace.has(key(row)))];
   }
 
   function normalizeAgentDefaultPricingUpdatedAt(raw, pricing, legacyUpdatedAt) {
@@ -7395,7 +7280,17 @@ function createLocalApiHandler({
         const lifecycleSessionsInRange = range.to === todayRange.to
           ? lifecycleSessionsWithMessageSpans
           : [];
-        privateLocalJson(req, res, buildRealtimeSessionViewModel({
+        let collectionStatus = {};
+        try {
+          const stored = JSON.parse(fs.readFileSync(path.join(trackerDataDir, "collection-status.json"), "utf8"));
+          collectionStatus = Object.fromEntries(Object.entries(stored).map(([source, state]) => [source, {
+            status: ["ok", "missing", "error"].includes(state?.status) ? state.status : "unknown",
+            last_successful_at: typeof state?.last_successful_at === "string" ? state.last_successful_at : null,
+          }]));
+        } catch (error) {
+          if (error.code !== "ENOENT") collectionStatus = { tracker: { status: "error", last_successful_at: null } };
+        }
+        privateLocalJson(req, res, { ...buildRealtimeSessionViewModel({
           observedAt: nowDate.toISOString(),
           range: range.range,
           rangeFrom: range.from,
@@ -7413,7 +7308,7 @@ function createLocalApiHandler({
             now: nowDate,
           }), nativeResources),
           nativeResources,
-        }));
+        }), collection_status: collectionStatus });
       } catch (_error) {
         privateLocalJson(req, res, { ok: false, error: "realtime_sessions_unavailable" }, 500);
       }
@@ -9244,6 +9139,7 @@ function createLocalApiHandler({
         try {
           const listCacheKey = buildRequestUsageRecordsListCacheKey({
             queuePath: qp,
+            pricingOptions,
             effectiveSources,
             from,
             to,
@@ -9258,6 +9154,7 @@ function createLocalApiHandler({
           let allRows;
           let fromKeyRur;
           let toKeyRur;
+          let hasMore;
 
           const cachedList = readRequestUsageRecordsListCache(listCacheKey);
           if (cachedList) {
@@ -9266,6 +9163,7 @@ function createLocalApiHandler({
             allRows = cachedList.allRows;
             fromKeyRur = cachedList.fromKeyRur;
             toKeyRur = cachedList.toKeyRur;
+            hasMore = cachedList.hasMore;
           } else {
             const built = await buildRequestUsageRecordsList({
               qp,
@@ -9285,12 +9183,14 @@ function createLocalApiHandler({
             allRows = built.allRows;
             fromKeyRur = built.fromKeyRur;
             toKeyRur = built.toKeyRur;
+            hasMore = built.hasMore;
             writeRequestUsageRecordsListCache(listCacheKey, {
               allRecords,
               aggregateOnlySources,
               allRows,
               fromKeyRur,
               toKeyRur,
+              hasMore,
             });
           }
 
@@ -9354,7 +9254,8 @@ function createLocalApiHandler({
               limit: Number(limit),
               returned_count: pagedRecords.length,
               total_count: totalCount,
-              totals_scope: "all_matching",
+              totals_scope: totals.usage_coverage !== "complete" ? "unknown" : hasMore ? "returned_subset" : "all_matching",
+              has_more: Boolean(hasMore),
             },
             availability: {
               request_records: requestRecordsAvailability,

@@ -44,6 +44,10 @@ interface UseRequestUsageRecordsParams {
 
 type RequestUsageRecordsSource = "edge" | "cache" | "mock";
 
+type TotalsScope = "all_matching" | "returned_subset" | "unknown";
+type PageMeta = { page: number; totalPages: number; total: number; totalsScope: TotalsScope };
+function totalsScope(value: unknown): TotalsScope { return value === "all_matching" || value === "returned_subset" ? value : "unknown"; }
+
 type MergedTotals = RequestUsageRecordsTotals;
 
 interface UseRequestUsageRecordsReturn {
@@ -60,6 +64,7 @@ interface UseRequestUsageRecordsReturn {
   totalPages: number;
   /** 总记录数。 */
   total: number;
+  totalsScope: TotalsScope;
 }
 
 const EMPTY_TOTALS: MergedTotals = {
@@ -174,7 +179,7 @@ export function useRequestUsageRecords({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
-  const [pageMeta, setPageMeta] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [pageMeta, setPageMeta] = useState<PageMeta>({ page: 1, totalPages: 1, total: 0, totalsScope: "unknown" });
   const lastScopeRef = useRef<string>("init");
 
   // Stable serialization of normalizedVisibleProviderIds so the storageKey + scopeKey
@@ -192,7 +197,7 @@ export function useRequestUsageRecords({
     return `tokentracker.requestUsageRecords.${cacheKey}.${host}.${from}.${to}.${tzKey}.${filterCacheKey}.${visibleKey}.${limit}.p${page}.s${pageSize}.k${recordKind || "all"}`;
   }, [baseUrl, cacheKey, from, to, timeZone, tzOffsetMinutes, filterCacheKey, visibleKey, limit, page, pageSize, recordKind]);
 
-  const readCache = useCallback((): { records: UsageRecord[]; totals: MergedTotals; pageMeta: { page: number; totalPages: number; total: number } } | null => {
+  const readCache = useCallback((): { records: UsageRecord[]; totals: MergedTotals; pageMeta: PageMeta } | null => {
     if (!storageKey || typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(storageKey);
@@ -208,6 +213,7 @@ export function useRequestUsageRecords({
           page: safeNum(parsed.pageMeta?.page) || page,
           totalPages: safeNum(parsed.pageMeta?.totalPages) || Math.max(1, Math.ceil(cachedTotal / pageSize)),
           total: cachedTotal,
+          totalsScope: totalsScope(parsed.pageMeta?.totalsScope),
         },
       };
     } catch {
@@ -216,7 +222,7 @@ export function useRequestUsageRecords({
   }, [page, pageSize, storageKey]);
 
   const writeCache = useCallback(
-    (payload: { records: UsageRecord[]; totals: MergedTotals; pageMeta: { page: number; totalPages: number; total: number } }) => {
+    (payload: { records: UsageRecord[]; totals: MergedTotals; pageMeta: PageMeta }) => {
       if (!storageKey || typeof window === "undefined") return;
       try {
         window.localStorage.setItem(
@@ -265,6 +271,7 @@ export function useRequestUsageRecords({
     if (hasExplicitVisibleProviderIds && effectiveSources.length === 0) {
       setRecords([]);
       setTotals(EMPTY_TOTALS);
+      setPageMeta({ page: 1, totalPages: 1, total: 0, totalsScope: "all_matching" });
       setSource(mockEnabled ? "mock" : "edge");
       setError(null);
       setFetchedAt(new Date().toISOString());
@@ -297,7 +304,8 @@ export function useRequestUsageRecords({
       const extractedPageMeta = {
         page: pageInfo.page || page,
         totalPages: pageInfo.total_pages || 1,
-        total: pageInfo.total || allRecords.length,
+        total: pageInfo.total ?? allRecords.length,
+        totalsScope: totalsScope(pageInfo.totals_scope),
       };
 
       const mergedTotals: MergedTotals = { ...EMPTY_TOTALS };
@@ -434,5 +442,6 @@ export function useRequestUsageRecords({
     page: pageMeta.page,
     totalPages: pageMeta.totalPages,
     total: pageMeta.total,
+    totalsScope: pageMeta.totalsScope,
   };
 }

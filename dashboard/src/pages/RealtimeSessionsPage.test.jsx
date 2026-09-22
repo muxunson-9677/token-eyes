@@ -4,7 +4,7 @@ import path from "node:path";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { copy } from "../lib/copy";
+import { copy, getCopyLocale } from "../lib/copy";
 import { LIMIT_PROVIDER_IDS } from "../lib/limits-providers.js";
 import { LIMITS_DISPLAY_CHANGE_EVENT } from "../hooks/use-limits-display-prefs.js";
 import { RealtimeSessionsPage } from "./RealtimeSessionsPage.jsx";
@@ -73,7 +73,7 @@ beforeEach(() => {
     disconnect() {}
   };
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-    setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), fill: vi.fn(), closePath: vi.fn(),
+    setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), fill: vi.fn(), fillRect: vi.fn(), closePath: vi.fn(),
   });
 });
 
@@ -247,10 +247,10 @@ describe("RealtimeSessionsPage", () => {
     await screen.findByText(session.task_label);
     await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.trend") }));
     await user.selectOptions(screen.getByRole("combobox", { name: copy("realtime.chart.window") }), "all");
-    expect(document.querySelector(".rt-live-x")).toHaveTextContent("2026/08/01");
-    expect(document.querySelector(".rt-live-x")).toHaveTextContent("2026/08/21");
+    expect(document.querySelector(".rt-live-x")).toHaveTextContent(new Date("2026-08-01T08:00:00Z").toLocaleDateString(getCopyLocale()));
+    expect(document.querySelector(".rt-live-x")).toHaveTextContent(new Date("2026-08-21T08:00:00Z").toLocaleDateString(getCopyLocale()));
     await user.click(screen.getByRole("tab", { name: copy("realtime.tabs.requests") }));
-    expect(document.querySelector(".rt-request-row")).toHaveTextContent("2026/08/21");
+    expect(document.querySelector(".rt-request-row")).toHaveTextContent(new Date("2026-08-21T08:00:00Z").toLocaleDateString(getCopyLocale()));
   });
 
   it("paginates dense usage without losing records and resets when the range changes", async () => {
@@ -759,4 +759,13 @@ describe("RealtimeSessionsPage", () => {
     expect(selected).toHaveAttribute("aria-pressed", "true");
     expect(selected).toHaveClass("tt-pressable", "tt-product-focusable");
   });
+});
+
+it("部分Token与采集失败在实际卡片可见，未知活跃不显示确定零", async () => {
+  getRealtimeSessions.mockResolvedValue({ ...payload, collection_status: { codex: { status: "error", last_successful_at: "2026-09-21T00:00:00Z" } }, agent_history: [{...payload.agent_history[0],runtime_state:"unknown"}], sessions: [{...session,state:"unknown",total_tokens:{...metric(100),evidence_state:"partial"}}] });
+  render(<RealtimeSessionsPage />);
+  await screen.findByText(session.task_label);
+  expect(document.querySelector(".rt-kpis")).toHaveTextContent(copy("observability.evidence.partial"));
+  expect(document.querySelector(".rt-kpi-value")).toHaveTextContent(copy("value_realtime.data_unavailable"));
+  expect(screen.getByRole("alert")).toHaveTextContent("codex");
 });

@@ -37,8 +37,9 @@ function parseResetAt(raw) {
 }
 
 function utilizationToPercent(raw) {
+  if ((typeof raw !== "number" && typeof raw !== "string") || String(raw).trim() === "") return null;
   const n = Number(raw);
-  if (!Number.isFinite(n)) return null;
+  if (!Number.isFinite(n) || n < 0 || n > PERCENT_SCALE) return null;
   if (n <= 1) return Math.round(n * PERCENT_SCALE * 100) / 100;
   return Math.max(0, Math.min(PERCENT_SCALE, Math.round(n * 100) / 100));
 }
@@ -47,10 +48,10 @@ function claudeWindowToQuotaWindow(entry, kind) {
   if (!entry || typeof entry !== "object") return null;
   const pct = utilizationToPercent(entry.utilization);
   if (pct === null) return null;
-  const used = Math.round(pct);
+  const used = pct;
   return {
     kind,
-    unit: "tokens",
+    unit: "percent",
     total: PERCENT_SCALE,
     used,
     remaining: Math.max(0, PERCENT_SCALE - used),
@@ -69,6 +70,7 @@ function parseClaudeUsageBody(body) {
   const primary = weekly || quotaWindows[quotaWindows.length - 1];
   return {
     quota_windows: quotaWindows,
+    quota_unit: "percent",
     total_quota: primary.total,
     used_quota: primary.used,
     remaining_quota: primary.remaining,

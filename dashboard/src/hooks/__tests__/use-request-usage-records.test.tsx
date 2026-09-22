@@ -353,3 +353,14 @@ describe("useRequestUsageRecords", () => {
     expect(result.current.records).toEqual([]);
   });
 });
+
+describe("汇总范围", () => {
+  it("保留截断状态，旧接口缺字段不得声称完整", async () => {
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({ records: [], totals: makeTotals(), page: { totals_scope: "returned_subset", total: 1000 } } as any);
+    const {result}=setup(["codex"]);
+    await waitFor(()=>expect(result.current.totalsScope).toBe("returned_subset"));
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({ records: [], totals: makeTotals(), page: {} } as any);
+    await act(async()=>{await result.current.refresh();});
+    expect(result.current.totalsScope).toBe("unknown");
+  });
+});

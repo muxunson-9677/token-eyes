@@ -74,6 +74,7 @@ async function collectClaudeRequestUsageRecords(options) {
     to,
     timeZoneContext,
     limit = 500,
+    models,
     pricingOptions = {},
   } = options || {};
 
@@ -131,6 +132,7 @@ async function collectClaudeRequestUsageRecords(options) {
         if (dedupHash) seenMessageHashes.add(dedupHash);
 
         const model = normalizeModelInput(obj?.message?.model || obj?.model) || DEFAULT_MODEL;
+        if (models?.length && !models.includes(model.toLowerCase())) continue;
         const msgId = typeof obj?.message?.id === "string" ? obj.message.id : null;
         const hourStart = toUtcHalfHourStart(tokenTimestamp);
 
@@ -194,6 +196,7 @@ async function collectClaudeRequestUsageRecords(options) {
     from: from || null,
     to: to || null,
     records: limitedRecords,
+    truncated: records.length > maxLimit,
     totals: { ...totals, ...pricingSummary },
   };
 }

@@ -780,7 +780,10 @@ test("replays a completed billing migration after queue append but before cursor
     sessionFiles: [sessionFile], cursors: tornTailCursors, queuePath,
   });
   assert.equal(tornTailReplay.bucketsQueued, 4);
-  assert.match(fs.readFileSync(queuePath, "utf8"), /\{"unterminated":\r?\n\{/u);
+  assert.doesNotMatch(fs.readFileSync(queuePath, "utf8"), /\{"unterminated":/u);
+  const fragment = fs.readdirSync(root).find(name => name.startsWith("queue.jsonl.torn-"));
+  assert.ok(fragment, "torn bytes must be retained before queue recovery");
+  assert.equal(fs.readFileSync(path.join(root, fragment), "utf8"), '{"unterminated":');
   const ordinaryBatch = await readQueueBatch(queuePath, 0, 20);
   const cloudBatch = await readQueueBatch(queuePath, ordinaryBatch.nextOffset, 20);
   assert.deepEqual(

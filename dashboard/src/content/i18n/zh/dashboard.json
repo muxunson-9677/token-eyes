@@ -1277,5 +1277,10 @@
     "settings.token_plan.failure_reason": "同步异常：{{reason}}",
     "settings.token_plan.failure_reason_unavailable": "官方额度同步暂时不可用，请稍后重试。",
     "settings.token_plan.value_unavailable": "—",
-    "settings.token_plan.reset_unavailable": "官方未提供"
+    "settings.token_plan.reset_unavailable": "官方未提供",
+  "realtime.range.between": "{{from}} 至 {{to}}",
+  "realtime.scope.all_agents": "全部 Agent",
+  "usage.request_log.coverage_subset": "记录达到上限，汇总仅覆盖已返回部分；可缩小筛选范围继续查看。",
+  "usage.request_log.coverage_unknown": "尚未确认记录覆盖完整，当前汇总可能只是部分数据。",
+  "realtime.collection.error": "{{source}} 采集失败，保留上次用量；最近成功采集：{{time}}。"
 }

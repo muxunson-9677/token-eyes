@@ -133,7 +133,10 @@ export interface SpendTimeseriesResponse {
   totals: SpendTimeseriesTotals;
 }
 
-export interface UsageRecord extends Omit<TokenTotals, "cost_usd">, PricingCoverageFields, PricingProvenanceFields {
+type NullableTokenCounts = { [K in Exclude<keyof TokenTotals, "cost_usd">]: number | null };
+
+export interface UsageRecord extends NullableTokenCounts, PricingCoverageFields, PricingProvenanceFields {
+  usage_available?: boolean;
   cost_usd: number | null;
   id: string;
   record_kind?: "request_event" | "aggregate_bucket";
@@ -153,7 +156,8 @@ export interface UsageRecord extends Omit<TokenTotals, "cost_usd">, PricingCover
 
 export type RequestUsageRecord = UsageRecord;
 
-export interface RequestUsageRecordsTotals extends Omit<TokenTotals, "cost_usd">, PricingCoverageFields, PricingProvenanceFields {
+export interface RequestUsageRecordsTotals extends NullableTokenCounts, PricingCoverageFields, PricingProvenanceFields {
+  usage_coverage?: "complete" | "partial" | "unavailable";
   cost_usd: number | null;
   request_count: number;
   success_count: number | null;
@@ -161,7 +165,7 @@ export interface RequestUsageRecordsTotals extends Omit<TokenTotals, "cost_usd">
   failure_count: number;
   success_rate: number | null;
   avg_latency_ms: number | null;
-  cache_hit_rate: number;
+  cache_hit_rate: number | null;
   status_sample_count: number;
   latency_sample_count: number;
 }
@@ -176,7 +180,8 @@ export interface RequestUsageRecordsPage {
   limit: number;
   returned_count: number;
   total_count: number;
-  totals_scope: "all_matching";
+  totals_scope: "all_matching" | "returned_subset" | "unknown";
+  has_more?: boolean | null;
 }
 
 export interface RequestUsageRecordsResponse {

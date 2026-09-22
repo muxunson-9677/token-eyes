@@ -345,6 +345,8 @@ function createConfiguredTokenPlanResolver(configuredPlans, timeZoneContext = {}
       { ...timestampContext, endOfDate: true },
     );
     matches.push({
+      account_ref: isAllowedEvidenceReference("account_ref", plan?.account_ref) ? plan.account_ref.trim() : null,
+      credential_ref: isAllowedEvidenceReference("credential_ref", plan?.credential_ref) ? plan.credential_ref.trim() : null,
       plan_ref: isAllowedEvidenceReference("plan_ref", plan?.plan_ref)
         ? plan.plan_ref.trim()
         : null,
@@ -381,6 +383,8 @@ function createConfiguredTokenPlanResolver(configuredPlans, timeZoneContext = {}
       ? []
       : identityMatches.filter((plan) => (
         plan.window_valid
+        && (!plan.account_ref || plan.account_ref === attribution.account_ref)
+        && (!plan.credential_ref || plan.credential_ref === attribution.credential_ref)
         && (plan.started_at === null || occurredAt >= plan.started_at)
         && (plan.expires_at === null || occurredAt <= plan.expires_at)
       ));
@@ -440,4 +444,5 @@ module.exports = {
   normalizeEndpointOrigin,
   normalizeUsageAttribution,
   queueUsageIdentity,
+  parseAttributionTimestamp,
 };

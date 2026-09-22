@@ -1229,7 +1229,7 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
           timestamp: "2025-12-26T08:05:00.000Z",
           model: "gemini-3-flash-preview",
           content: { text: "ignore me" },
-          tokens: { input: 10, output: 1, cached: 2, thoughts: 0, tool: 1, total: 14 },
+          tokens: { input: 10, output: 1, cached: 2, thoughts: 3, tool: 1, total: 14 },
         },
       ],
     });
@@ -1246,10 +1246,10 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
     assert.equal(queued[0].source, "gemini");
     assert.equal(queued[0].model, "gemini-3-flash-preview");
     assert.equal(queued[0].hour_start, "2025-12-26T08:00:00.000Z");
-    assert.equal(queued[0].input_tokens, 10);
+    assert.equal(queued[0].input_tokens, 8);
     assert.equal(queued[0].cached_input_tokens, 2);
-    assert.equal(queued[0].output_tokens, 2);
-    assert.equal(queued[0].reasoning_output_tokens, 0);
+    assert.equal(queued[0].output_tokens, 1);
+    assert.equal(queued[0].reasoning_output_tokens, 3);
     assert.equal(queued[0].total_tokens, 14);
     assert.equal(queued[0].conversation_count, 1);
     assert.equal(typeof queued[0].content, "undefined");
@@ -1258,7 +1258,7 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
   }
 });
 
-test("parseGeminiIncremental recomputes total when Gemini reported total excludes cache", async () => {
+test("parseGeminiIncremental rejects inconsistent cached prompt metadata without advancing state", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-gemini-total-"));
   try {
     const sessionPath = path.join(tmp, "session.json");
@@ -1279,16 +1279,8 @@ test("parseGeminiIncremental recomputes total when Gemini reported total exclude
 
     await fs.writeFile(sessionPath, JSON.stringify(session), "utf8");
 
-    const res = await parseGeminiIncremental({ sessionFiles: [sessionPath], cursors, queuePath });
-    assert.equal(res.bucketsQueued, 1);
-
-    const queued = await readJsonLines(queuePath);
-    assert.equal(queued.length, 1);
-    assert.equal(queued[0].input_tokens, 10);
-    assert.equal(queued[0].cached_input_tokens, 20);
-    assert.equal(queued[0].output_tokens, 7);
-    assert.equal(queued[0].reasoning_output_tokens, 3);
-    assert.equal(queued[0].total_tokens, 40);
+    await assert.rejects(parseGeminiIncremental({ sessionFiles: [sessionPath], cursors, queuePath }), /cached tokens exceed/);
+    assert.deepEqual(cursors.files, {});
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -8034,9 +8026,9 @@ test("collectRolloutRequestUsageRecords treats date-only to as end of day", asyn
     await fs.writeFile(
       rolloutPath,
       [
-        buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage, total: usage }),
-        buildTokenCountLine({ ts: "2025-12-17T23:59:59.000Z", last: usage, total: usage }),
-        buildTokenCountLine({ ts: "2025-12-18T00:00:00.000Z", last: usage, total: usage }),
+        buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage }),
+        buildTokenCountLine({ ts: "2025-12-17T23:59:59.000Z", last: usage }),
+        buildTokenCountLine({ ts: "2025-12-18T00:00:00.000Z", last: usage }),
       ].join("\n") + "\n",
       "utf8",
     );
@@ -8072,7 +8064,7 @@ test("collectRolloutRequestUsageRecords links real Codex task outcomes and laten
         type: "event_msg",
         payload: { type: "task_started", turn_id: "turn-complete" },
       }),
-      buildTokenCountLine({ ts: "2026-07-29T08:00:05.000Z", last: usage, total: usage }),
+      buildTokenCountLine({ ts: "2026-07-29T08:00:05.000Z", last: usage }),
       JSON.stringify({
         timestamp: "2026-07-29T08:00:12.000Z",
         type: "event_msg",
@@ -8089,7 +8081,7 @@ test("collectRolloutRequestUsageRecords links real Codex task outcomes and laten
         type: "event_msg",
         payload: { type: "task_started", turn_id: "turn-aborted" },
       }),
-      buildTokenCountLine({ ts: "2026-07-29T08:01:03.000Z", last: usage, total: usage }),
+      buildTokenCountLine({ ts: "2026-07-29T08:01:03.000Z", last: usage }),
       JSON.stringify({
         timestamp: "2026-07-29T08:01:08.000Z",
         type: "event_msg",
@@ -8129,9 +8121,9 @@ test("collectRolloutRequestUsageRecords filters by time range", async () => {
     const usage3 = { input_tokens: 30, cached_input_tokens: 0, output_tokens: 15, reasoning_output_tokens: 0, total_tokens: 45 };
 
     const lines = [
-      buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage1, total: usage1 }),
-      buildTokenCountLine({ ts: "2025-12-17T00:30:00.000Z", last: usage2, total: usage2 }),
-      buildTokenCountLine({ ts: "2025-12-17T01:00:00.000Z", last: usage3, total: usage3 }),
+      buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage1 }),
+      buildTokenCountLine({ ts: "2025-12-17T00:30:00.000Z", last: usage2 }),
+      buildTokenCountLine({ ts: "2025-12-17T01:00:00.000Z", last: usage3 }),
     ];
 
     await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
@@ -8158,7 +8150,7 @@ test("collectRolloutRequestUsageRecords skips rollout files last modified before
     const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
     await fs.writeFile(
       rolloutPath,
-      `${buildTokenCountLine({ ts: "2026-08-15T00:00:00.000Z", last: usage, total: usage })}\n`,
+      `${buildTokenCountLine({ ts: "2026-08-15T00:00:00.000Z", last: usage })}\n`,
       "utf8",
     );
     const oldMtime = new Date("2026-07-01T00:00:00.000Z");
@@ -8185,7 +8177,7 @@ test("collectRolloutRequestUsageRecords limits results", async () => {
     const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
     const lines = [];
     for (let i = 0; i < 5; i++) {
-      lines.push(buildTokenCountLine({ ts: `2025-12-17T00:0${i}:00.000Z`, last: usage, total: usage }));
+      lines.push(buildTokenCountLine({ ts: `2025-12-17T00:0${i}:00.000Z`, last: usage }));
     }
 
     await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
@@ -8213,7 +8205,7 @@ test("collectRolloutRequestUsageRecords returns empty for non-codex source", asy
     const rolloutPath = path.join(tmp, "rollout-test.jsonl");
 
     const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
-    const lines = [buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage, total: usage })];
+    const lines = [buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage })];
 
     await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
 
