@@ -143,6 +143,10 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 - 合并或推送 `main`、npm 发布、公开 Release、清理保留分支或工作树是彼此独立的授权，不得互相推断。
 - 用户说“发布到 main”在当前阶段仅指更新私有仓库 `main`，不能解释为 npm 发布或创建公开 GitHub Release。
 
+### 2026-10-22 社区预览首发授权
+
+用户已明确授权公开当前 GitHub 仓库、发布现有未签名 `0.54.49` Windows 包作为社区预览，并开放 Issues / Discussions / PR 共创。本次不以全量 CI、历史缺陷收口、三平台或正式安装双审为前置条件；必须检查敏感信息、公开已知问题与实际验证范围，不得将历史包描述为当前源码重建或稳定版。该授权覆盖本次社区预览，不授权 npm 发布、付费资源或后续任意正式发行。具体范围见 `docs/community-preview.md`。
+
 ### 正式公开发布流程（仅在另行明确授权后）
 
 **Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `TokenTrackerWin/EmbeddedServer/` (Windows) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.

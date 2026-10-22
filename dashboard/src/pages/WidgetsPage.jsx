@@ -1777,7 +1777,7 @@ function HeaderCta({ platform }) {
   if (platform === "mac-web") {
     return (
       <a
-        href="https://github.com/mm7894215/TokenTracker/releases/latest"
+        href="https://github.com/muxunson-9677/token-eyes/releases"
         target="_blank"
         rel="noopener noreferrer"
         className="tt-pressable tt-product-focusable inline-flex h-10 items-center gap-2 rounded-[var(--tt-control-radius)] bg-oai-black px-4 text-sm font-medium text-white no-underline hover:bg-oai-gray-800 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"

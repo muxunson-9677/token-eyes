@@ -68,15 +68,13 @@ function CheckIcon({ className }) {
   );
 }
 
-const REPO_URL = "https://github.com/mm7894215/TokenTracker";
+const REPO_URL = "https://github.com/muxunson-9677/token-eyes";
 // The releases page lists every asset (used for the "other platforms" link and
 // as the fallback when we can't detect the OS).
-const RELEASES_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
-// Stable, version-less asset names so these deep links survive version bumps.
-// macOS: TokenTrackerBar.dmg (already stable). Windows: TokenTracker-Setup.exe
-// (the per-user installer; release-windows.yml uploads this alias every release).
-const MAC_DMG_URL = `${RELEASES_URL}/download/TokenTrackerBar.dmg`;
-const WIN_SETUP_URL = `${RELEASES_URL}/download/TokenTracker-Setup.exe`;
+const RELEASES_URL = "https://github.com/muxunson-9677/token-eyes/releases";
+// 社区预览使用精确附件地址；其他平台只展示发布列表，不承诺本轮提供安装包。
+const MAC_DMG_URL = RELEASES_URL;
+const WIN_SETUP_URL = "https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.49/Token-Eyes-0.54.49-Windows-x64-setup.exe";
 
 function buttonClass(variant = "default", size = "md", className) {
   const base =

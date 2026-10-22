@@ -1,44 +1,17 @@
-# Security Policy
+# 安全说明
 
-## Supported Versions
+Token Eyes 当前为社区预览版，不应视为经过完整安全审计的稳定版本。
 
-Only the **latest minor release** is supported with security fixes. This is a small project — please run a recent version.
+## 报告安全问题
 
-## Reporting a Vulnerability
+请通过 [GitHub 私密漏洞报告](https://github.com/muxunson-9677/token-eyes/security/advisories/new) 联系维护者。不要在公开 Issue、Discussion 或 PR 中粘贴凭据、Cookie、账号文件或可识别个人的日志。
 
-**Please do not open a public GitHub issue for security reports.**
+请提供受影响版本、脱敏复现步骤、影响范围及建议。若私密报告入口不可用，可以先发一个不含漏洞细节的 Issue 请求维护者开放私密沟通。
 
-Instead, use one of these private channels:
+## 当前已知边界
 
-- **GitHub Private Vulnerability Reporting**: [Report a vulnerability](https://github.com/mm7894215/TokenTracker/security/advisories/new)
-- **Email**: open a GitHub issue asking the maintainer to enable an alternative private channel if you can't use GitHub Security Advisories
+本地 HTTP API 的私人读取接口来源校验仍需加强。服务仅应监听回环地址，不要转发到公网或不可信局域网；不使用时退出应用，并避免运行期间访问不可信网页。这些措施不能替代代码修复。
 
-When reporting, please include:
+采集和排查需要访问本地工具日志。贡献代码和诊断报告不得上传提示词、完整消息、原始账号凭据或个人日志。在线排行榜等功能应单独说明数据范围与授权。
 
-- A clear description of the issue
-- Steps to reproduce
-- Affected version(s)
-- Your assessment of impact (data exposure, privilege escalation, etc.)
-- Any suggested mitigation, if you have one
-
-You can expect an initial response within a few days. Once a fix is ready, it will ship in the next release with a credit to you (or anonymously if you prefer).
-
-## Scope
-
-TokenTracker is a local-first tool that reads AI CLI tool logs from your home directory. The most sensitive areas to consider when reviewing security:
-
-- **`src/lib/rollout.js`** — parses logs from 8 different AI CLI tools. Privacy rule: only token counts and timestamps may be extracted, never prompt or response content.
-- **`src/lib/cursor-config.js`** — reads Cursor's local SQLite to extract auth tokens for the Cursor usage API. Tokens must never leave the user's machine.
-- **`src/lib/local-api.js`** — local HTTP server bound to `127.0.0.1`. Should not accept connections from other hosts.
-- **`TokenTrackerBar/`** — macOS app, ad-hoc signed. Has filesystem access via macOS TCC permissions; should never write outside its own data directories or the documented snapshot/queue paths.
-- **`insforge/`** — optional cloud edge functions. Only used if the user opts into the leaderboard.
-
-## Out of Scope
-
-- Issues only reproducible with arbitrary modifications to the user's local files outside the documented data paths
-- Vulnerabilities in dependencies that have already been disclosed and patched upstream — please report those upstream first
-- Social engineering, phishing, or other non-technical attack vectors
-
-## Privacy Commitment
-
-TokenTracker's foundational privacy rule: **token counts and timestamps only — never any prompt content, response content, or file contents from user code**. Any change that risks violating this is treated as a security issue.
+当前没有安全响应时限承诺。修复和验证将以代码、Issue、私密安全公告及后续 Release 为准。

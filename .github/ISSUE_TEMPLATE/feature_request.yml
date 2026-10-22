@@ -1,51 +1,22 @@
-name: Feature request
-description: Suggest a new feature, improvement, or AI tool integration
+name: 功能建议
+description: 提出想法、改进或新的数据源支持。
 title: "[feature]: "
 labels: ["enhancement"]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: What problem does this solve?
-      description: Describe the use case or pain point. Skip the solution for now.
+      label: 想解决什么问题？
     validations:
       required: true
-
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed solution
-      description: How would you like it to work? Mock UI, command names, config snippets all welcome.
+      label: 期望的使用方式
     validations:
       required: true
-
   - type: textarea
-    id: alternatives
+    id: contribution
     attributes:
-      label: Alternatives considered
-      description: What workarounds have you tried? What would also solve the problem?
-    validations:
-      required: false
-
-  - type: dropdown
-    id: kind
-    attributes:
-      label: Category
-      options:
-        - New AI tool integration
-        - Dashboard / web UI
-        - macOS menu bar app
-        - Desktop widget
-        - CLI command
-        - Documentation
-        - Other
-    validations:
-      required: true
-
-  - type: textarea
-    id: extra
-    attributes:
-      label: Anything else?
-      description: Links, references, prior art.
-    validations:
-      required: false
+      label: 可提供的帮助
+      description: 例如复现步骤、脱敏样本、文档或代码；可以留空。

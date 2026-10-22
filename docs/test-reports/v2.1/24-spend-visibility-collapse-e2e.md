@@ -74,7 +74,7 @@ Server logs captured: 1
   "serverUrl": "http://127.0.0.1:63132",
   "port": 63132,
   "authResponse": {
-    "token": "d273187160420e313e8659d6b267ddb8470adaa21f7fd393",
+    "token": "REDACTED",
     "protocol_version": 2,
     "capabilities": [
       "spend_usage_v2",

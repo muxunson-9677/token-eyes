@@ -17,7 +17,7 @@ import {
   useLeaderboardProfileData,
 } from "../components/leaderboard/LeaderboardProfileModal.jsx";
 
-const RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
+const RELEASE_URL = "https://github.com/muxunson-9677/token-eyes/releases";
 
 /**
  * Standalone authenticated self-profile page at /u/:userId. Reuses the same

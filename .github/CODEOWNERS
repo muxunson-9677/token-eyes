@@ -4,21 +4,21 @@
 # advisory until there are additional collaborators.
 
 # Default owner for everything not matched below.
-*                                         @mm7894215
+*                                         @muxunson-9677
 
 # Token parsing & dedup — correctness-critical (see CLAUDE.md "Parser correctness").
-/src/lib/rollout.js                       @mm7894215
-/src/commands/sync.js                     @mm7894215
-/src/lib/cursor-config.js                 @mm7894215
+/src/lib/rollout.js                       @muxunson-9677
+/src/commands/sync.js                     @muxunson-9677
+/src/lib/cursor-config.js                 @muxunson-9677
 
 # Pricing tables — must stay in sync across all locations or the cloud bills $0.
-/src/lib/pricing/                         @mm7894215
+/src/lib/pricing/                         @muxunson-9677
 
 # Local API surface (public-exposure risk layer).
-/src/lib/local-api.js                     @mm7894215
+/src/lib/local-api.js                     @muxunson-9677
 
 # Release & CI plumbing.
-/.github/                                 @mm7894215
-/package.json                             @mm7894215
-/TokenTrackerBar/project.yml              @mm7894215
-/TokenTrackerWin/TokenTrackerWin.csproj   @mm7894215
+/.github/                                 @muxunson-9677
+/package.json                             @muxunson-9677
+/TokenTrackerBar/project.yml              @muxunson-9677
+/TokenTrackerWin/TokenTrackerWin.csproj   @muxunson-9677

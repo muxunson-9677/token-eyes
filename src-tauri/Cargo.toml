@@ -4,7 +4,7 @@ version = "0.54.49"
 description = "Token Eyes - AI Token Usage Tracker Desktop"
 authors = ["Muxunson"]
 license = "MIT"
-repository = "https://github.com/mm7894215/TokenTracker"
+repository = "https://github.com/muxunson-9677/token-eyes"
 edition = "2021"
 rust-version = "1.85.0"
 

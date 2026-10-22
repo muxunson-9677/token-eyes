@@ -7,7 +7,7 @@ import { useClawdState } from "../../../hooks/useClawdState.js";
 
 const DISMISS_KEY = "macAppBannerDismissed";
 const LOGIN_DISMISS_KEY = "leaderboardBannerDismissed";
-const RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
+const RELEASE_URL = "https://github.com/muxunson-9677/token-eyes/releases";
 
 /** True when loaded inside the native macOS app (WKWebView with ?app=1) */
 const NATIVE_APP_KEY = "tokentracker_native_app";

@@ -66,11 +66,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mm7894215/TokenTracker.git"
+    "url": "git+https://github.com/muxunson-9677/token-eyes.git"
   },
-  "homepage": "https://www.tokentracker.cc",
+  "homepage": "https://github.com/muxunson-9677/token-eyes",
   "bugs": {
-    "url": "https://github.com/mm7894215/TokenTracker/issues"
+    "url": "https://github.com/muxunson-9677/token-eyes/issues"
   },
   "keywords": [
     "token",

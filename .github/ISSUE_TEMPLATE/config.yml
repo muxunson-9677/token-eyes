@@ -1,8 +1,8 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: Questions / showcase / general discussion
-    url: https://github.com/mm7894215/TokenTracker/discussions
-    about: Use Discussions for questions, ideas, and showing off how you use TokenTracker.
-  - name: Security report
-    url: https://github.com/mm7894215/TokenTracker/security/advisories/new
-    about: Report a security vulnerability privately. Please don't open a public issue for these.
+  - name: 交流、提问与使用经验
+    url: https://github.com/muxunson-9677/token-eyes/discussions
+    about: 欢迎分享使用经验和共创想法。
+  - name: 私密安全报告
+    url: https://github.com/muxunson-9677/token-eyes/security/advisories/new
+    about: 安全问题请私密反馈，不要公开密钥或账号数据。
