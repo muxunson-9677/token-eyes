@@ -4,7 +4,7 @@
 
 **社区预览版 · 开源共创中**。项目仍有已知问题，欢迎真实使用、反馈、补文档和提交 PR。当前下载不代表稳定版或完整验收通过。
 
-[下载 Windows x64 安装包](https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.49/Token-Eyes-0.54.49-Windows-x64-setup.exe) · [发布说明与 SHA256](https://github.com/muxunson-9677/token-eyes/releases/tag/v0.54.49) · [反馈问题](https://github.com/muxunson-9677/token-eyes/issues/new/choose) · [交流讨论](https://github.com/muxunson-9677/token-eyes/discussions) · [参与贡献](CONTRIBUTING.md)
+[下载 Windows x64 安装包](https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.50/Token-Eyes-0.54.50-Windows-x64-setup.exe) · [发布说明与 SHA256](https://github.com/muxunson-9677/token-eyes/releases/tag/v0.54.50) · [反馈问题](https://github.com/muxunson-9677/token-eyes/issues/new/choose) · [交流讨论](https://github.com/muxunson-9677/token-eyes/discussions) · [参与贡献](CONTRIBUTING.md)
 
 ## 下载与使用
 
@@ -17,14 +17,14 @@
 
 ## 这个预览包的边界
 
-- 版本为 `0.54.49`，复用现有 Windows 构建，未签名，不等于当前文档提交重新构建的二进制。构建标记、SHA256 和检查范围见 Release 附件。
-- 采集在半写日志、写入失败及 Windows 子 Agent 路径等情况下有已知统计问题；费用为估算，不应作为账单凭证。
+- 当前版本为 `0.54.50`，Windows x64、未签名；构建对应的 main SHA、SHA256 和实际检查范围见 Release 附件。历史 `0.54.49` 预览仍保留。
+- every-code 日志原地等长改写时可能重复统计用量，Claude 同情形可能重复会话计数；费用为估算，不应作为账单凭证。
 - 本地 HTTP 接口的来源限制仍需加强。运行时不要把本地端口暴露到公网；不需要时退出应用，并避免在运行期间访问不可信网页。
 - 排行榜、公告等在线功能依赖第三方免费服务，可能不可用或过期，不保证持续更新。
-- 历史安装包内部分帮助或下载链接可能仍指向上游项目。更新和反馈统一使用本 README 的链接。
-- 修复工作保留在 `codex/token-eyes-05450-fixes` 分支，尚未合入本预览包。完整 CI 和安装版全流程验收未通过，已知问题将通过 Issue / PR 持续处理。
+- 历史 `0.54.49` 安装包内部分帮助或下载链接可能仍指向上游项目。更新和反馈统一使用本 README 的链接。
+- 六个采集与界面修复提交及审查补丁已通过 [PR #28](https://github.com/muxunson-9677/token-eyes/pull/28) 合入 main。完整 Node 测试仍有 3 项可在旧 main 复现的失败；未完成全功能、真实供应商账号与三平台验收。已知问题将通过 Issue / PR 持续处理。
 
-详细说明见 [社区预览记录](docs/community-preview.md)。
+首发历史见 [0.54.49 社区预览记录](docs/community-preview.md)；本轮范围和证据见 [执行合同](docs/superpowers/plans/2026-10-22-community-preview-main-release.md)及[执行状态](docs/superpowers/plans/2026-10-22-community-preview-main-release-status.md)。
 
 ## 一起完善
 

@@ -2,15 +2,15 @@
 
 执行合同：[2026-10-22-community-preview-main-release.md](./2026-10-22-community-preview-main-release.md)
 
-更新时间：2026-10-22。当前阶段：合同已落盘，尚未执行 GitHub 配置、合并或新包构建。
+更新时间：2026-10-23。当前阶段：main 保护、修复 PR 合并已完成；正在准备 0.54.50 精确 main 构建。
 
 ## 验收状态
 
 | 验收 | 状态 | 当前证据 |
 | --- | --- | --- |
-| A1 main 保护 | NOT_RUN | 起点 API protected=false |
-| A2 修复审查与合并 | NOT_RUN | fixes HEAD 2f77c225；main 4be93371；差异 68 文件 |
-| A3 新 main 构建 | NOT_RUN | 当前版本仍 0.54.49 |
+| A1 main 保护 | PASS | 保护 API 回读要求1批准，禁止强推/删除，保留所有者管理权限 |
+| A2 修复审查与合并 | PASS（社区预览范围） | PR #28，merge d31bfb418e2e59e3906bc2427a6ecbeedff3a468；已披露P2及3项旧失败 |
+| A3 新 main 构建 | NOT_RUN | 0.54.50 版本清单及入口变更通过独立审查，待合并构建 |
 | A4 新包原生安装与基本界面 | NOT_RUN | 旧包证据不继承 |
 | A5 新预览匿名下载与复核 | NOT_RUN | 现有 v0.54.49 保留 |
 
