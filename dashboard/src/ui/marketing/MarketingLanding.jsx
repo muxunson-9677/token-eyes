@@ -74,7 +74,7 @@ const REPO_URL = "https://github.com/muxunson-9677/token-eyes";
 const RELEASES_URL = "https://github.com/muxunson-9677/token-eyes/releases";
 // 社区预览使用精确附件地址；其他平台只展示发布列表，不承诺本轮提供安装包。
 const MAC_DMG_URL = RELEASES_URL;
-const WIN_SETUP_URL = "https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.49/Token-Eyes-0.54.49-Windows-x64-setup.exe";
+const WIN_SETUP_URL = "https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.50/Token-Eyes-0.54.50-Windows-x64-setup.exe";
 
 function buttonClass(variant = "default", size = "md", className) {
   const base =
