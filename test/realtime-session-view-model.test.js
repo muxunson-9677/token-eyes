@@ -5,6 +5,18 @@ const test = require("node:test");
 
 const { buildRealtimeSessionViewModel } = require("../src/lib/realtime-session-view-model");
 
+test("contributing unknown usage stays partial while true zero and estimated evidence survive", () => {
+  const row = { source: "codex", session_id: "s", timestamp: "2026-09-22T01:00:00Z", record_kind: "request_event" };
+  for (const [value, state, expected] of [[null, null, "partial"], [0, null, "exact"], [20, "estimated", "estimated"]]) {
+    const result = buildRealtimeSessionViewModel({ usageRows: [
+      { ...row, total_tokens: 100 }, { ...row, total_tokens: value, evidence_state: state },
+    ] });
+    assert.equal(result.sessions[0].total_tokens.evidence_state, expected);
+    assert.equal(result.sessions[0].total_tokens.value, 100 + (value || 0));
+    if (state) assert.equal(result.usage_records[1].total_tokens.evidence_state, state);
+  }
+});
+
 test("range summaries include anonymous buckets and merge equal times without inventing requests", () => {
   const usageRows = [
     { source: "codex", session_id: "parent", hour_start: "2026-09-21T08:00:00Z", total_tokens: 10, input_tokens: 8, output_tokens: 2, record_kind: "aggregate_bucket" },

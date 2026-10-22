@@ -137,6 +137,15 @@ test("readSqliteJsonRows stays quiet for query/schema failures", () => {
   assert.equal(stderr, "");
 });
 
+test("strict collection distinguishes query failure from an empty database", () => {
+  const dbPath = tempDbPath();
+  assert.throws(() => readSqliteJsonRows(dbPath, "SELECT * FROM MissingTable", {
+    strict: true,
+    execFileSync() { throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" }); },
+    requireFn() { throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" }); },
+  }), /database is locked/);
+});
+
 test("readSqliteFirstValue trims string values and closes node:sqlite DB", () => {
   const dbPath = tempDbPath();
   let closed = false;
@@ -165,4 +174,18 @@ test("readSqliteFirstValue trims string values and closes node:sqlite DB", () =>
 
   assert.equal(value, "token");
   assert.equal(closed, true);
+});
+
+test("strict SQLite errors distinguish missing, busy, permission, schema and corruption",()=>{
+ const dbPath=tempDbPath();assert.throws(()=>readSqliteJsonRows(dbPath+'.missing','SELECT 1',{strict:true}),e=>e.code==='ENOENT');
+ for(const [message,code] of [['database is locked','SQLITE_BUSY'],['permission denied','SQLITE_PERMISSION'],['no such table: message','SQLITE_SCHEMA'],['file is not a database','SQLITE_CORRUPT']]) assert.throws(()=>readSqliteJsonRows(dbPath,'SELECT 1',{strict:true,execFileSync(){throw new Error(message)},requireFn(){throw new Error(message)}}),e=>e.code===code);
+ assert.deepEqual(readSqliteJsonRows(dbPath,'SELECT 1',{strict:true,execFileSync:()=> '[]'}),[]);
+});
+
+test("native SQLite empty, missing-table, busy and corrupt files remain distinct", t=>{
+ let DatabaseSync;try{({DatabaseSync}=require('node:sqlite'));}catch{t.skip('node:sqlite unavailable');return;}
+ const dbPath=tempDbPath();t.after(()=>fs.rmSync(path.dirname(dbPath),{recursive:true,force:true}));const db=new DatabaseSync(dbPath);db.exec('CREATE TABLE messages (id TEXT)');
+ const strict={strict:true,execFileSync(){throw Object.assign(new Error('spawn sqlite3 ENOENT'),{code:'ENOENT'});}};
+ try{assert.deepEqual(readSqliteJsonRows(dbPath,'SELECT * FROM messages',strict),[]);assert.throws(()=>readSqliteJsonRows(dbPath,'SELECT * FROM missing_table',strict),e=>e.code==='SQLITE_SCHEMA');db.exec('BEGIN EXCLUSIVE');assert.throws(()=>readSqliteJsonRows(dbPath,'SELECT * FROM messages',strict),e=>e.code==='SQLITE_BUSY');db.exec('ROLLBACK');}finally{db.close();}
+ const corrupt=dbPath+'.corrupt';fs.writeFileSync(corrupt,'invalid database bytes');assert.throws(()=>readSqliteJsonRows(corrupt,'SELECT * FROM messages',strict),e=>e.code==='SQLITE_CORRUPT');
 });

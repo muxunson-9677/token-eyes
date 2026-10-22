@@ -172,6 +172,15 @@ describe("RequestUsageLog", () => {
     expect(screen.getByText("No request records")).toBeInTheDocument();
   });
 
+  it("distinguishes retained queue history from an empty range without inventing requests", () => {
+    useRequestUsageRecords.mockReturnValue({...HOOK_DEFAULTS,queueHistory:{recordCount:2,tokens:300},totalsScope:"unknown"});
+    render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
+    expect(screen.getByText("usage.request_log.empty_with_history")).toBeInTheDocument();
+    expect(screen.queryByText("No request records")).not.toBeInTheDocument();
+    expect(screen.getByTestId("request-log-history")).toHaveTextContent("usage.request_log.queue_history");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
   it("requests at most the latest 1000 records from the backend", () => {
     render(<RequestUsageLog from="2026-06-01" to="2026-06-30" visibleProviderIds={["codex"]} />);
     expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
@@ -789,5 +798,11 @@ describe("RequestUsageLog record granularity (V2-W3)", () => {
     expect(useRequestUsageRecords).toHaveBeenLastCalledWith(
       expect.objectContaining({ recordKind: "" }),
     );
+  });
+  it("缓存仍有记录时显示本次刷新失败", () => {
+    useRequestUsageRecords.mockReturnValue({...HOOK_DEFAULTS,records:[makeRecord({id:'cached'})],error:'offline'});
+    render(<RequestUsageLog visibleProviderIds={['codex']} />);
+    expect(screen.getByText('usage.request_log.refresh_failed')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
   });
 });

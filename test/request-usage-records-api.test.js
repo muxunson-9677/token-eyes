@@ -65,7 +65,7 @@ function buildCodexTokenCountLine({ ts, usage }) {
       type: "token_count",
       info: {
         last_token_usage: usage,
-        total_token_usage: usage,
+        // Independent last-only usage; unchanged cumulative totals would be duplicates.
       },
     },
   });
@@ -80,6 +80,93 @@ const YESTERDAY = new Date(NOW);
 YESTERDAY.setUTCDate(YESTERDAY.getUTCDate() - 1);
 const YESTERDAY_HOUR = YESTERDAY.toISOString().slice(0, 13) + ":00:00.000Z";
 const YESTERDAY_STR = YESTERDAY.toISOString().slice(0, 10);
+
+for (const source of ["codex", "claude"]) {
+  test(`request timestamp equivalence keeps ${source} raw and queue evidence separate`, async t => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-request-time-equivalence-"));
+    t.after(() => fs.promises.rm(dir, { recursive: true, force: true }));
+    const queuePath = path.join(dir, "queue.jsonl");
+    await writeQueue(queuePath, [{
+      source, model: "gpt-5", hour_start: FIXED_HOUR.replace(".000Z", "Z"),
+      input_tokens: 100, total_tokens: 100,
+    }]);
+    const folder = path.join(dir, source, source === "codex" ? "sessions" : "projects", "fixture");
+    await fs.promises.mkdir(folder, { recursive: true });
+    const usage = { input_tokens: 100, output_tokens: 0, total_tokens: 100 };
+    const lines = source === "codex"
+      ? [JSON.stringify({ type: "session_meta", payload: { id: "timestamp-fixture", model: "gpt-5" } }), buildCodexTokenCountLine({ ts: FIXED_HOUR, usage })]
+      : [JSON.stringify({ type: "assistant", timestamp: FIXED_HOUR, message: { id: "timestamp-fixture", model: "gpt-5", usage } })];
+    await fs.promises.writeFile(path.join(folder, source === "codex" ? "rollout-timestamp.jsonl" : "session.jsonl"), lines.join("\n") + "\n");
+
+    const body = await callEndpoint(queuePath, `/functions/tokentracker-request-usage-records?sources=${source}&from=${FIXED_DAY}&to=${FIXED_DAY}&tz=UTC`);
+    assert.equal(body.totals.total_tokens, 100, "equivalent UTC timestamps must not double count the bucket");
+    assert.equal(body.records.length, 1);
+    assert.equal(body.records[0].record_kind, "request_event");
+    assert.equal(body.queue_baseline_records.length, 1);
+    assert.equal(body.queue_baseline_totals.total_tokens, 100);
+    assert.equal(body.page.totals_scope, "unknown");
+  });
+}
+
+test("summary timestamp equivalence retains queued bucket and fills only a different raw bucket", async t => {
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-summary-time-equivalence-"));
+  t.after(() => fs.promises.rm(dir, { recursive: true, force: true }));
+  const queuePath = path.join(dir, "queue.jsonl");
+  await writeQueue(queuePath, [{
+    source: "codex", model: "gpt-5", hour_start: FIXED_HOUR.replace(".000Z", "Z"),
+    input_tokens: 100, total_tokens: 100,
+  }]);
+  const folder = path.join(dir, "codex", "sessions");
+  await fs.promises.mkdir(folder, { recursive: true });
+  await fs.promises.writeFile(path.join(folder, "rollout-timestamp.jsonl"), [
+    JSON.stringify({ type: "session_meta", payload: { id: "timestamp-fixture", model: "gpt-5" } }),
+    buildCodexTokenCountLine({ ts: FIXED_HOUR, usage: { input_tokens: 100, output_tokens: 0, total_tokens: 100 } }),
+    buildCodexTokenCountLine({ ts: `${FIXED_DAY}T12:30:00.000Z`, usage: { input_tokens: 7, output_tokens: 0, total_tokens: 7 } }),
+  ].join("\n") + "\n");
+
+  const body = await callEndpoint(queuePath, `/functions/tokentracker-usage-summary?sources=codex&from=${FIXED_DAY}&to=${FIXED_DAY}&tz=UTC`);
+  assert.equal(Number(body.total_tokens ?? body.totals?.total_tokens), 107,
+    "equivalent timestamps overlap, while the next half-hour remains additive");
+});
+
+for(const source of ['codex','claude'])test(`request records ${source} read failure cannot become a complete empty success`,async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-failure-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);
+ const folder=path.join(dir,source,source==='codex'?'sessions':'projects','fixture');await fs.promises.mkdir(folder,{recursive:true});
+ const file=path.join(folder,source==='codex'?'rollout-fixture.jsonl':'session.jsonl');await fs.promises.writeFile(file,'{}\n');
+ const stat=fs.promises.stat;fs.promises.stat=async(p,...args)=>{if(String(p)===file)throw Object.assign(new Error('fixture-private-path'),{code:'EACCES'});return stat(p,...args);};
+ let failed;try{failed=await callEndpoint(queuePath,`/functions/tokentracker-request-usage-records?sources=${source}`);}finally{fs.promises.stat=stat;}
+ assert.equal(failed.ok,false);assert.ok(failed.error);assert.equal(failed.totals,undefined);assert.doesNotMatch(JSON.stringify(failed),/fixture-private-path/);
+ const recovered=await callEndpoint(queuePath,`/functions/tokentracker-request-usage-records?sources=${source}`);assert.equal(recovered.ok,true);assert.equal(recovered.page.totals_scope,'all_matching');
+});
+
+for(const source of ['codex','claude'])for(const method of ['stat','readdir'])test(`cached ${source} requests recheck ${method} after failed sync without queue changes`,async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-health-cache-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);
+ const folder=path.join(dir,source,source==='codex'?'sessions':'projects','fixture');await fs.promises.mkdir(folder,{recursive:true});
+ const file=path.join(folder,source==='codex'?'rollout-fixture.jsonl':'session.jsonl');
+ const usage={input_tokens:100,output_tokens:0,total_tokens:100};
+ const record=source==='codex'?buildCodexTokenCountLine({ts:FIXED_HOUR,usage}):JSON.stringify({type:'assistant',timestamp:FIXED_HOUR,message:{id:'m',model:'fixture',usage}});
+ await fs.promises.writeFile(file,record+'\n');
+ const endpoint=`/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=${source}&record_kind=request_event`;
+ const first=await callEndpoint(queuePath,endpoint);assert.equal(first.totals.total_tokens,100);
+ const before=await fs.promises.stat(queuePath);
+ await fs.promises.writeFile(path.join(dir,'collection-status.json'),JSON.stringify({[source]:{status:'error',error_code:'EACCES'}}));
+ const original=fs.promises[method],target=method==='stat'?file:path.dirname(folder);
+ fs.promises[method]=async(p,...args)=>{if(p===target)throw Object.assign(new Error('fixture denied'),{code:'EACCES'});return original(p,...args);};
+ let failed;try{failed=await callEndpoint(queuePath,endpoint);}finally{fs.promises[method]=original;}
+ assert.equal(failed.ok,false);assert.equal(failed.totals,undefined);
+ assert.equal((await fs.promises.stat(queuePath)).mtimeMs,before.mtimeMs);
+ await fs.promises.writeFile(path.join(dir,'collection-status.json'),JSON.stringify({[source]:{status:'ok'}}));
+ const recovered=await callEndpoint(queuePath,endpoint);assert.equal(recovered.totals.total_tokens,100);
+});
+
+test('Codex discovery directory failure is visible before any raw file is read',async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-discovery-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await writeQueue(queuePath,[]);await fs.promises.mkdir(path.join(dir,'codex'));
+ await fs.promises.writeFile(path.join(dir,'codex','sessions'),'not-a-directory');
+ const failed=await callEndpoint(queuePath,'/functions/tokentracker-request-usage-records?sources=codex');assert.equal(failed.ok,false);assert.ok(failed.error);
+});
 
 function makeRow(overrides = {}) {
   return {
@@ -468,4 +555,102 @@ test("pricing provenance API: mixed aggregates identify user override and curate
     clearRequestUsageRecordsListCacheForTests();
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
+});
+
+ test("local calendar dates and actual truncation remain explicit",async()=>{
+  const tmp=await fs.promises.mkdtemp(path.join(os.tmpdir(),"tt-records-coverage-"));
+  try {
+    const queuePath=path.join(tmp,"queue.jsonl");
+    const rows=Array.from({length:1200},(_,i)=>({source:"hermes",model:"m"+i,hour_start:"2026-07-06T18:00:00Z",input_tokens:1,total_tokens:1}));
+    await writeQueue(queuePath,rows);
+    const body=await callEndpoint(queuePath,"/functions/tokentracker-request-usage-records?source=hermes&from=2026-07-06&to=2026-07-06&tz=America/Los_Angeles&limit=1000");
+    assert.equal(body.page.total_count,1000);assert.equal(body.page.totals_scope,"returned_subset");assert.equal(body.page.has_more,true);
+    await writeQueue(queuePath,rows.slice(0,1000));clearRequestUsageRecordsListCacheForTests();
+    const exact=await callEndpoint(queuePath,"/functions/tokentracker-request-usage-records?source=hermes&from=2026-07-06&to=2026-07-06&tz=America/Los_Angeles&limit=1000");
+    assert.equal(exact.page.has_more,false);assert.equal(exact.page.totals_scope,"all_matching");
+  } finally {await fs.promises.rm(tmp,{recursive:true,force:true});}
+ });
+
+test("price revision invalidates request totals without changing token queue", async t => {
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),"tt-req-price-revision-"));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,"queue.jsonl");await writeQueue(queuePath,[makeRow({source:"custom-agent",model:"custom-model",input_tokens:1000000,output_tokens:0,cached_input_tokens:0,total_tokens:1000000})]);
+ const handler=createLocalApiHandler({queuePath,trackerDataDir:dir});
+ const query="/functions/tokentracker-request-usage-records?sources=custom-agent&tz=UTC";
+ const save=price=>fs.promises.writeFile(path.join(dir,"config.json"),JSON.stringify({pricingRules:[{source:"custom-agent",model:"custom-model",inputPricePer1M:price,outputPricePer1M:0,currency:"USD"}]}));
+ await save(1);const first=await callEndpointWithHandler(handler,query);assert.equal(first.records[0].cost_usd,1);
+ await save(2);const next=await callEndpointWithHandler(handler,query);assert.equal(next.records[0].cost_usd,2);assert.equal(next.totals.total_tokens,1000000);
+});
+
+test("a Codex terminal event without usage keeps its outcome but never reports exact zero tokens", async t => {
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),"tt-request-missing-usage-"));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,"queue.jsonl");await writeQueue(queuePath,[]);const sessionDir=path.join(dir,"codex","sessions");await fs.promises.mkdir(sessionDir,{recursive:true});
+ await fs.promises.writeFile(path.join(sessionDir,"rollout-test.jsonl"),JSON.stringify({type:"event_msg",timestamp:FIXED_HOUR,payload:{type:"turn_aborted",turn_id:"synthetic"}})+"\n");
+ const body=await callEndpoint(queuePath,"/functions/tokentracker-request-usage-records?sources=codex&tz=UTC");
+ assert.equal(body.records.length,1);assert.equal(body.records[0].status,499);assert.equal(body.records[0].total_tokens,null);assert.equal(body.records[0].cost_usd,null);assert.equal(body.totals.total_tokens,null);assert.equal(body.page.totals_scope,"unknown");
+});
+
+for (const source of ['codex','claude']) for (const [label,queued,raw] of [['queue-lag',100,150],['partial-raw-history',200,100],['equal-total-different-attribution',100,100]]) test('raw requests preserve independent queue evidence: '+source+' '+label,async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-independent-records-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');
+ await writeQueue(queuePath,[makeRow({source,model:'gpt-5',hour_start:FIXED_HOUR,input_tokens:queued,output_tokens:0,cached_input_tokens:0,total_tokens:queued,billing_mode:'token_plan',billing_mode_confidence:'explicit_runtime',provider_id:'openai',account_ref:'account/openai/a'})]);
+ const sessions=path.join(dir,'codex','sessions');await fs.promises.mkdir(sessions,{recursive:true});
+ await fs.promises.writeFile(path.join(sessions,'rollout-review.jsonl'),JSON.stringify({type:'session_meta',payload:{id:'child',model:'gpt-5'}})+'\n'+buildCodexTokenCountLine({ts:FIXED_HOUR,usage:{input_tokens:raw,output_tokens:0,total_tokens:raw}})+'\n');
+ if(source==='claude') {
+ const dirClaude=path.join(dir,'claude','projects','fixture');await fs.promises.mkdir(dirClaude,{recursive:true});
+ await fs.promises.writeFile(path.join(dirClaude,'session.jsonl'),JSON.stringify({type:'assistant',timestamp:FIXED_HOUR,message:{id:'m',model:'gpt-5',usage:{input_tokens:raw,output_tokens:0}}})+'\n');
+ }
+ const query='?from='+FIXED_DAY+'&to='+FIXED_DAY+'&sources='+source+'&tz=UTC';
+ const body=await callEndpoint(queuePath,'/functions/tokentracker-request-usage-records'+query);
+ assert.equal(body.records.filter(r=>r.record_kind==='request_event').length,1);
+ assert.equal(body.totals.total_tokens,raw);assert.equal(body.queue_baseline_totals.total_tokens,queued);
+ assert.ok(Array.isArray(body.queue_baseline_records),'separate queue evidence must be retained');
+ assert.equal(body.queue_baseline_records[0].account_ref,'account/openai/a');
+ assert.equal(body.queue_baseline_records[0].billing_mode,'token_plan');
+ assert.equal(body.page.totals_scope,'unknown');
+ const summary=await callEndpoint(queuePath,'/functions/tokentracker-usage-summary'+query);
+ assert.equal(Number(summary.total_tokens ?? summary.totals?.total_tokens),queued);
+});
+
+test('Codex historical queue survives absent or partial raw logs and requests-only filtering',async t=>{
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-codex-history-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');const query=`/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=codex&tz=UTC`;
+ await writeQueue(queuePath,[makeRow({source:'codex',model:'gpt-5',hour_start:FIXED_HOUR,input_tokens:100,output_tokens:0,cached_input_tokens:0,total_tokens:100}),makeRow({source:'codex',model:'gpt-5',hour_start:`${FIXED_DAY}T13:00:00.000Z`,input_tokens:200,output_tokens:0,cached_input_tokens:0,total_tokens:200})]);
+ const all=await callEndpoint(queuePath,query);assert.equal(all.records.length,2);assert.ok(all.records.every(r=>r.record_kind==='aggregate_bucket'));assert.equal(all.totals.total_tokens,300);
+ const requests=await callEndpoint(queuePath,query+'&record_kind=request_event');assert.equal(requests.records.length,0);assert.equal(requests.queue_history_record_count,2);assert.equal(requests.queue_baseline_totals.total_tokens,300);assert.equal(requests.page.totals_scope,'unknown');
+ const sessions=path.join(dir,'codex','sessions');await fs.promises.mkdir(sessions,{recursive:true});await fs.promises.writeFile(path.join(sessions,'rollout-history.jsonl'),JSON.stringify({type:'session_meta',payload:{id:'fixture',model:'gpt-5'}})+'\n'+buildCodexTokenCountLine({ts:FIXED_HOUR,usage:{input_tokens:80,output_tokens:0,total_tokens:80}})+'\n');clearRequestUsageRecordsListCacheForTests();
+ const realNow=Date.now;Date.now=()=>realNow()+61_000;let partial;
+ try{partial=await callEndpoint(queuePath,query);}finally{Date.now=realNow;}
+ assert.equal(partial.records.length,2);assert.equal(partial.totals.total_tokens,280);assert.equal(partial.records.find(r=>r.record_kind==='aggregate_bucket').total_tokens,200);assert.equal(partial.queue_baseline_totals.total_tokens,300);assert.equal(partial.page.totals_scope,'unknown');
+ const empty=await callEndpoint(queuePath,query.replace(FIXED_DAY,'2025-01-01').replace(FIXED_DAY,'2025-01-01')+'&record_kind=request_event');assert.equal(empty.records.length,0);assert.equal(empty.queue_history_record_count,0);assert.equal(empty.page.totals_scope,'all_matching');
+});
+
+test('request-kind filter keeps an older Codex request when newer aggregate buckets reach the list limit', async t => {
+ const dir=await fs.promises.mkdtemp(path.join(os.tmpdir(),'tt-request-kind-truncation-'));t.after(()=>fs.promises.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');
+ const rows=Array.from({length:100},(_,index)=>makeRow({
+   source:'codex',model:`aggregate-${index}`,hour_start:`${FIXED_DAY}T23:00:00.000Z`,
+   input_tokens:index+1,output_tokens:0,cached_input_tokens:0,total_tokens:index+1,
+ }));
+ await writeQueue(queuePath,rows);
+ const sessions=path.join(dir,'codex','sessions');await fs.promises.mkdir(sessions,{recursive:true});
+ await fs.promises.writeFile(path.join(sessions,'rollout-older-request.jsonl'),
+   JSON.stringify({type:'session_meta',payload:{id:'kind-filter-session',model:'gpt-5'}})+'\n'+
+   buildCodexTokenCountLine({ts:`${FIXED_DAY}T00:00:00.000Z`,usage:{input_tokens:7,output_tokens:0,total_tokens:7}})+'\n');
+ clearRequestUsageRecordsListCacheForTests();
+ const query=`/functions/tokentracker-request-usage-records?from=${FIXED_DAY}&to=${FIXED_DAY}&sources=codex&tz=UTC&limit=100&pageSize=100`;
+ const all=await callEndpoint(queuePath,query);
+ assert.equal(all.records.length,100,'mixed list remains bounded at its existing capacity');
+ assert.ok(all.records.every(row=>row.record_kind==='aggregate_bucket'),'newer aggregates occupy the mixed page');
+ const requests=await callEndpoint(queuePath,query+'&record_kind=request_event');
+ assert.equal(requests.records.length,1,'request-kind filtering must happen before mixed-list truncation');
+ assert.equal(requests.records[0].total_tokens,7);
+ assert.equal(requests.page.total_count,1);
+ assert.equal(requests.totals.total_tokens,7);
+ const aggregates=await callEndpoint(queuePath,query+'&record_kind=aggregate_bucket');
+ assert.equal(aggregates.records.length,100,'request-kind cache entries must not replace aggregate pagination');
+ assert.ok(aggregates.records.every(row=>row.record_kind==='aggregate_bucket'));
+ assert.equal(aggregates.page.total_count,100);
+ const allAgain=await callEndpoint(queuePath,query);
+ assert.equal(allAgain.records.length,100,'switching modes retains the mixed-list capacity');
+ assert.ok(allAgain.records.every(row=>row.record_kind==='aggregate_bucket'));
 });

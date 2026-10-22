@@ -44,11 +44,11 @@ test("auditRows reports source totals, duplicate buckets, and invariant failures
   ]);
 
   assert.equal(result.sources.gemini.rows, 1, "latest row per bucket should be used for totals");
-  assert.equal(result.sources.gemini.duplicate_bucket_keys, 1);
+  assert.equal(result.sources.gemini.revised_bucket_keys, 1);
   assert.equal(result.sources.gemini.invariant_failures, 0);
   assert.equal(result.sources.cursor.source_scope, "account");
   assert.equal(result.sources.cursor.cache_read_ratio, 0.99);
-  assert.equal(result.raw.duplicate_bucket_keys, 1);
+  assert.equal(result.raw.revised_bucket_keys, 1);
 });
 
 test("auditRows treats Codex reasoning as informational for total-token invariants", () => {

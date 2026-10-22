@@ -269,6 +269,17 @@ test("DATA-05 GLM source hash validator accepts exact evidence and gates either 
   assert.deepEqual(catalog, beforeCatalog, "hash drift must not mutate or auto-accept the catalog");
 });
 
+test('GLM entitlement freshness expires without losing evidenced cohort identity',()=>{
+ const {getGlmEntitlementWindows,resolveGlmEntitlementRevision}=require('../src/lib/glm-token-plan');
+ const now=Date.now;
+ try {
+  Date.now=()=>Date.parse('2026-08-21T00:00:00Z');const fresh=getGlmEntitlementWindows('current_v3_points','glm_pro');assert.equal(fresh[0].is_stale,false);
+  Date.now=()=>Date.parse('2026-10-21T00:00:00Z');const stale=getGlmEntitlementWindows('current_v3_points','glm_pro');assert.equal(stale[0].is_stale,true);
+  for(const windows of [fresh,stale])assert.equal(resolveGlmEntitlementRevision({plan_id:'glm_pro',entitlement_revision:'current_v3_points',entitlement_windows:windows}),'current_v3_points');
+  const tampered=structuredClone(stale);tampered[0].total+=1;assert.equal(resolveGlmEntitlementRevision({plan_id:'glm_pro',entitlement_revision:'current_v3_points',entitlement_windows:tampered}),'unknown');
+ } finally {Date.now=now;}
+});
+
 test("DATA-02 GLM tier mapping is exact and cannot treat profile as Pro cohort evidence", () => {
   const { mapGlmLevelToPlanId } = require("../src/lib/glm-token-plan");
   assert.equal(mapGlmLevelToPlanId("lite"), "glm_lite");

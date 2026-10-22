@@ -146,7 +146,7 @@ test("parses exact DeepSeek Harness usage and does not double count final messag
   const cursors = {};
 
   const first = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(first, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(first, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1, sourceAvailable: true });
 
   const rows = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
   assert.equal(rows.length, 1);
@@ -183,7 +183,7 @@ test("parses exact DeepSeek Harness usage and does not double count final messag
   ].reduce((sum, value) => sum + value, 0));
 
   const second = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(second, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(second, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 1);
 });
 
@@ -219,7 +219,7 @@ test("keeps pure reasoning DeepSeek Harness usage", async (t) => {
     queuePath,
   });
 
-  assert.deepEqual(result, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(result, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1, sourceAvailable: true });
   const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(row.total_tokens, 9);
   assert.equal(row.reasoning_output_tokens, 9);
@@ -241,7 +241,7 @@ test("keeps one model's usage in each event half-hour bucket", async (t) => {
   const cursors = {};
 
   const first = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(first, { filesProcessed: 1, eventsAggregated: 3, bucketsQueued: 3 });
+  assert.deepEqual(first, { filesProcessed: 1, eventsAggregated: 3, bucketsQueued: 3, sourceAvailable: true });
   assert.deepEqual(readQueue(queuePath).map((row) => [row.hour_start, row.total_tokens]), [
     ["2026-08-16T10:00:00.000Z", 11],
     ["2026-08-16T10:30:00.000Z", 22],
@@ -249,7 +249,7 @@ test("keeps one model's usage in each event half-hour bucket", async (t) => {
   ]);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(readQueue(queuePath).length, 3);
 });
 
@@ -291,7 +291,7 @@ test("appending usage in a new bucket enqueues only that bucket", async (t) => {
   }))}\n`);
   const appended = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
 
-  assert.deepEqual(appended, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(appended, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1, sourceAvailable: true });
   assert.deepEqual(readQueue(queuePath).map((row) => [row.hour_start, row.total_tokens]), [
     ["2026-08-16T10:00:00.000Z", 11],
     ["2026-08-16T10:30:00.000Z", 22],
@@ -317,7 +317,7 @@ test("replaces cumulative usage for one turn-step in the same bucket without dup
   }))}\n`);
   const replaced = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
 
-  assert.deepEqual(replaced, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(replaced, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1, sourceAvailable: true });
   const rows = readQueue(queuePath);
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((row) => row.total_tokens), [11, 18]);
@@ -343,7 +343,7 @@ test("moves a turn-step contribution when its final usage crosses a bucket bound
   }))}\n`);
   const moved = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
 
-  assert.deepEqual(moved, { filesProcessed: 1, eventsAggregated: 2, bucketsQueued: 2 });
+  assert.deepEqual(moved, { filesProcessed: 1, eventsAggregated: 2, bucketsQueued: 2, sourceAvailable: true });
   const latest = new Map(readQueue(queuePath).map((row) => [row.hour_start, row]));
   assert.equal(latest.get("2026-08-16T10:00:00.000Z").total_tokens, 0);
   assert.equal(latest.get("2026-08-16T10:30:00.000Z").total_tokens, 18);
@@ -404,7 +404,7 @@ test("rebuilds old DeepSeek Harness bucket state while preserving other sources"
   };
 
   const rebuilt = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(rebuilt, { filesProcessed: 1, eventsAggregated: 2, bucketsQueued: 4 });
+  assert.deepEqual(rebuilt, { filesProcessed: 1, eventsAggregated: 2, bucketsQueued: 4, sourceAvailable: true });
   assert.equal(cursors.deepseekHarness.bucketStateVersion, 4);
   assert.equal(cursors.deepseekHarness.bucketMigrationComplete, true);
   const rows = readQueue(queuePath);
@@ -415,7 +415,7 @@ test("rebuilds old DeepSeek Harness bucket state while preserving other sources"
   assert.deepEqual(latest.get(`claude|claude-sonnet-4|${oldHours[0]}|unknown`), otherRow);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(readQueue(queuePath).length, rows.length);
 });
 
@@ -478,7 +478,7 @@ test("preserves exact api_key and token_plan slices when the rebuilt bucket matc
   assert.deepEqual(latest.get(`claude|${otherRow.model}|${hourStart}|api_key`), otherRow);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(readQueue(queuePath).length, rows.length);
 });
 
@@ -628,7 +628,7 @@ test("retracts restored billing modes when a reasoning turn moves across buckets
   }))}\n`);
   const moved = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
 
-  assert.deepEqual(moved, { filesProcessed: 1, eventsAggregated: 2, bucketsQueued: 4 });
+  assert.deepEqual(moved, { filesProcessed: 1, eventsAggregated: 2, bucketsQueued: 4, sourceAvailable: true });
   const rows = readQueue(queuePath);
   const latest = new Map(rows.map((row) => [
     `${row.source}|${row.model}|${row.hour_start}|${row.billing_mode}`,
@@ -642,7 +642,7 @@ test("retracts restored billing modes when a reasoning turn moves across buckets
   assert.equal([...latest.values()].every((row) => Object.values(row).every((value) => typeof value !== "number" || value >= 0)), true);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(readQueue(queuePath).length, rows.length);
 });
 
@@ -685,14 +685,14 @@ test("keeps an unreadable bucket migration pending without replaying successful 
   } finally {
     fsPromises.readFile = originalReadFile;
   }
-  assert.deepEqual(partial, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0 });
+  assert.deepEqual(partial, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0, sourceAvailable: true, readErrorCodes: ["Error"] });
   assert.equal(cursors.deepseekHarness.bucketStateVersion, 4);
   assert.equal(cursors.deepseekHarness.bucketMigrationComplete, false);
   assert.equal(fs.readFileSync(queuePath, "utf8"), oldQueueText);
   assert.equal(readQueue(queuePath)[0].total_tokens, 200);
 
   const retried = await parseDeepSeekHarnessIncremental({ sessionFiles: [successfulFile, pendingFile], cursors, queuePath });
-  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 3 });
+  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 3, sourceAvailable: true });
   assert.equal(cursors.deepseekHarness.bucketMigrationComplete, true);
   const rows = readQueue(queuePath);
   const latest = new Map(rows.map((row) => [
@@ -703,7 +703,7 @@ test("keeps an unreadable bucket migration pending without replaying successful 
   assert.equal(rows.length, 4);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [successfulFile, pendingFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(readQueue(queuePath).length, rows.length);
 });
 
@@ -750,7 +750,7 @@ test("replays a completed billing migration after queue append but before cursor
   const restartedCursors = structuredClone(oldCursors);
   const restarted = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors: restartedCursors, queuePath });
 
-  assert.deepEqual(restarted, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0 });
+  assert.deepEqual(restarted, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(fs.readFileSync(queuePath, "utf8"), afterAppend);
   const latest = new Map(readQueue(queuePath).map((row) => [row.billing_mode, row]));
   assert.equal(latest.get("api_key").total_tokens, 11);
@@ -772,7 +772,7 @@ test("replays a completed billing migration after queue append but before cursor
   const replayedAgain = await parseDeepSeekHarnessIncremental({
     sessionFiles: [sessionFile], cursors: partialRestartCursors, queuePath,
   });
-  assert.deepEqual(replayedAgain, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(replayedAgain, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
 
   fs.writeFileSync(queuePath, `${modeRows.map(JSON.stringify).join("\n")}\n{"unterminated":`);
   const tornTailCursors = structuredClone(oldCursors);
@@ -780,7 +780,10 @@ test("replays a completed billing migration after queue append but before cursor
     sessionFiles: [sessionFile], cursors: tornTailCursors, queuePath,
   });
   assert.equal(tornTailReplay.bucketsQueued, 4);
-  assert.match(fs.readFileSync(queuePath, "utf8"), /\{"unterminated":\r?\n\{/u);
+  assert.doesNotMatch(fs.readFileSync(queuePath, "utf8"), /\{"unterminated":/u);
+  const fragment = fs.readdirSync(root).find(name => name.startsWith("queue.jsonl.torn-"));
+  assert.ok(fragment, "torn bytes must be retained before queue recovery");
+  assert.equal(fs.readFileSync(path.join(root, fragment), "utf8"), '{"unterminated":');
   const ordinaryBatch = await readQueueBatch(queuePath, 0, 20);
   const cloudBatch = await readQueueBatch(queuePath, ordinaryBatch.nextOffset, 20);
   assert.deepEqual(
@@ -807,7 +810,7 @@ test("reparses unchanged pre-fix DeepSeek Harness files once to correct totals",
   });
 
   const upgraded = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(upgraded, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 2 });
+  assert.deepEqual(upgraded, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 2, sourceAvailable: true });
   const upgradedRows = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(upgradedRows.length, 3);
   const {
@@ -823,7 +826,7 @@ test("reparses unchanged pre-fix DeepSeek Harness files once to correct totals",
   });
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 3);
 });
 
@@ -846,13 +849,13 @@ test("discovers pure reasoning in an unchanged pre-fix DeepSeek Harness file onc
   };
 
   const upgraded = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(upgraded, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 });
+  assert.deepEqual(upgraded, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 1, sourceAvailable: true });
   const [row] = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(row.total_tokens, 9);
   assert.equal(row.reasoning_output_tokens, 9);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
   assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 1);
 });
 
@@ -877,17 +880,17 @@ test("retries an unchanged pre-fix DeepSeek Harness file after a transient read 
   } finally {
     fsPromises.readFile = originalReadFile;
   }
-  assert.deepEqual(failed, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(failed, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true, readErrorCodes: ["Error"] });
   assert.equal(fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).length, 1);
 
   const retried = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 2 });
+  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 2, sourceAvailable: true });
   const retriedRows = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(retriedRows.length, 3);
   assert.equal(retriedRows.at(-1).total_tokens, 200);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles: [sessionFile], cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
 });
 
 test("does not reparse an upgraded DeepSeek Harness file while another file remains pending", async (t) => {
@@ -917,17 +920,17 @@ test("does not reparse an upgraded DeepSeek Harness file while another file rema
   } finally {
     fsPromises.readFile = originalReadFile;
   }
-  assert.deepEqual(partial, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0 });
+  assert.deepEqual(partial, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 0, sourceAvailable: true, readErrorCodes: ["Error"] });
 
   const retried = await parseDeepSeekHarnessIncremental({ sessionFiles, cursors, queuePath });
-  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 4 });
+  assert.deepEqual(retried, { filesProcessed: 1, eventsAggregated: 1, bucketsQueued: 4, sourceAvailable: true });
   const rows = fs.readFileSync(queuePath, "utf8").trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(rows.length, 6);
   assert.equal(rows.filter((row) => row.model === "deepseek-v4-flash").length, 3);
   assert.equal(rows.filter((row) => row.model === "deepseek-v4-chat").length, 3);
 
   const repeated = await parseDeepSeekHarnessIncremental({ sessionFiles, cursors, queuePath });
-  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 });
+  assert.deepEqual(repeated, { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, sourceAvailable: true });
 });
 
 test("reads concatenated zstd frames written by live DeepSeek Harness sessions", async (t) => {

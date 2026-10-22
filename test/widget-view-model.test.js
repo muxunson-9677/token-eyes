@@ -785,3 +785,11 @@ test("filters widget usage by DeepSeek Harness when selected", () => {
   assert.equal(result.selectedAgent, "deepseek-harness");
   assert.equal(result.totals.tokens, 120);
 });
+
+test('widget preserves unknown cost for unpriced and partially priced usage',()=>{
+ for(const costs of [[null],[null,2]]){
+  const result=buildWidgetViewModel({usage:costs.map((costUsd,i)=>({agent:'codex',model:'model-'+i,tokens:100,costUsd}))});
+  assert.equal(result.totals.costUsd,null);assert.equal(result.totals.models[0].costUsd,null);
+ }
+ assert.equal(buildWidgetViewModel({usage:[{agent:'codex',model:'free',tokens:100,costUsd:0}]}).totals.costUsd,0);
+});

@@ -49,34 +49,83 @@ async function chmod600IfPossible(filePath) {
 
 const LOCK_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
-async function openLock(lockPath, { quietIfLocked }) {
+async function openWindowsLockGate(lockPath) {
+  const key = require("node:crypto").createHash("sha256").update(require("node:path").resolve(lockPath).toLowerCase()).digest("hex");
+  const server = require("node:net").createServer(socket => socket.destroy());
+  const acquired = await new Promise((resolve, reject) => {
+    server.once("error", error => error.code === "EADDRINUSE" ? resolve(false) : reject(error));
+    server.listen(`\\\\.\\pipe\\token-eyes-sync-${key}`, () => resolve(true));
+  });
+  if (!acquired) return null;
+  server.unref();
+  return () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+}
+
+async function openLock(lockPath, { quietIfLocked, coalesce = false } = {}) {
+  const pendingPath = `${lockPath}.pending`;
+  if (coalesce) await fs.writeFile(pendingPath, "");
+  // Kernel-owned Windows IPC serializes creation and stale-file recovery together.
+  // A crash releases the gate without another stale file needing recovery.
+  const closeGate = process.platform === "win32" ? await openWindowsLockGate(lockPath) : async () => {};
+  if (!closeGate) {
+    if (!quietIfLocked) process.stdout.write("Another sync is already running.\n");
+    return null;
+  }
+  let transferred = false;
   try {
-    const handle = await fs.open(lockPath, "wx");
-    return {
-      async release() {
-        await handle.close().catch(() => {});
-        await fs.unlink(lockPath).catch(() => {});
-      },
-    };
-  } catch (e) {
-    if (e && e.code === "EEXIST") {
-      // Check if lock is stale
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const owner = { pid: process.pid, token: require("node:crypto").randomUUID() };
+      let handle;
       try {
-        const stat = await fs.stat(lockPath);
-        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          await fs.unlink(lockPath).catch(() => {});
-          return openLock(lockPath, { quietIfLocked });
+        handle = await fs.open(lockPath, "wx");
+        await handle.writeFile(JSON.stringify(owner));
+        if (coalesce) await fs.unlink(pendingPath).catch(error => { if (error.code !== "ENOENT") throw error; });
+        transferred = true;
+        return {
+          async release() {
+            try {
+              await handle.close();
+              const current = await readJsonStrict(lockPath);
+              if (current.status === "ok" && current.value?.token === owner.token) {
+                await fs.unlink(lockPath).catch(error => { if (error.code !== "ENOENT") throw error; });
+              }
+            } finally {
+              await closeGate();
+            }
+            return coalesce && await fs.stat(pendingPath).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
+          },
+        };
+      } catch (error) {
+        if (handle) { await handle.close(); await fs.unlink(lockPath); throw error; }
+        if (error.code !== "EEXIST") throw error;
+        const current = await readJsonStrict(lockPath);
+        if (current.status === "missing") continue;
+        let stale = false;
+        if (current.status === "ok" && Number.isInteger(current.value?.pid) && current.value.pid > 0) {
+          try { process.kill(current.value.pid, 0); }
+          catch (ownerError) { stale = ownerError.code === "ESRCH"; }
+        } else if (current.status === "invalid") {
+          // An empty file can be an owner still publishing its identity; allow a grace period.
+          const stat = await fs.stat(lockPath).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+          if (!stat) continue;
+          stale = Date.now() - stat.mtimeMs > LOCK_STALE_MS;
+        } else if (current.status === "error") {
+          throw current.error;
         }
-      } catch (_statErr) {
-        // Lock file disappeared between checks, retry
-        return openLock(lockPath, { quietIfLocked });
+        if (stale) {
+          // Recheck the observed file before recovery; Windows also holds the kernel gate.
+          const latest = await readJsonStrict(lockPath);
+          if (JSON.stringify(latest.value) !== JSON.stringify(current.value) || latest.status !== current.status) continue;
+          await fs.unlink(lockPath).catch(error => { if (error.code !== "ENOENT") throw error; });
+          continue;
+        }
+        if (!quietIfLocked) process.stdout.write("Another sync is already running.\n");
+        return null;
       }
-      if (!quietIfLocked) {
-        process.stdout.write("Another sync is already running.\n");
-      }
-      return null;
     }
-    throw e;
+    return null;
+  } finally {
+    if (!transferred) await closeGate();
   }
 }
 

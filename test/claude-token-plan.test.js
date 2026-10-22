@@ -60,3 +60,17 @@ test("claude provider adapter skips CLI when official_account detection is confi
     (error) => error instanceof ClaudeTokenPlanError && error.code === "CLAUDE_CONSOLE_SYNC_REQUIRED",
   );
 });
+
+test("missing or invalid utilization is not an exact zero quota", () => {
+  for (const utilization of [null, undefined, "", "  ", false, {}, -1, 101]) {
+    assert.throws(() => parseClaudeUsageBody({five_hour:{utilization}}), error => error.code === "CLAUDE_NO_QUOTA_WINDOWS");
+  }
+  assert.equal(parseClaudeUsageBody({five_hour:{utilization:0}}).used_quota, 0);
+});
+
+test("Claude utilization windows declare percentage units", () => {
+ const result=parseClaudeUsageBody({seven_day:{utilization:50.5}});
+ assert.equal(result.quota_unit,"percent");
+ assert.equal(result.quota_windows[0].unit,"percent");
+ assert.equal(result.used_quota,50.5);
+});

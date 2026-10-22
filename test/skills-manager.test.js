@@ -15,6 +15,8 @@ delete process.env.GROK_HOME;
 delete process.env.TOKENTRACKER_ANTIGRAVITY_HOME;
 
 const skills = require("../src/lib/skills-manager");
+// Windows junctions exercise real directory redirection without symlink elevation.
+const directoryLinkType = process.platform === "win32" ? "junction" : "dir";
 
 function writeLocalSkill(targetDir, directory, body = "---\nname: Local Skill\ndescription: Test skill\n---\n") {
   const dir = path.join(sandboxHome, targetDir, directory);
@@ -179,7 +181,7 @@ describe("skills-manager nested local skill folders", () => {
     fs.writeFileSync(path.join(victim, "keep.txt"), "important");
     fs.mkdirSync(root, { recursive: true });
     try {
-      fs.symlinkSync(outside, path.join(root, "linked-delete"), "dir");
+      fs.symlinkSync(outside, path.join(root, "linked-delete"), directoryLinkType);
     } catch (_e) {
       t.skip("directory symlinks are not available on this platform");
       return;
@@ -196,7 +198,7 @@ describe("skills-manager nested local skill folders", () => {
     writeLocalSkill("outside-skill-import", "external-skill", "---\nname: External Skill\n---\n");
     fs.mkdirSync(root, { recursive: true });
     try {
-      fs.symlinkSync(outside, path.join(root, "linked-import"), "dir");
+      fs.symlinkSync(outside, path.join(root, "linked-import"), directoryLinkType);
     } catch (_e) {
       t.skip("directory symlinks are not available on this platform");
       return;
@@ -352,7 +354,7 @@ describe("skills-manager path hardening", () => {
     fs.mkdirSync(victim, { recursive: true });
     fs.writeFileSync(path.join(victim, "keep.txt"), "important");
     try {
-      fs.symlinkSync(outside, targetRoot, "dir");
+      fs.symlinkSync(outside, targetRoot, directoryLinkType);
     } catch (_e) {
       t.skip("directory symlinks are not available on this platform");
       return;
@@ -371,7 +373,7 @@ describe("skills-manager path hardening", () => {
     fs.mkdirSync(managedRoot, { recursive: true });
     fs.mkdirSync(outside, { recursive: true });
     try {
-      fs.symlinkSync(outside, path.join(managedRoot, "ssot-linked"), "dir");
+      fs.symlinkSync(outside, path.join(managedRoot, "ssot-linked"), directoryLinkType);
     } catch (_e) {
       t.skip("directory symlinks are not available on this platform");
       return;
@@ -389,7 +391,7 @@ describe("skills-manager path hardening", () => {
     fs.mkdirSync(path.join(outside, "victim"), { recursive: true });
     fs.writeFileSync(path.join(outside, "victim", "keep.txt"), "important");
     try {
-      fs.symlinkSync(outside, path.join(managedRoot, "ssot-uninstall"), "dir");
+      fs.symlinkSync(outside, path.join(managedRoot, "ssot-uninstall"), directoryLinkType);
     } catch (_e) {
       t.skip("directory symlinks are not available on this platform");
       return;
@@ -414,7 +416,7 @@ describe("skills-manager path hardening", () => {
     fs.mkdirSync(trashSkill, { recursive: true });
     fs.writeFileSync(path.join(trashSkill, "SKILL.md"), "---\nname: Restore Copy\n---\n");
     try {
-      fs.symlinkSync(outside, path.join(managedRoot, "ssot-restore"), "dir");
+      fs.symlinkSync(outside, path.join(managedRoot, "ssot-restore"), directoryLinkType);
     } catch (_e) {
       t.skip("directory symlinks are not available on this platform");
       return;

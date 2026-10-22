@@ -200,7 +200,7 @@ export function RequestUsageLog({
     [sourceFilter, visibleProviderIds],
   );
 
-  const { records, totals, loading, error, refresh, totalPages: serverTotalPages, total: serverTotal } = useRequestUsageRecords({
+  const { records, totals, loading, error, refresh, totalPages: serverTotalPages, total: serverTotal, totalsScope, queueHistory } = useRequestUsageRecords({
     baseUrl,
     accessToken,
     guestAllowed,
@@ -218,6 +218,7 @@ export function RequestUsageLog({
   });
   const pageLoadingLabel = copy("ticket04.request.page_loading", { page: currentPage });
   const isPageLoading = loading && records.length > 0;
+  const hasQueueHistory = queueHistory?.recordCount > 0;
 
   // Server-side pagination: records already come paginated and sorted by timestamp desc
   // Frontend sort is removed because backend doesn't support sort/order parameters
@@ -285,7 +286,7 @@ export function RequestUsageLog({
   } else if (records.length === 0) {
     body = (
       <div className="text-center py-8 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-        {copy("ticket04.request.empty")}
+        {copy(hasQueueHistory ? "usage.request_log.empty_with_history" : "ticket04.request.empty")}
       </div>
     );
   } else {
@@ -528,6 +529,9 @@ export function RequestUsageLog({
         </div>
       </div>
 
+      {totalsScope !== "all_matching" && <p role="status" className="mb-3 text-xs text-oai-gray-500">{copy(totalsScope === "returned_subset" ? "usage.request_log.coverage_subset" : "usage.request_log.coverage_unknown")}</p>}
+      {hasQueueHistory && <p data-testid="request-log-history" className="mb-3 text-xs text-oai-gray-500">{copy("usage.request_log.queue_history", { tokens: isProvidedNumber(queueHistory.tokens) ? formatFullNum(queueHistory.tokens) : copy("ticket06.metric.unavailable") })}</p>}
+      {error && Boolean(records.length) && <p role="alert" className="mb-3 text-xs text-red-500">{copy("usage.request_log.refresh_failed")}</p>}
       {totals && [totals.request_count, totals.success_rate, totals.avg_latency_ms].some(isProvidedNumber) && (
         <div className="mb-4 grid grid-cols-3 gap-2" data-testid="request-log-metrics">
           {isProvidedNumber(totals.request_count) && (

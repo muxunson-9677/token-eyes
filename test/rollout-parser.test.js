@@ -125,6 +125,139 @@ test("parseRolloutIncremental ignores repeated token_count records with unchange
   }
 });
 
+test("parseRolloutIncremental counts distinct cumulative snapshots sharing a timestamp exactly once", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-same-timestamp-"));
+  try {
+    const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893799";
+    const rolloutPath = path.join(tmp, `rollout-2026-09-22T00-00-00-${sessionId}.jsonl`);
+    const archivedPath = path.join(tmp, "archived", path.basename(rolloutPath));
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const oneHundred = { input_tokens: 100, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 100 };
+    const oneFifty = { input_tokens: 150, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 150 };
+    const oneSeventy = { input_tokens: 170, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 170 };
+    await fs.writeFile(rolloutPath, [
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:01.000Z", last: { ...oneSeventy, input_tokens: 20, total_tokens: 20 }, total: oneSeventy }),
+    ].join("\n") + "\n", "utf8");
+
+    const first = await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal(first.eventsAggregated, 3);
+    const rows = await readJsonLines(queuePath);
+    assert.equal(rows.at(-1).total_tokens, 170);
+    await fs.mkdir(path.dirname(archivedPath));
+    await fs.copyFile(rolloutPath, archivedPath);
+    const reread = await parseRolloutIncremental({ rolloutFiles: [archivedPath, rolloutPath], cursors, queuePath });
+    assert.equal(reread.eventsAggregated, 0,'archive copies of all three snapshots remain duplicates');
+    assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens,170);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental upgrades legacy timestamp-only Codex dedup without losing a same-timestamp correction", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-legacy-same-timestamp-"));
+  try {
+    const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893798";
+    const rolloutPath = path.join(tmp, `rollout-2026-09-22T00-00-00-${sessionId}.jsonl`);
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const oneHundred = { input_tokens: 100, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 100 };
+    const oneFifty = { input_tokens: 150, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 150 };
+    const oneSeventy = { input_tokens: 170, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 170 };
+    await fs.writeFile(rolloutPath, buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }) + "\n", "utf8");
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    cursors.codexHashes = [`${sessionId}:2026-09-22T00:00:00.000Z`];
+    cursors.files[rolloutPath].inode += 1_000_000;
+    await fs.writeFile(rolloutPath, [
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:01.000Z", last: { ...oneSeventy, input_tokens: 20, total_tokens: 20 }, total: oneSeventy }),
+    ].join("\n") + "\n", "utf8");
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens,170);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+for (const archiveFirst of [true, false]) test(`parseRolloutIncremental lets an old timestamp cursor resume a later same-timestamp snapshot (archive first: ${archiveFirst})`, async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-rollout-legacy-resume-"));
+  try {
+    const sessionId = "019fe730-3190-7de2-a2c1-c18ab0893797";
+    const rolloutPath = path.join(tmp, `rollout-2026-09-22T00-00-00-${sessionId}.jsonl`);
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const oneHundred = { input_tokens: 100, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 100 };
+    const oneFifty = { input_tokens: 150, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 150 };
+    const oneSeventy = { input_tokens: 170, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0, total_tokens: 170 };
+    await fs.writeFile(rolloutPath, buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: oneHundred, total: oneHundred }) + "\n", "utf8");
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    cursors.codexHashes = [`${sessionId}:2026-09-22T00:00:00.000Z`];
+    const legacyBytes = await fs.readFile(rolloutPath);
+    const legacySize = Math.min(256, legacyBytes.length);
+    cursors.files[rolloutPath].fingerprint = require("node:crypto").createHash("sha256")
+      .update(legacyBytes.subarray(0, legacySize)).update(legacyBytes.subarray(legacyBytes.length - legacySize)).digest("hex");
+    for (const key of ["size", "mtimeMs", "ctimeMs"]) delete cursors.files[rolloutPath][key];
+    const before = { ...cursors.files[rolloutPath] };
+    await fs.appendFile(rolloutPath, [
+      buildTokenCountLine({ ts: "2026-09-22T00:00:00.000Z", last: { ...oneFifty, input_tokens: 50, total_tokens: 50 }, total: oneFifty }),
+      buildTokenCountLine({ ts: "2026-09-22T00:00:01.000Z", last: { ...oneSeventy, input_tokens: 20, total_tokens: 20 }, total: oneSeventy }),
+    ].join("\n") + "\n", "utf8");
+    const resumed = await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal(resumed.eventsAggregated, 2);
+    assert.equal(cursors.files[rolloutPath].inode, before.inode, "normal continuation keeps the original inode");
+    assert.ok(cursors.files[rolloutPath].offset > before.offset, "normal continuation advances the original offset");
+    assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens, 170);
+    const cursorPath = path.join(tmp, "cursors.json");
+    await fs.writeFile(cursorPath, JSON.stringify(cursors));
+    let reloaded = JSON.parse(await fs.readFile(cursorPath, "utf8"));
+    const archivedPath = path.join(tmp, "archived_sessions", path.basename(rolloutPath));
+    await fs.mkdir(path.dirname(archivedPath));
+    await fs.copyFile(rolloutPath, archivedPath);
+    const { collectRolloutRequestUsageRecords, collectRolloutQueueRows } = require("../src/lib/rollout");
+    async function verifyReaders(expected) {
+      const firstOrder = archiveFirst ? [archivedPath, rolloutPath] : [rolloutPath, archivedPath];
+      for (const files of [firstOrder, [...firstOrder].reverse()]) {
+        if (archiveFirst) {
+          await fs.writeFile(cursorPath, JSON.stringify(reloaded));
+          const script = 'const fs=require("node:fs"); const [modulePath,cursorPath,queuePath,files]=process.argv.slice(1); const cursors=JSON.parse(fs.readFileSync(cursorPath,"utf8")); require(modulePath).parseRolloutIncremental({rolloutFiles:JSON.parse(files),cursors,queuePath}).then(()=>fs.writeFileSync(cursorPath,JSON.stringify(cursors))).catch(error=>{console.error(error);process.exitCode=1});';
+          const child = cp.spawnSync(process.execPath, ["-e", script, require.resolve("../src/lib/rollout"), cursorPath, queuePath, JSON.stringify(files)], { windowsHide: true, encoding: "utf8", timeout: 10000 });
+          assert.equal(child.status, 0, child.stderr);
+          reloaded = JSON.parse(await fs.readFile(cursorPath, "utf8"));
+        } else {
+          await parseRolloutIncremental({ rolloutFiles: files, cursors: reloaded, queuePath });
+        }
+        assert.equal((await readJsonLines(queuePath)).at(-1).total_tokens, expected, "persisted incremental total survives archive order");
+        const requests = await collectRolloutRequestUsageRecords({ rolloutFiles: files });
+        assert.equal(requests.totals.total_tokens, expected);
+        const aggregates = await collectRolloutQueueRows(files);
+        assert.equal(aggregates.reduce((sum, row) => sum + row.total_tokens, 0), expected);
+      }
+    }
+    await verifyReaders(170);
+    assert.ok(!reloaded.codexHashes.includes(`${sessionId}:2026-09-22T00:00:00.000Z`), "archive scan resolves the legacy marker to its old source snapshot");
+    await fs.appendFile(rolloutPath, buildTokenCountLine({
+      ts: "2026-09-22T00:00:02.000Z",
+      last: { ...oneHundred, input_tokens: 30, total_tokens: 30 },
+      total: { ...oneHundred, input_tokens: 200, total_tokens: 200 },
+    }) + "\n", "utf8");
+    await verifyReaders(200);
+    const queueBeforeRepeat = await fs.readFile(queuePath, "utf8");
+    await fs.appendFile(rolloutPath, buildTokenCountLine({
+      ts: "2026-09-22T00:00:02.000Z",
+      last: { ...oneHundred, input_tokens: 30, total_tokens: 30 },
+      total: { ...oneHundred, input_tokens: 200, total_tokens: 200 },
+    }) + "\n", "utf8");
+    await verifyReaders(200);
+    assert.equal(await fs.readFile(queuePath, "utf8"), queueBeforeRepeat, "an exact duplicate does not append accounting rows");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental does not re-count a session file rewritten with a new inode (issue #187)", async () => {
   // Codex-Manager atomically rewrites session rollout files (new inode, same
   // token data) when switching account/channel. The parser keys incremental
@@ -1229,7 +1362,7 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
           timestamp: "2025-12-26T08:05:00.000Z",
           model: "gemini-3-flash-preview",
           content: { text: "ignore me" },
-          tokens: { input: 10, output: 1, cached: 2, thoughts: 0, tool: 1, total: 14 },
+          tokens: { input: 10, output: 1, cached: 2, thoughts: 3, tool: 1, total: 14 },
         },
       ],
     });
@@ -1246,10 +1379,10 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
     assert.equal(queued[0].source, "gemini");
     assert.equal(queued[0].model, "gemini-3-flash-preview");
     assert.equal(queued[0].hour_start, "2025-12-26T08:00:00.000Z");
-    assert.equal(queued[0].input_tokens, 10);
+    assert.equal(queued[0].input_tokens, 8);
     assert.equal(queued[0].cached_input_tokens, 2);
-    assert.equal(queued[0].output_tokens, 2);
-    assert.equal(queued[0].reasoning_output_tokens, 0);
+    assert.equal(queued[0].output_tokens, 1);
+    assert.equal(queued[0].reasoning_output_tokens, 3);
     assert.equal(queued[0].total_tokens, 14);
     assert.equal(queued[0].conversation_count, 1);
     assert.equal(typeof queued[0].content, "undefined");
@@ -1258,7 +1391,7 @@ test("parseGeminiIncremental aggregates gemini tokens and model", async () => {
   }
 });
 
-test("parseGeminiIncremental recomputes total when Gemini reported total excludes cache", async () => {
+test("parseGeminiIncremental rejects inconsistent cached prompt metadata without advancing state", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-gemini-total-"));
   try {
     const sessionPath = path.join(tmp, "session.json");
@@ -1279,16 +1412,8 @@ test("parseGeminiIncremental recomputes total when Gemini reported total exclude
 
     await fs.writeFile(sessionPath, JSON.stringify(session), "utf8");
 
-    const res = await parseGeminiIncremental({ sessionFiles: [sessionPath], cursors, queuePath });
-    assert.equal(res.bucketsQueued, 1);
-
-    const queued = await readJsonLines(queuePath);
-    assert.equal(queued.length, 1);
-    assert.equal(queued[0].input_tokens, 10);
-    assert.equal(queued[0].cached_input_tokens, 20);
-    assert.equal(queued[0].output_tokens, 7);
-    assert.equal(queued[0].reasoning_output_tokens, 3);
-    assert.equal(queued[0].total_tokens, 40);
+    await assert.rejects(parseGeminiIncremental({ sessionFiles: [sessionPath], cursors, queuePath }), /cached tokens exceed/);
+    assert.deepEqual(cursors.files, {});
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -1359,7 +1484,7 @@ test("parseGeminiIncremental defaults missing model to unknown", async () => {
   }
 });
 
-test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces prior cursor buckets", async () => {
+test("parseCursorApiIncremental uses evidenced complete Cursor exports and replaces prior cursor buckets", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-cursor-reconcile-"));
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
@@ -1369,7 +1494,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       records: [
         {
           date: "2026-04-01T10:00:00.000Z",
-          model: "auto",
+          model: "auto", account_ref:'account/cursor/fixture',
           kind: "Included",
           inputTokens: 100,
           cacheReadTokens: 10,
@@ -1381,6 +1506,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     assert.equal(first.eventsAggregated, 1);
 
@@ -1388,7 +1514,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       records: [
         {
           date: "2026-04-01T10:00:00.000Z",
-          model: "auto",
+          model: "auto", account_ref:'account/cursor/fixture',
           kind: "Included",
           inputTokens: 40,
           cacheReadTokens: 4,
@@ -1400,6 +1526,7 @@ test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces 
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     assert.equal(second.eventsAggregated, 1);
 
@@ -1426,7 +1553,7 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
     const cursors = { version: 1, files: {}, updatedAt: null };
     const mkRecord = (date, inputTokens) => ({
       date,
-      model: "auto",
+      model: "auto", account_ref:'account/cursor/fixture',
       kind: "Included",
       inputTokens,
       cacheReadTokens: 0,
@@ -1444,6 +1571,7 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     const oldKey = "cursor|auto|2026-01-05T09:00:00.000Z";
     assert.equal(cursors.hourly.buckets[oldKey].totals.total_tokens, 1000);
@@ -1454,6 +1582,7 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
       cursors,
       queuePath,
       source: "cursor",
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
     });
     assert.equal(
       cursors.hourly.buckets[oldKey].totals.total_tokens,
@@ -1467,12 +1596,13 @@ test("parseCursorApiIncremental preserves history older than a windowed/truncate
     );
 
     // Malformed export (records without parseable dates): wipe nothing.
-    await parseCursorApiIncremental({
-      records: [{ model: "auto", kind: "Included", inputTokens: 5 }],
+    await assert.rejects(parseCursorApiIncremental({
+      records: [{ model: "auto", account_ref:'account/cursor/fixture', kind: "Included", inputTokens: 5 }],
       cursors,
       queuePath,
       source: "cursor",
-    });
+      coverage: [{account_ref:'account/cursor/fixture',from:'2026-04-01T10:00:00Z',to:'2026-04-01T10:30:00Z',complete:true,evidence:'isolated-complete-export'}],
+    }), /timestamp/);
     assert.equal(cursors.hourly.buckets[oldKey].totals.total_tokens, 1000);
     assert.equal(
       cursors.hourly.buckets["cursor|auto|2026-04-01T10:00:00.000Z"].totals.total_tokens,
@@ -1789,12 +1919,10 @@ test("parseOpencodeIncremental preserves totals after empty rewrite", async () =
 
     await fs.rm(messagePath);
     await fs.writeFile(messagePath, "", "utf8");
-    const resEmpty = await parseOpencodeIncremental({
-      messageFiles: [messagePath],
-      cursors,
-      queuePath,
-    });
-    assert.equal(resEmpty.bucketsQueued, 0);
+    const beforeEmpty = structuredClone(cursors);
+    await assert.rejects(parseOpencodeIncremental({ messageFiles: [messagePath], cursors, queuePath }), SyntaxError);
+    assert.deepEqual(cursors, beforeEmpty);
+    assert.equal((await readJsonLines(queuePath)).length, 1);
 
     await fs.rm(messagePath);
     await fs.writeFile(messagePath, JSON.stringify(message), "utf8");
@@ -8034,9 +8162,9 @@ test("collectRolloutRequestUsageRecords treats date-only to as end of day", asyn
     await fs.writeFile(
       rolloutPath,
       [
-        buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage, total: usage }),
-        buildTokenCountLine({ ts: "2025-12-17T23:59:59.000Z", last: usage, total: usage }),
-        buildTokenCountLine({ ts: "2025-12-18T00:00:00.000Z", last: usage, total: usage }),
+        buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage }),
+        buildTokenCountLine({ ts: "2025-12-17T23:59:59.000Z", last: usage }),
+        buildTokenCountLine({ ts: "2025-12-18T00:00:00.000Z", last: usage }),
       ].join("\n") + "\n",
       "utf8",
     );
@@ -8072,7 +8200,7 @@ test("collectRolloutRequestUsageRecords links real Codex task outcomes and laten
         type: "event_msg",
         payload: { type: "task_started", turn_id: "turn-complete" },
       }),
-      buildTokenCountLine({ ts: "2026-07-29T08:00:05.000Z", last: usage, total: usage }),
+      buildTokenCountLine({ ts: "2026-07-29T08:00:05.000Z", last: usage }),
       JSON.stringify({
         timestamp: "2026-07-29T08:00:12.000Z",
         type: "event_msg",
@@ -8089,7 +8217,7 @@ test("collectRolloutRequestUsageRecords links real Codex task outcomes and laten
         type: "event_msg",
         payload: { type: "task_started", turn_id: "turn-aborted" },
       }),
-      buildTokenCountLine({ ts: "2026-07-29T08:01:03.000Z", last: usage, total: usage }),
+      buildTokenCountLine({ ts: "2026-07-29T08:01:03.000Z", last: usage }),
       JSON.stringify({
         timestamp: "2026-07-29T08:01:08.000Z",
         type: "event_msg",
@@ -8129,9 +8257,9 @@ test("collectRolloutRequestUsageRecords filters by time range", async () => {
     const usage3 = { input_tokens: 30, cached_input_tokens: 0, output_tokens: 15, reasoning_output_tokens: 0, total_tokens: 45 };
 
     const lines = [
-      buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage1, total: usage1 }),
-      buildTokenCountLine({ ts: "2025-12-17T00:30:00.000Z", last: usage2, total: usage2 }),
-      buildTokenCountLine({ ts: "2025-12-17T01:00:00.000Z", last: usage3, total: usage3 }),
+      buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage1 }),
+      buildTokenCountLine({ ts: "2025-12-17T00:30:00.000Z", last: usage2 }),
+      buildTokenCountLine({ ts: "2025-12-17T01:00:00.000Z", last: usage3 }),
     ];
 
     await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
@@ -8158,7 +8286,7 @@ test("collectRolloutRequestUsageRecords skips rollout files last modified before
     const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
     await fs.writeFile(
       rolloutPath,
-      `${buildTokenCountLine({ ts: "2026-08-15T00:00:00.000Z", last: usage, total: usage })}\n`,
+      `${buildTokenCountLine({ ts: "2026-08-15T00:00:00.000Z", last: usage })}\n`,
       "utf8",
     );
     const oldMtime = new Date("2026-07-01T00:00:00.000Z");
@@ -8185,7 +8313,7 @@ test("collectRolloutRequestUsageRecords limits results", async () => {
     const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
     const lines = [];
     for (let i = 0; i < 5; i++) {
-      lines.push(buildTokenCountLine({ ts: `2025-12-17T00:0${i}:00.000Z`, last: usage, total: usage }));
+      lines.push(buildTokenCountLine({ ts: `2025-12-17T00:0${i}:00.000Z`, last: usage }));
     }
 
     await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
@@ -8213,7 +8341,7 @@ test("collectRolloutRequestUsageRecords returns empty for non-codex source", asy
     const rolloutPath = path.join(tmp, "rollout-test.jsonl");
 
     const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0, total_tokens: 15 };
-    const lines = [buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage, total: usage })];
+    const lines = [buildTokenCountLine({ ts: "2025-12-17T00:00:00.000Z", last: usage })];
 
     await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
 
