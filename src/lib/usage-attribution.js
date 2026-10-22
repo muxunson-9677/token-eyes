@@ -345,6 +345,8 @@ function createConfiguredTokenPlanResolver(configuredPlans, timeZoneContext = {}
       { ...timestampContext, endOfDate: true },
     );
     matches.push({
+      account_ref: isAllowedEvidenceReference("account_ref", plan?.account_ref) ? plan.account_ref.trim() : null,
+      credential_ref: isAllowedEvidenceReference("credential_ref", plan?.credential_ref) ? plan.credential_ref.trim() : null,
       plan_ref: isAllowedEvidenceReference("plan_ref", plan?.plan_ref)
         ? plan.plan_ref.trim()
         : null,
@@ -381,6 +383,10 @@ function createConfiguredTokenPlanResolver(configuredPlans, timeZoneContext = {}
       ? []
       : identityMatches.filter((plan) => (
         plan.window_valid
+        && (!attribution.account_ref || plan.account_ref === attribution.account_ref)
+        && (!attribution.credential_ref || plan.credential_ref === attribution.credential_ref)
+        && (!plan.account_ref || plan.account_ref === attribution.account_ref)
+        && (!plan.credential_ref || plan.credential_ref === attribution.credential_ref)
         && (plan.started_at === null || occurredAt >= plan.started_at)
         && (plan.expires_at === null || occurredAt <= plan.expires_at)
       ));
@@ -411,7 +417,35 @@ function queueUsageIdentity(row, { dimensionsKey } = {}) {
   const parts = [record.source || "", record.model || "", record.hour_start || ""];
   if (dimensionsKey != null) parts.push(dimensionsKey);
   parts.push(normalizeUsageAttribution(record).billing_mode);
+  if (record.usage_identity_slice === true) parts.push(usageAttributionIdentity(record));
   return parts.join("|");
+}
+
+function usageAttributionIdentity(row) {
+  const evidence = normalizeUsageAttribution(row);
+  return JSON.stringify([evidence.billing_mode, ...EVIDENCE_REF_FIELDS.map(field => evidence[field] || null), evidence.endpoint_origin || null]);
+}
+
+// Each outer row is a complete mode snapshot, not an additional contribution.
+// Legacy readers use its totals. New readers replace it with its validated slices.
+function expandUsageIdentitySnapshot(row) {
+  if (row?.usage_identity_version !== 1) return [row];
+  const slices = row.usage_identity_slices;
+  const fields = [...TOKEN_FIELDS, "billable_total_tokens"];
+  if (!Array.isArray(slices) || slices.length === 0) throw new Error("Invalid usage identity snapshot");
+  const seen = new Set();
+  for (const slice of slices) {
+    const identity = usageAttributionIdentity(slice);
+    if (seen.has(identity) || normalizeUsageAttribution(slice).billing_mode !== normalizeUsageAttribution(row).billing_mode) throw new Error("Conflicting usage identity slices");
+    seen.add(identity);
+    for (const field of fields) if (!Number.isSafeInteger(slice[field] ?? 0) || (slice[field] ?? 0) < 0) throw new Error("Invalid usage identity counts");
+  }
+  for (const field of fields) {
+    if (slices.reduce((sum, slice) => sum + (slice[field] ?? 0), 0) !== (row[field] ?? 0)) throw new Error("Usage identity snapshot totals mismatch");
+  }
+  const { usage_identity_version, usage_identity_slices, ...base } = row;
+  for (const field of [...EVIDENCE_REF_FIELDS, "endpoint_origin"]) delete base[field];
+  return slices.map(slice => ({ ...base, ...Object.fromEntries(fields.map(field => [field, slice[field] ?? 0])), ...normalizeUsageAttribution(slice), usage_identity_slice: true }));
 }
 
 function accumulateBillingModeAttribution(targets, row, evaluate = normalizeUsageAttribution) {
@@ -432,6 +466,8 @@ function accumulateBillingModeAttribution(targets, row, evaluate = normalizeUsag
 }
 
 module.exports = {
+  usageAttributionIdentity,
+  expandUsageIdentitySnapshot,
   accumulateBillingModeAttribution,
   attributeUsage,
   createConfiguredTokenPlanResolver,
@@ -440,4 +476,5 @@ module.exports = {
   normalizeEndpointOrigin,
   normalizeUsageAttribution,
   queueUsageIdentity,
+  parseAttributionTimestamp,
 };

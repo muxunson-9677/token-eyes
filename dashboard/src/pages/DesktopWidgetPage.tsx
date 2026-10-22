@@ -159,7 +159,8 @@ export function formatWidgetCompactTokenCount(tokens: number) {
   }).format(value)}${unit}`;
 }
 
-export function formatWidgetCompactCost(costUsd: number) {
+export function formatWidgetCompactCost(costUsd: number | null) {
+  if (costUsd == null || !Number.isFinite(costUsd)) return "—";
   if (Math.abs(costUsd) >= 10_000) return `$${formatWidgetCompactTokenCount(costUsd)}`;
   return `$${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(costUsd)}`;
 }

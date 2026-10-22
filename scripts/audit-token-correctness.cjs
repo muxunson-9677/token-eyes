@@ -5,6 +5,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+const { queueUsageIdentity, expandUsageIdentitySnapshot } = require("../src/lib/usage-attribution");
+
 const { getSourceScope } = require("../src/lib/source-metadata");
 
 function readJsonlRows(filePath) {
@@ -23,7 +25,7 @@ function readJsonlRows(filePath) {
 }
 
 function rowKey(row) {
-  return [row?.source || "", row?.model || "", row?.hour_start || ""].join("|");
+  return queueUsageIdentity(row, { dimensionsKey: JSON.stringify(row?.dimensions || null) });
 }
 
 function toNumber(value) {
@@ -45,7 +47,7 @@ function isLegacyInclusiveCodexRow(row) {
   return cacheRead > 0 && input >= cacheRead && total === input + output;
 }
 
-function auditRows(inputRows) {
+function auditRows(inputRows, { expectedRows } = {}) {
   const rows = Array.isArray(inputRows) ? inputRows : [];
   const latestByKey = new Map();
   const countsByKey = new Map();
@@ -73,7 +75,7 @@ function auditRows(inputRows) {
         sum_parts: 0,
         total_minus_parts: 0,
         invariant_failures: 0,
-        duplicate_bucket_keys: 0,
+        revised_bucket_keys: 0,
         unknown_model_rows: 0,
         cache_read_ratio: 0,
         first_day: null,
@@ -125,12 +127,12 @@ function auditRows(inputRows) {
     }
   }
 
-  let duplicateBucketKeys = 0;
+  let revisedBucketKeys = 0;
   for (const [key, count] of countsByKey.entries()) {
     if (count <= 1) continue;
-    duplicateBucketKeys += 1;
+    revisedBucketKeys += 1;
     const source = String(key.split("|")[0] || "unknown").trim().toLowerCase() || "unknown";
-    if (sources[source]) sources[source].duplicate_bucket_keys += 1;
+    if (sources[source]) sources[source].revised_bucket_keys += 1;
   }
 
   for (const source of Object.values(sources)) {
@@ -140,12 +142,24 @@ function auditRows(inputRows) {
         : 0;
   }
 
+  const detailedLatest = new Map([...latestByKey.values()].flatMap(expandUsageIdentitySnapshot).map(row => [rowKey(row), row]));
+  const expected = Array.isArray(expectedRows) ? new Map(expectedRows.map(row => [rowKey(row), row])) : null;
+  const mismatches = [];
+  if (expected && expected.size !== expectedRows.length) mismatches.push({ kind: "ambiguous_expected_identity" });
+  if (expected) {
+    for (const key of new Set([...expected.keys(), ...detailedLatest.keys()])) {
+      const want = expected.get(key), actual = detailedLatest.get(key);
+      if (!want || !actual || ["input_tokens", "output_tokens", "cached_input_tokens", "cache_creation_input_tokens", "reasoning_output_tokens", "total_tokens"].some(field => toNumber(want[field]) !== toNumber(actual[field])) || (want && actual && ["provider_id", "account_ref", "credential_ref", "plan_ref"].some(field => (want[field] || null) !== (actual[field] || null)))) mismatches.push({ identity: key, kind: !actual ? "missing" : !want ? "unexpected" : "different" });
+    }
+  }
   return {
+    reconciliation: expected ? { ok: mismatches.length === 0, mismatches } : { ok: null, reason: "no_independent_inventory" },
     generated_at: new Date().toISOString(),
     raw: {
       rows: rows.length,
       unique_bucket_keys: latestByKey.size,
-      duplicate_bucket_keys: duplicateBucketKeys,
+      revised_bucket_keys: revisedBucketKeys,
+      snapshot_revisions: rows.length - latestByKey.size,
     },
     sources,
     invariant_samples: invariantSamples,

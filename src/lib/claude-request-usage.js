@@ -74,6 +74,7 @@ async function collectClaudeRequestUsageRecords(options) {
     to,
     timeZoneContext,
     limit = 500,
+    models,
     pricingOptions = {},
   } = options || {};
 
@@ -88,7 +89,10 @@ async function collectClaudeRequestUsageRecords(options) {
   const { computeRowCostDetailed } = require("./pricing");
 
   for (const filePath of files) {
-    const st = await fs.stat(filePath).catch(() => null);
+    const st = await fs.stat(filePath).catch(error => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
     if (!st || !st.isFile()) continue;
     // A session file's mtime is >= its newest event timestamp, so files last
     // written before the range start cannot contain in-range events.
@@ -131,6 +135,7 @@ async function collectClaudeRequestUsageRecords(options) {
         if (dedupHash) seenMessageHashes.add(dedupHash);
 
         const model = normalizeModelInput(obj?.message?.model || obj?.model) || DEFAULT_MODEL;
+        if (models?.length && !models.includes(model.toLowerCase())) continue;
         const msgId = typeof obj?.message?.id === "string" ? obj.message.id : null;
         const hourStart = toUtcHalfHourStart(tokenTimestamp);
 
@@ -194,6 +199,7 @@ async function collectClaudeRequestUsageRecords(options) {
     from: from || null,
     to: to || null,
     records: limitedRecords,
+    truncated: records.length > maxLimit,
     totals: { ...totals, ...pricingSummary },
   };
 }

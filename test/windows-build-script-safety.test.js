@@ -140,6 +140,18 @@ test("runtime bundler rejects unknown build identity in release verification mod
     TOKEN_EYES_ISOLATED_INSTALLER_SMOKE: "1",
   });
   assert.notEqual(result.status, 0, "release verification must never emit head_sha=unknown");
+  assert.match(result.stderr + result.stdout, /Release bundle requires a verified 40-character Git SHA/);
+});
+
+test("runtime bundler accepts explicit identity for exported sources without borrowing parent HEAD", {
+  skip: process.platform === "win32" ? false : "requires Windows PowerShell",
+}, (t) => {
+  const fixture = createBundlerFixture(t, { git: false });
+  const result = runBundlerIdentityProbe(fixture, {
+    TOKEN_EYES_GIT_SHA: "a".repeat(40),
+    TOKEN_EYES_ISOLATED_INSTALLER_SMOKE: "1",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
 test("runtime bundler rejects Cargo and Tauri version drift before naming the runtime", {

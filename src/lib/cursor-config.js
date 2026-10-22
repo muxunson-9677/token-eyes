@@ -289,7 +289,7 @@ async function fetchCursorAuthenticated({
 }
 
 /**
- * Fetch full usage CSV from Cursor API.
+ * Fetch usage CSV from Cursor API. The response has no verified coverage marker.
  * Returns raw CSV string or throws on error.
  */
 function fetchCursorUsageCsv({ cookie, timeoutMs = 30000, dnsLookup, requestImpl }) {
@@ -369,9 +369,10 @@ async function fetchCursorUsageSummary({ cookie, timeoutMs = 30000, fetchImpl = 
  * Input (w/o Cache Write), Cache Read, Output Tokens, Total Tokens, Cost.
  * Optional: Kind, Max Mode.
  */
-function parseCursorCsv(csvText) {
+function parseCursorCsv(csvText, { strict = false } = {}) {
   const lines = csvText.split("\n").filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return [];
+  if (!lines.length && strict) throw new Error("Cursor export empty without schema");
+  if (!lines.length || (lines.length < 2 && !strict)) return [];
 
   const headerFields = parseCsvLine(lines[0]).map((f) => stripQuotes(f));
   const columnIndex = new Map();
@@ -391,14 +392,25 @@ function parseCursorCsv(csvText) {
   const maxModeIdx = columnIndex.get("Max Mode");
 
   const required = [dateIdx, modelIdx, inputWithIdx, inputWithoutIdx, cacheReadIdx, outputIdx, totalIdx, costIdx];
-  if (required.some((idx) => idx === undefined)) return [];
+  if (required.some((idx) => idx === undefined)) {
+    if (strict) throw new Error("Cursor export schema unsupported");
+    return [];
+  }
 
   const minFields = Math.max(...required) + 1;
 
   const records = [];
   for (let i = 1; i < lines.length; i++) {
     const fields = parseCsvLine(lines[i]);
-    if (!fields || fields.length < minFields) continue;
+    if (!fields || fields.length < minFields) {
+      if (strict) throw new Error("Cursor export row incomplete");
+      continue;
+    }
+    if (strict && !Number.isFinite(Date.parse(stripQuotes(fields[dateIdx])))) throw new Error("Cursor export date invalid");
+    if (strict && [inputWithIdx, inputWithoutIdx, cacheReadIdx, outputIdx, totalIdx].some(idx => {
+      const value = stripQuotes(fields[idx]);
+      return value === "" || !Number.isSafeInteger(Number(value)) || Number(value) < 0;
+    })) throw new Error("Cursor export count invalid");
 
     const inputWithCache = toNum(fields[inputWithIdx]);
     const inputWithoutCache = toNum(fields[inputWithoutIdx]);
@@ -419,7 +431,7 @@ function parseCursorCsv(csvText) {
       cost: toFloat(fields[costIdx]),
     };
 
-    if (record.totalTokens <= 0 && record.inputTokens <= 0 && record.outputTokens <= 0) continue;
+    if (!strict && record.totalTokens <= 0 && record.inputTokens <= 0 && record.outputTokens <= 0) continue;
 
     records.push(record);
   }
@@ -508,7 +520,29 @@ function toFloat(s) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Stage every account before publishing any queue snapshot. A failed account
+// must not erase its contribution when another account's export succeeds.
+async function collectCursorAccountUsage({ homes, home,
+  isInstalled = isCursorInstalled, readAuth = extractCursorSessionToken,
+  fetchCsv = fetchCursorUsageCsv } = {}) {
+  const accountKeys = new Set();
+  const records = [];
+  for (const appDir of [...new Set(homes || [])]) {
+    if (!isInstalled({ home, appDir })) continue;
+    const auth = readAuth({ home, appDir });
+    if (!auth?.userId) throw new Error("Cursor account identity unavailable");
+    const key = require("node:crypto").createHash("sha256").update(auth.userId).digest("hex");
+    if (accountKeys.has(key)) continue;
+    const csv = await fetchCsv({ cookie: auth.cookie });
+    records.push(...parseCursorCsv(csv, { strict: true }).map(record => ({ ...record, provider_id: "cursor", account_ref: `account/cursor/${key}` })));
+    accountKeys.add(key);
+  }
+  // Neither HTTP 200 nor CSV row presence proves complete account/time coverage.
+  return { records, accountKeys: [...accountKeys], coverage: [] };
+}
+
 module.exports = {
+  collectCursorAccountUsage,
   resolveCursorPaths,
   isCursorInstalled,
   readCursorAccessTokenFromStateDb,

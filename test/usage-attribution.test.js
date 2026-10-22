@@ -16,6 +16,14 @@ const {
 } = require("../src/lib/rollout");
 const { execSqlScript } = require("./helpers/sqlite-builder.cjs");
 
+test('queue read permission failure is not an empty usage history and can recover',async t=>{
+ const syncFs=require('node:fs'),{readQueueData}=require('../src/lib/local-api');const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-queue-error-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl');await fs.writeFile(queuePath,JSON.stringify({source:'codex',model:'gpt-5',hour_start:'2026-09-22T01:00:00Z',input_tokens:100,total_tokens:100})+'\n');
+ const read=syncFs.readFileSync;syncFs.readFileSync=(file,...args)=>{if(path.resolve(file)===path.resolve(queuePath))throw Object.assign(new Error('private-fixture-path'),{code:'EACCES'});return read(file,...args);};
+ try{assert.throws(()=>readQueueData(queuePath),/Usage queue unavailable/);}finally{syncFs.readFileSync=read;}
+ assert.equal(readQueueData(queuePath)[0].total_tokens,100);
+});
+
 test("preserves explicit api_key while reducing endpoint input to its origin", () => {
   const result = normalizeUsageAttribution({
     billing_mode: "api_key",
@@ -585,6 +593,43 @@ test("Codex cumulative buckets omit conflicting trusted providers in either orde
       await fs.rm(tmp, { recursive: true, force: true });
     }
   }
+});
+
+for (const order of [['openai','deepseek'],['deepseek','openai']]) test(`provider-only contributions retain identity across snapshots: ${order}`,async t=>{
+ const {readQueueData}=require('../src/lib/local-api');const {auditRows}=require('../scripts/audit-token-correctness.cjs');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'tt-provider-slices-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const queuePath=path.join(dir,'queue.jsonl'),cursors={files:{}};
+ const files={openai:path.join(dir,'openai.jsonl'),deepseek:path.join(dir,'deepseek.jsonl')};
+ const event=(provider,total,minute)=>JSON.stringify({type:'event_msg',timestamp:`2026-09-22T01:${minute}:00Z`,payload:{type:'token_count',info:{provider_id:provider,billing_mode:'api_key',total_token_usage:{input_tokens:total,output_tokens:0,total_tokens:total}}}})+'\n';
+ for(const provider of order)await fs.writeFile(files[provider],JSON.stringify({type:'session_meta',payload:{id:provider,model:'shared-model'}})+'\n'+event(provider,provider==='openai'?100:200,'00'));
+ const options={rolloutFiles:order.map(provider=>files[provider]),queuePath,cursors};
+ await parseRolloutIncremental({...options,rolloutFiles:[files[order[0]]]});
+ const legacy=JSON.parse((await fs.readFile(queuePath,'utf8')).trim());delete legacy.usage_identity_version;delete legacy.usage_identity_slices;
+ await fs.writeFile(queuePath,JSON.stringify(legacy)+'\n');
+ for(const bucket of Object.values(cursors.hourly.buckets))for(const slice of Object.values(bucket.attributionBuckets||{}))delete slice.identityBuckets;
+ await parseRolloutIncremental(options);
+ const expected={openai:100,deepseek:200};
+ for(const dedupeMode of ['legacy','provider','realtime','dimensions']){
+  const rows=readQueueData(queuePath,{dedupeMode});assert.deepEqual(Object.fromEntries(rows.map(row=>[row.provider_id,row.total_tokens])),expected);
+  assert.ok(rows.every(row=>row.account_ref===undefined),'missing accounts remain unknown');
+ }
+ const text=await fs.readFile(queuePath,'utf8');await parseRolloutIncremental(options);assert.equal(await fs.readFile(queuePath,'utf8'),text);
+ const outer=JSON.parse(text.trim().split('\n').at(-1));assert.equal(outer.total_tokens,300);assert.equal(outer.provider_id,undefined);
+ await fs.appendFile(files.openai,event('openai',150,'01'));await parseRolloutIncremental(options);
+ const rows=readQueueData(queuePath);assert.deepEqual(Object.fromEntries(rows.map(row=>[row.provider_id,row.total_tokens])),{openai:150,deepseek:200});
+ const actualRows=(await fs.readFile(queuePath,'utf8')).trim().split('\n').map(JSON.parse);
+ const expectedRows=Object.entries({openai:150,deepseek:200}).map(([provider_id,total_tokens])=>({source:'codex',model:'shared-model',hour_start:'2026-09-22T01:00:00.000Z',billing_mode:'api_key',usage_identity_slice:true,provider_id,input_tokens:total_tokens,total_tokens,output_tokens:0,cached_input_tokens:0,cache_creation_input_tokens:0,reasoning_output_tokens:0}));
+ assert.equal(auditRows(actualRows,{expectedRows}).reconciliation.ok,true);
+ // Independent read-side challenge: legacy outer row, then a lower authoritative
+ // identity snapshot. Both provider and ordinary consumers must replace, not add.
+ const revised=structuredClone(actualRows.at(-1));
+ const openai=revised.usage_identity_slices.find(row=>row.provider_id==='openai');
+ openai.input_tokens=50;openai.total_tokens=50;openai.billable_total_tokens=50;
+ revised.input_tokens=250;revised.total_tokens=250;revised.billable_total_tokens=250;
+ await fs.appendFile(queuePath,JSON.stringify(revised)+'\n');
+ for(const dedupeMode of ['legacy','provider','realtime','dimensions'])assert.deepEqual(Object.fromEntries(readQueueData(queuePath,{dedupeMode}).map(row=>[row.provider_id,row.total_tokens])),{openai:50,deepseek:200});
+ const {readQueueBatch}=require('../src/commands/sync');const batch=await readQueueBatch(queuePath,0,500);
+ assert.equal(batch.buckets.filter(row=>!row.billing_mode_compat_summary).reduce((sum,row)=>sum+row.total_tokens,0),250);
 });
 
 test("rollout queue keeps unknown and explicit deltas in separate records", async () => {

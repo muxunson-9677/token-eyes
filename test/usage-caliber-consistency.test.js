@@ -224,7 +224,7 @@ test("three-caliber consistency: usage-summary === spend-timeseries totals === p
 
 test("Codex rollout logs without Provider evidence stay out of selected-range Provider stats", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-rollout-"));
-  const originalCreateReadStream = fs.createReadStream;
+  const originalCreateReadStream = fs.promises.open;
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
     const trackerDataDir = path.join(tmp, "tracker");
@@ -266,7 +266,7 @@ test("Codex rollout logs without Provider evidence stay out of selected-range Pr
       "utf8",
     );
     let rolloutReads = 0;
-    fs.createReadStream = function patchedCreateReadStream(filePath, ...args) {
+    fs.promises.open = function patchedCreateReadStream(filePath, ...args) {
       if (path.resolve(String(filePath)) === path.resolve(rolloutPath)) rolloutReads += 1;
       return originalCreateReadStream.call(this, filePath, ...args);
     };
@@ -292,14 +292,14 @@ test("Codex rollout logs without Provider evidence stay out of selected-range Pr
     assert.equal(modelStats.models[0].model, "gpt-4o");
     assert.equal(rolloutReads, 1, "selected-range Provider stats should reuse the concurrent rollout scan");
   } finally {
-    fs.createReadStream = originalCreateReadStream;
+    fs.promises.open = originalCreateReadStream;
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
 
 test("concurrent and subsequent Codex rollout scans refresh when the file set changes", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-refresh-"));
-  const originalCreateReadStream = fs.createReadStream;
+  const originalCreateReadStream = fs.promises.open;
   const originalStat = fs.promises.stat;
   const openedPaths = [];
   let rolloutStatCalls = 0;
@@ -335,7 +335,7 @@ test("concurrent and subsequent Codex rollout scans refresh when the file set ch
       "utf8",
     );
 
-    fs.createReadStream = function recordRolloutPath(filePath, ...args) {
+    fs.promises.open = function recordRolloutPath(filePath, ...args) {
       openedPaths.push(path.resolve(String(filePath)));
       return originalCreateReadStream.call(this, filePath, ...args);
     };
@@ -415,14 +415,14 @@ test("concurrent and subsequent Codex rollout scans refresh when the file set ch
       waiters.map((result) => result.totals.total_tokens),
       [300, 300, 300, 300, 350, 350, 350, 350],
     );
-    assert.equal(rolloutStatCalls, 12, "each waiter cohort must share exactly one follow-up scan");
+    assert.equal(rolloutStatCalls, 9, "each waiter cohort must share exactly one follow-up scan");
     assert.ok(resolverCalls > 0);
     assert.ok(openedPaths.length >= 2);
     assert.ok(openedPaths.every((filePath) => filePath.startsWith(path.resolve(codexHome) + path.sep)));
   } finally {
     releaseFirstScan?.();
     releaseSecondScan?.();
-    fs.createReadStream = originalCreateReadStream;
+    fs.promises.open = originalCreateReadStream;
     fs.promises.stat = originalStat;
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -430,7 +430,7 @@ test("concurrent and subsequent Codex rollout scans refresh when the file set ch
 
 test("Codex rollout scans recover after an owner generation rejects", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-recovery-"));
-  const originalCreateReadStream = fs.createReadStream;
+  const originalCreateReadStream = fs.promises.open;
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
     const trackerDataDir = path.join(tmp, "tracker");
@@ -457,7 +457,7 @@ test("Codex rollout scans recover after an owner generation rejects", async () =
     );
 
     let rejectNextStream = true;
-    fs.createReadStream = function rejectFirstRollout(filePath, ...args) {
+    fs.promises.open = function rejectFirstRollout(filePath, ...args) {
       if (rejectNextStream && String(filePath).endsWith(".jsonl")) {
         rejectNextStream = false;
         throw new Error("injected rollout scan failure");
@@ -475,14 +475,14 @@ test("Codex rollout scans recover after an owner generation rejects", async () =
     const recovered = await callHandler(handler, endpoint);
     assert.equal(recovered.totals.total_tokens, 100);
   } finally {
-    fs.createReadStream = originalCreateReadStream;
+    fs.promises.open = originalCreateReadStream;
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
 
 test("Codex rollout cache refreshes when a non-newest file changes", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-caliber-codex-signature-"));
-  const originalCreateReadStream = fs.createReadStream;
+  const originalCreateReadStream = fs.promises.open;
   const openedPaths = [];
   let resolverCalls = 0;
   try {
@@ -519,7 +519,7 @@ test("Codex rollout cache refreshes when a non-newest file changes", async () =>
     await fs.promises.utimes(olderRolloutPath, olderMtime, olderMtime);
     await fs.promises.utimes(newestRolloutPath, newestMtime, newestMtime);
 
-    fs.createReadStream = function recordRolloutPath(filePath, ...args) {
+    fs.promises.open = function recordRolloutPath(filePath, ...args) {
       openedPaths.push(path.resolve(String(filePath)));
       return originalCreateReadStream.call(this, filePath, ...args);
     };
@@ -545,10 +545,10 @@ test("Codex rollout cache refreshes when a non-newest file changes", async () =>
     const second = await callHandler(secondHandler, endpoint);
     assert.equal(second.totals.total_tokens, 350);
     assert.ok(resolverCalls >= 2);
-    assert.ok(openedPaths.length >= 4);
+    assert.equal(openedPaths.length, 3, "only the changed file needs a second parse");
     assert.ok(openedPaths.every((filePath) => filePath.startsWith(path.resolve(codexHome) + path.sep)));
   } finally {
-    fs.createReadStream = originalCreateReadStream;
+    fs.promises.open = originalCreateReadStream;
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
@@ -951,7 +951,7 @@ test("project-usage-summary respects date range and limit", async () => {
   }
 });
 
-test("project-usage-summary apportions legacy project rows across real models from the same source hour", async () => {
+test("project-usage-summary leaves legacy model unknown instead of inferring it from global usage", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tt-project-summary-models-"));
   try {
     const queuePath = path.join(tmp, "queue.jsonl");
@@ -977,8 +977,7 @@ test("project-usage-summary apportions legacy project rows across real models fr
     );
 
     assert.deepEqual(body.entries[0].model_usage, [
-      { id: "gpt-a", provider: "codex", tokens: "70", percent: 70 },
-      { id: "gpt-b", provider: "codex", tokens: "30", percent: 30 },
+      { id: "unknown", provider: "codex", tokens: "100", percent: 100 },
     ]);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
@@ -1000,3 +999,15 @@ test("dashboard 30d period matches spend 30d rolling window", async () => {
   assert.equal(dashboardRange.from, spendRange.from);
   assert.equal(dashboardRange.to, spendRange.to);
 });
+
+ test("project summaries retain each model and latest snapshot without inventing legacy model attribution", async () => {
+  const tmp=await fs.promises.mkdtemp(path.join(os.tmpdir(),"tt-project-identity-"));
+  try {
+    const queuePath=path.join(tmp,"queue.jsonl"),projectQueuePath=path.join(tmp,"project.queue.jsonl");
+    const base={source:"claude",project_key:"p",project_ref:"p",hour_start:"2026-07-06T00:00:00Z"};
+    await writeQueue(queuePath,[]);
+    await writeQueue(projectQueuePath,[{...base,model:"a",total_tokens:80},{...base,model:"b",total_tokens:200},{...base,model:"a",total_tokens:100}]);
+    const body=await callEndpoint(queuePath,"/functions/tokentracker-project-usage-summary?from=2026-07-06&to=2026-07-06&tz=UTC");
+    assert.equal(Number(body.entries[0].total_tokens),300);
+  } finally {await fs.promises.rm(tmp,{recursive:true,force:true});}
+ });

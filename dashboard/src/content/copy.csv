@@ -2843,3 +2843,12 @@ widget.limit.time_unknown,ui,DesktopWidgetPage,ExpandedLimits,time_unknown,"Time
 reset_history.time_not_published,ui,ResetHistoryPage,Detail,time_not_published,"官方未公布具体时刻",,active
 reset_history.stats.date_only,ui,ResetHistoryPage,Statistics,date_only,"部分公告仅提供日期，无法计算精确间隔",,active
 reset_history.stats.date_only_value,ui,ResetHistoryPage,Statistics,date_only_value,"精确间隔未知",,active
+
+realtime.range.between,ui,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"{{from}} – {{to}}",,active
+realtime.scope.all_agents,ui,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"All Agents",,active
+usage.request_log.coverage_subset,ui,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"Record limit reached. Totals cover only the returned subset; narrow the filters to inspect more.",,active
+usage.request_log.coverage_unknown,ui,RealtimeSessionsPage,RealtimeSessionsPage,coverage,"Complete record coverage is unverified. These totals may be partial.",,active
+realtime.collection.error,ui,RealtimeSessionsPage,RealtimeSessionsPage,error,"{{source}} collection failed. Showing previous usage; last successful collection: {{time}}.",,active
+usage.request_log.empty_with_history,ui,RequestUsageLog,RequestUsageLog,empty,"No records match this filter; saved historical usage still exists in this range.",,active
+usage.request_log.queue_history,ui,RequestUsageLog,RequestUsageLog,coverage,"Saved historical total: {{tokens}} tokens. Its coverage may differ from the records below; do not add the two totals.",,active
+usage.request_log.refresh_failed,ui,RequestUsageLog,RequestUsageLog,error,"Refresh failed. Showing previously loaded records.",,active

@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const SQL_PATH = path.resolve(__dirname, "../scripts/ops/leaderboard-dirty-queue.sql");
+// Validate the tracked production migration; private scripts/ops is not shipped.
+const SQL_PATH = path.resolve(__dirname, "../insforge/leaderboard-v2/migrations/20260829225444_leaderboard-dirty-queue.sql");
 
 test("dirty dimensions are due immediately for the durable refresh coordinator", () => {
   const sql = fs.readFileSync(SQL_PATH, "utf8");

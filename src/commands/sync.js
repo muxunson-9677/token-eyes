@@ -6,7 +6,7 @@ const cp = require("node:child_process");
 const readline = require("node:readline");
 const { normalizeUsageAttribution, queueUsageIdentity } = require("../lib/usage-attribution");
 
-const { ensureDir, readJson, writeJson, openLock } = require("../lib/fs");
+const { ensureDir, readJson, readJsonStrict, writeJson, openLock } = require("../lib/fs");
 const {
   listRolloutFiles,
   listRolloutFilesDeep,
@@ -78,12 +78,6 @@ const {
   recordUploadSuccess,
   parseRetryAfterMs,
 } = require("../lib/upload-throttle");
-const {
-  isCursorInstalled,
-  extractCursorSessionToken,
-  fetchCursorUsageCsv,
-  parseCursorCsv,
-} = require("../lib/cursor-config");
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { resolveRuntimeConfig } = require("../lib/runtime-config");
@@ -159,6 +153,10 @@ function warnProviderParseFailure(label, err, opts) {
 }
 
 async function cmdSync(argv) {
+  while (await syncOnce(argv)) { /* Drain triggers received during the previous successful scan. */ }
+}
+
+async function syncOnce(argv) {
   const opts = parseArgs(argv);
   const home = os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
@@ -169,11 +167,34 @@ async function cmdSync(argv) {
   }
 
   const lockPath = path.join(trackerDir, "sync.lock");
-  const lock = await openLock(lockPath, { quietIfLocked: opts.auto });
+  const lock = await openLock(lockPath, { quietIfLocked: opts.auto, coalesce: true });
   if (!lock) return;
 
   let progress = null;
+  let pending = false;
+  const collectionStatusPath = path.join(trackerDir, "collection-status.json");
+  let collectionStatus = null;
+  let syncError = null;
+  const discoveryFailures = new Map();
+  async function discoverSourceFiles(source, label, discover) {
+    try {
+      const files = await discover();
+      if (!files.length) collectionStatus[source] = { ...collectionStatus[source], status: "missing", last_attempt_at: new Date().toISOString(), error_code: null };
+      return files;
+    } catch (error) {
+      const failure = { ...collectionStatus[source], status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || error.name };
+      discoveryFailures.set(source, failure);
+      collectionStatus[source] = failure;
+      warnProviderParseFailure(label, error, opts);
+      return [];
+    }
+  }
   try {
+    const healthRead = await readJsonStrict(collectionStatusPath);
+    if (healthRead.status !== "ok" && healthRead.status !== "missing") throw healthRead.error;
+    const previousHealth = healthRead.status === "missing" ? {} : healthRead.value;
+    if (!previousHealth || typeof previousHealth !== "object" || Array.isArray(previousHealth)) throw new Error("Invalid collection health state");
+    collectionStatus = previousHealth;
     progress = !opts.auto ? createProgress({ stream: process.stdout }) : null;
     const configPath = path.join(trackerDir, "config.json");
     const cursorsPath = path.join(trackerDir, "cursors.json");
@@ -186,7 +207,10 @@ async function cmdSync(argv) {
     const legacyGrokSignalPath = path.join(trackerDir, "tracker", "grok-last-session.json");
 
     const config = await readJson(configPath);
-    const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
+    const cursorRead = await readJsonStrict(cursorsPath);
+    if (cursorRead.status !== "ok" && cursorRead.status !== "missing") throw cursorRead.error;
+    const cursors = cursorRead.status === "missing" ? { version: 1, files: {}, updatedAt: null } : cursorRead.value;
+    if (!cursors || typeof cursors !== "object" || Array.isArray(cursors)) throw new Error("Invalid sync cursor state");
     const uploadThrottle = normalizeUploadState(await readJson(uploadThrottlePath));
     let uploadThrottleState = uploadThrottle;
     let grokHookSignal = null;
@@ -245,18 +269,19 @@ async function cmdSync(argv) {
     for (const entry of sources) {
       if (seenSessions.has(entry.sessionsDir)) continue;
       seenSessions.add(entry.sessionsDir);
-      const files = entry.deep
-        ? await listRolloutFilesDeep(entry.sessionsDir)
-        : await listRolloutFiles(entry.sessionsDir);
+      const files = await discoverSourceFiles(entry.source, entry.source, () => entry.deep
+        ? listRolloutFilesDeep(entry.sessionsDir)
+        : listRolloutFiles(entry.sessionsDir));
       for (const filePath of files) {
         rolloutFiles.push({ path: filePath, source: entry.source });
       }
     }
 
-    await migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles });
-    await repairCodexRescanInflation({ cursors, queuePath, queueStatePath, rolloutFiles });
+    // Historical rebuilds require independently verified coverage. Discovery of
+    // some (or no) logs cannot authorize replacing the only surviving totals.
+    // Keep the repair helpers available for explicit, scoped history repair.
 
-    const openclawFiles = await listConfiguredOpenclawSessionFiles(dataDirectoryPaths.openclawHome);
+    const openclawFiles = await discoverSourceFiles("openclaw", "OpenClaw", () => listConfiguredOpenclawSessionFiles(dataDirectoryPaths.openclawHome));
     if (openclawSignal?.sessionFile && !openclawFiles.some((entry) => entry.path === openclawSignal.sessionFile)) {
       openclawFiles.push({ path: openclawSignal.sessionFile, source: "openclaw" });
     }
@@ -268,24 +293,29 @@ async function cmdSync(argv) {
     }
 
     let parseResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    try {
-      parseResult = await parseRolloutIncremental({
-        rolloutFiles,
-        cursors,
-        queuePath,
-        projectQueuePath,
-        onProgress: (p) => {
-          if (!progress?.enabled) return;
-          const pct = p.total > 0 ? p.index / p.total : 1;
-          progress.update(
-            `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
-              p.bucketsQueued,
-            )}`,
-          );
-        },
-      });
-    } catch (err) {
-      warnProviderParseFailure("Codex", err, opts);
+    for (const rolloutSource of ["codex", "every-code"]) {
+      try {
+        const sourceResult = await parseRolloutIncremental({
+          rolloutFiles: rolloutFiles.filter(entry => entry.source === rolloutSource),
+          source: rolloutSource,
+          cursors,
+          collectionStatus,
+          queuePath,
+          projectQueuePath,
+          onProgress: (p) => {
+            if (!progress?.enabled) return;
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            progress.update(
+              `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`,
+            );
+          },
+        });
+        for (const key of Object.keys(parseResult)) parseResult[key] += sourceResult[key] || 0;
+      } catch (err) {
+        warnProviderParseFailure(rolloutSource, err, opts);
+      }
     }
 
     let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
@@ -295,6 +325,7 @@ async function cmdSync(argv) {
         openclawResult = await parseOpenclawIncremental({
           sessionFiles: openclawFiles,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           source: "openclaw",
@@ -310,6 +341,7 @@ async function cmdSync(argv) {
         trackerDir,
         signal: openclawSignal,
         cursors,
+        collectionStatus,
         queuePath,
         projectQueuePath,
       });
@@ -320,10 +352,11 @@ async function cmdSync(argv) {
     openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
     openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
 
-    const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
+    const claudeFiles = await discoverSourceFiles("claude", "Claude", () => listClaudeProjectFiles(claudeProjectsDir));
     await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath, queueStatePath });
     await repairClaudeQueueFromGroundTruth({
       cursors,
+      collectionStatus,
       queuePath,
       queueStatePath,
       projectQueuePath,
@@ -340,6 +373,7 @@ async function cmdSync(argv) {
         claudeResult = await parseClaudeIncremental({
           projectFiles: claudeFiles,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           onProgress: (p) => {
@@ -358,7 +392,7 @@ async function cmdSync(argv) {
       }
     }
 
-    const geminiFiles = await listGeminiSessionFiles(geminiTmpDir);
+    const geminiFiles = await discoverSourceFiles("gemini", "Gemini", () => listGeminiSessionFiles(geminiTmpDir));
     let geminiResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (geminiFiles.length > 0) {
       if (progress?.enabled) {
@@ -370,6 +404,7 @@ async function cmdSync(argv) {
         geminiResult = await parseGeminiIncremental({
           sessionFiles: geminiFiles,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           onProgress: (p) => {
@@ -388,7 +423,7 @@ async function cmdSync(argv) {
       }
     }
 
-    const antigravityFiles = await listAntigravityTranscripts(antigravityHome);
+    const antigravityFiles = await discoverSourceFiles("antigravity", "Antigravity", () => listAntigravityTranscripts(antigravityHome));
     let antigravityResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (antigravityFiles.length > 0) {
       if (progress?.enabled) {
@@ -400,6 +435,7 @@ async function cmdSync(argv) {
         antigravityResult = await parseAntigravityIncremental({
           sessionFiles: antigravityFiles,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           onProgress: (p) => {
@@ -418,7 +454,7 @@ async function cmdSync(argv) {
       }
     }
 
-    const opencodeFiles = await listOpencodeMessageFiles(opencodeStorageDir);
+    const opencodeFiles = await discoverSourceFiles("opencode", "OpenCode", () => listOpencodeMessageFiles(opencodeStorageDir));
     let opencodeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (opencodeFiles.length > 0) {
       if (progress?.enabled) {
@@ -430,6 +466,7 @@ async function cmdSync(argv) {
         opencodeResult = await parseOpencodeIncremental({
           messageFiles: opencodeFiles,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           onProgress: (p) => {
@@ -451,8 +488,15 @@ async function cmdSync(argv) {
     // OpenCode v1.2+ stores messages in SQLite (opencode.db) instead of JSON files.
     const opencodeDbPath = path.join(opencodeHome, "opencode.db");
     let opencodeDbResult = { messagesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    const dbMessages = readOpencodeDbMessages(opencodeDbPath);
-    if (dbMessages.length > 0) {
+    let dbMessages = null;
+    try {
+      const exists = await fs.stat(opencodeDbPath).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
+      if (exists) dbMessages = readOpencodeDbMessages(opencodeDbPath, { strict: true });
+    } catch (error) {
+      collectionStatus.opencode = { ...collectionStatus.opencode, status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || "sqlite_read_error" };
+      warnProviderParseFailure("Opencode DB", error, opts);
+    }
+    if (dbMessages) {
       if (progress?.enabled) {
         progress.start(
           `Parsing Opencode DB ${renderBar(0)} 0/${formatNumber(dbMessages.length)} msgs | buckets 0`,
@@ -461,7 +505,9 @@ async function cmdSync(argv) {
       try {
         opencodeDbResult = await parseOpencodeDbIncremental({
           dbMessages,
+          dbPath: opencodeDbPath,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           onProgress: (p) => {
@@ -489,8 +535,16 @@ async function cmdSync(argv) {
     // the message indexes don't collide.
     const kiloDbPath = path.join(kiloHome, "kilo.db");
     let kiloResult = { messagesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    const kiloDbMessages = readOpencodeDbMessages(kiloDbPath);
-    if (kiloDbMessages.length > 0) {
+    let kiloDbMessages = null;
+    try {
+      const exists = await fs.stat(kiloDbPath).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
+      if (exists) kiloDbMessages = readOpencodeDbMessages(kiloDbPath, { strict: true });
+      else collectionStatus["kilo-cli"] = { ...collectionStatus["kilo-cli"], status: "missing", last_attempt_at: new Date().toISOString() };
+    } catch (error) {
+      collectionStatus["kilo-cli"] = { ...collectionStatus["kilo-cli"], status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || "sqlite_read_error" };
+      warnProviderParseFailure("Kilo CLI", error, opts);
+    }
+    if (kiloDbMessages) {
       if (progress?.enabled) {
         progress.start(
           `Parsing Kilo CLI ${renderBar(0)} 0/${formatNumber(kiloDbMessages.length)} msgs | buckets 0`,
@@ -499,7 +553,9 @@ async function cmdSync(argv) {
       try {
         kiloResult = await parseOpencodeDbIncremental({
           dbMessages: kiloDbMessages,
+          dbPath: kiloDbPath,
           cursors,
+          collectionStatus,
           queuePath,
           projectQueuePath,
           onProgress: (p) => {
@@ -532,6 +588,7 @@ async function cmdSync(argv) {
         kilocodeResult = await parseKilocodeIncremental({
           taskFiles: kilocodeTaskFiles,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -559,6 +616,7 @@ async function cmdSync(argv) {
         gooseResult = await parseGooseIncremental({
           dbPath: gooseDbPath,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -588,6 +646,7 @@ async function cmdSync(argv) {
         droidResult = await parseDroidIncremental({
           settingsFiles: droidSettingsFiles,
           cursors,
+          collectionStatus,
           queuePath,
           // Full-scan sync: drop cursor entries for any session whose
           // settings.json has disappeared off disk so cursors.droid stays
@@ -619,6 +678,7 @@ async function cmdSync(argv) {
         zedResult = await parseZedIncremental({
           dbPath: zedDbPath,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -648,6 +708,7 @@ async function cmdSync(argv) {
         roocodeResult = await parseRoocodeIncremental({
           taskFiles: roocodeTaskFiles,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -666,9 +727,9 @@ async function cmdSync(argv) {
 
     // ── DeepSeek Harness — passive DSH_HOME/~/.dsh JSONL(.zstd) sessions ──
     const deepSeekHarnessHome = resolveDeepSeekHarnessHome(process.env, home);
-    const deepSeekHarnessSessionFiles = await listDeepSeekHarnessSessionFiles(
+    const deepSeekHarnessSessionFiles = await discoverSourceFiles("deepseek-harness", "DeepSeek Harness", () => listDeepSeekHarnessSessionFiles(
       deepSeekHarnessHome,
-    );
+    ));
     let deepSeekHarnessResult = {
       filesProcessed: 0,
       eventsAggregated: 0,
@@ -686,6 +747,7 @@ async function cmdSync(argv) {
         deepSeekHarnessResult = await parseDeepSeekHarnessIncremental({
           sessionFiles: deepSeekHarnessSessionFiles,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -705,61 +767,27 @@ async function cmdSync(argv) {
     }
 
     // ── Cursor (API-based) ──
-    // One-time migration: earlier CLI versions mis-parsed the Cursor CSV after
-    // Cursor inserted new "Cloud Agent ID"/"Automation ID" columns, writing
-    // cursor records under model="unknown". Purge those local buckets, emit
-    // zero retractions so the cloud upserts overwrite them to zero, and reset
-    // the incremental cursor so the fixed parser re-fetches all affected rows.
+    // Preserve anonymous historical totals until replacement coverage and
+    // account ownership can be demonstrated. CSV availability is not proof.
     await migrateCursorUnknownBuckets({ cursors, queuePath });
 
     let cursorResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const cursorHomes = Array.isArray(dataDirectoryPaths.cursorHomes) && dataDirectoryPaths.cursorHomes.length > 0
       ? dataDirectoryPaths.cursorHomes
       : (dataDirectoryPaths.cursorHome ? [dataDirectoryPaths.cursorHome] : []);
-    const seenCursorHomes = new Set();
-    for (const cursorAppDir of cursorHomes) {
-      const homeKey = String(cursorAppDir || "").toLowerCase();
-      if (!homeKey || seenCursorHomes.has(homeKey)) continue;
-      seenCursorHomes.add(homeKey);
-      if (!isCursorInstalled({ home, appDir: cursorAppDir })) continue;
-      const cursorAuth = extractCursorSessionToken({ home, appDir: cursorAppDir });
-      if (!cursorAuth) continue;
-      try {
-        if (progress?.enabled) {
-          progress.start(`Fetching Cursor usage...`);
-        }
-        const csvText = await fetchCursorUsageCsv({ cookie: cursorAuth.cookie });
-        const records = parseCursorCsv(csvText);
-        if (records.length > 0) {
-          if (progress?.enabled) {
-            progress.start(
-              `Parsing Cursor ${renderBar(0)} 0/${formatNumber(records.length)} records | buckets 0`,
-            );
-          }
-          const partial = await parseCursorApiIncremental({
-            records,
-            cursors,
-            queuePath,
-            onProgress: (p) => {
-              if (!progress?.enabled) return;
-              const pct = p.total > 0 ? p.index / p.total : 1;
-              progress.update(
-                `Parsing Cursor ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(
-                  p.total,
-                )} records | buckets ${formatNumber(p.bucketsQueued)}`,
-              );
-            },
-            source: "cursor",
-          });
-          cursorResult.recordsProcessed += partial.recordsProcessed || 0;
-          cursorResult.eventsAggregated += partial.eventsAggregated || 0;
-          cursorResult.bucketsQueued += partial.bucketsQueued || 0;
-        }
-      } catch (err) {
-        if (!opts.auto) {
-          process.stderr.write(`Cursor sync (${cursorAppDir}): ${err.message}\n`);
-        }
+    try {
+      const snapshot = await require("../lib/cursor-config").collectCursorAccountUsage({
+        homes: cursorHomes, home, previousAccountKeys: cursors.cursorApi?.accountKeys || [],
+      });
+      if (snapshot.accountKeys.length) {
+        cursorResult = await parseCursorApiIncremental({ records: snapshot.records, coverage: snapshot.coverage, cursors, collectionStatus, queuePath, source: "cursor" });
+        cursors.cursorApi.accountKeys = snapshot.accountKeys;
+      } else {
+        collectionStatus.cursor = { ...collectionStatus.cursor, status: "missing", last_attempt_at: new Date().toISOString(), error_code: null };
       }
+    } catch (error) {
+      collectionStatus.cursor = { ...collectionStatus.cursor, status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || "cursor_export_incomplete" };
+      warnProviderParseFailure("Cursor", error, opts);
     }
 
     // ── Trae CN (local export / decrypted DB) ──
@@ -775,6 +803,7 @@ async function cmdSync(argv) {
         traeResult = await parseTraeIncremental({
           traeRoots: traeHomes,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -802,6 +831,7 @@ async function cmdSync(argv) {
           dbPath: kiroDbPath,
           jsonlPath: kiroJsonlPath,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -827,6 +857,7 @@ async function cmdSync(argv) {
         hermesResult = await parseHermesIncremental({
           hermesPath,
           cursors,
+          collectionStatus,
           queuePath,
           onProgress: (p) => {
             if (!progress?.enabled) return;
@@ -858,6 +889,7 @@ async function cmdSync(argv) {
       try {
         kiroCliResult = await parseKiroCliIncremental({
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -886,6 +918,7 @@ async function cmdSync(argv) {
         kimiResult = await parseKimiIncremental({
           wireFiles: kimiWireFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -912,6 +945,7 @@ async function cmdSync(argv) {
         kimiCodeResult = await parseKimiCodeIncremental({
           wireFiles: kimiCodeWireFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -940,6 +974,7 @@ async function cmdSync(argv) {
         codebuddyResult = await parseCodebuddyIncremental({
           projectFiles: codebuddyFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: codebuddyEnv,
           onProgress: (p) => {
@@ -968,6 +1003,7 @@ async function cmdSync(argv) {
         workbuddyResult = await parseWorkbuddyIncremental({
           projectFiles: workbuddyFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: workbuddyEnv,
           onProgress: (p) => {
@@ -994,6 +1030,7 @@ async function cmdSync(argv) {
         ompResult = await parseOmpIncremental({
           sessionFiles: ompFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -1025,6 +1062,7 @@ async function cmdSync(argv) {
         piResult = await parsePiIncremental({
           sessionFiles: piFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -1051,6 +1089,7 @@ async function cmdSync(argv) {
         craftResult = await parseCraftIncremental({
           sessionFiles: craftFiles,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -1117,6 +1156,7 @@ async function cmdSync(argv) {
         grokScanResult = await parseGrokBuildIncremental({
           sessions: grokSessionInputs,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -1151,6 +1191,7 @@ async function cmdSync(argv) {
         copilotResult = await parseCopilotIncremental({
           otelPaths: copilotPaths,
           cursors,
+          collectionStatus,
           queuePath,
           env: process.env,
           onProgress: (p) => {
@@ -1338,11 +1379,27 @@ async function cmdSync(argv) {
           .join("\n"),
       );
     }
+    delete collectionStatus.tracker;
+  } catch (error) {
+    syncError = error;
+    if (collectionStatus) collectionStatus.tracker = { ...collectionStatus.tracker, status: "error", last_attempt_at: new Date().toISOString(), error_code: error.code || error.name };
+    throw error;
   } finally {
-    progress?.stop();
-    await lock.release();
-    await fs.unlink(lockPath).catch(() => {});
+    try {
+      if (collectionStatus) {
+        // Success on another root/format cannot erase a failed discovery in this run.
+        for (const [source, failure] of discoveryFailures) collectionStatus[source] = failure;
+        await writeJson(collectionStatusPath, collectionStatus);
+      }
+    } catch (healthError) {
+      if (syncError) throw new AggregateError([syncError, healthError], "Sync and health persistence failed");
+      throw healthError;
+    } finally {
+      progress?.stop();
+      pending = await lock.release();
+    }
   }
+  return pending;
 }
 
 function parseArgs(argv) {
@@ -1398,8 +1455,9 @@ async function listConfiguredOpenclawSessionFiles(openclawHome) {
   let agentEntries = [];
   try {
     agentEntries = await fs.readdir(agentsDir, { withFileTypes: true });
-  } catch {
-    return files;
+  } catch (error) {
+    if (error.code === "ENOENT") return files;
+    throw error;
   }
   for (const agentEntry of agentEntries) {
     if (!agentEntry.isDirectory()) continue;
@@ -1407,8 +1465,9 @@ async function listConfiguredOpenclawSessionFiles(openclawHome) {
     let sessionEntries = [];
     try {
       sessionEntries = await fs.readdir(sessionsDir, { withFileTypes: true });
-    } catch {
-      continue;
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
     }
     for (const sessionEntry of sessionEntries) {
       if (!sessionEntry.isFile() || !sessionEntry.name.toLowerCase().endsWith(".jsonl")) continue;
@@ -2479,47 +2538,12 @@ async function applyCloudConversationsBackfill({ cursors, queueStatePath }) {
   return prevOffset > 0;
 }
 
-async function migrateCursorUnknownBuckets({ cursors, queuePath }) {
-  if (!cursors || typeof cursors !== "object") return;
-  cursors.migrations = cursors.migrations || {};
-  if (cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY]) return;
-
-  const buckets = cursors.hourly?.buckets;
-  if (!buckets || typeof buckets !== "object") {
-    cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY] = new Date().toISOString();
-    return;
-  }
-
-  const retractions = [];
-  for (const key of Object.keys(buckets)) {
-    if (!key.startsWith("cursor|unknown|")) continue;
-    const hourStart = key.split("|").slice(2).join("|");
-    retractions.push(
-      JSON.stringify({
-        source: "cursor",
-        model: "unknown",
-        hour_start: hourStart,
-        input_tokens: 0,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        output_tokens: 0,
-        reasoning_output_tokens: 0,
-        total_tokens: 0,
-        conversation_count: 0,
-      }),
-    );
-    delete buckets[key];
-  }
-
-  if (retractions.length > 0) {
-    await ensureDir(path.dirname(queuePath));
-    await fs.appendFile(queuePath, retractions.join("\n") + "\n");
-    if (cursors.cursorApi) {
-      cursors.cursorApi.lastRecordTimestamp = null;
-    }
-  }
-
-  cursors.migrations[CURSOR_UNKNOWN_MIGRATION_KEY] = new Date().toISOString();
+async function migrateCursorUnknownBuckets({ cursors }) {
+  // A model-label correction cannot prove that a later export covers old usage.
+  // Keep the old entry point read-only; explicit history repair needs evidence.
+  return Object.entries(cursors?.hourly?.buckets || {})
+    .filter(([key]) => key.startsWith("cursor|unknown|"))
+    .map(([key, bucket]) => ({ key, previous_tokens: bucket.totals?.total_tokens ?? null, reason: "cursor_legacy_account_unresolved" }));
 }
 
 async function migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles }) {

@@ -116,13 +116,17 @@ function getGlmEntitlementPlan(revision, planId, contract = GLM_ENTITLEMENT_CONT
 }
 
 function getGlmEntitlementWindows(revision, planId, contract = GLM_ENTITLEMENT_CONTRACT) {
-  return getGlmEntitlementPlan(revision, planId, contract)?.entitlement_windows || [];
+  const windows = getGlmEntitlementPlan(revision, planId, contract)?.entitlement_windows || [];
+  const { entitlementEvidenceIsStale } = require("./token-plan-catalog");
+  return windows.map(window => ({ ...window, is_stale: entitlementEvidenceIsStale(window) }));
 }
 
 function entitlementWindowsMatch(record, revision, planId) {
   if (!Array.isArray(record?.entitlement_windows)) return false;
-  return JSON.stringify(record.entitlement_windows) === JSON.stringify(
-    getGlmEntitlementWindows(revision, planId),
+  // Freshness changes with time; it is not evidence of a different plan cohort.
+  const evidenceOnly = windows => windows.map(({ is_stale, ...evidence }) => evidence);
+  return JSON.stringify(evidenceOnly(record.entitlement_windows)) === JSON.stringify(
+    evidenceOnly(getGlmEntitlementWindows(revision, planId)),
   );
 }
 

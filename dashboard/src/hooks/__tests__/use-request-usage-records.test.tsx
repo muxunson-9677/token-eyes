@@ -165,6 +165,21 @@ describe("useRequestUsageRecords", () => {
     expect(sources).toContain("hermes");
   });
 
+  it("passes the selected record kind to the current request API", async () => {
+    getRequestUsageRecords.mockResolvedValue({
+      records: [makeRecord("codex", "gpt-5", "2026-06-24T01:00:00.000Z")],
+      totals: makeTotals(),
+      page: { page: 1, pageSize: 10, total: 1, total_pages: 1 },
+    });
+
+    const { result } = setup(["codex"], { recordKind: "request_event" });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(getRequestUsageRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ recordKind: "request_event" }),
+    );
+  });
+
   it("returns totals from single backend response", async () => {
     getRequestUsageRecords.mockResolvedValue({
       records: [
@@ -338,6 +353,7 @@ describe("useRequestUsageRecords", () => {
     expect(cached.result.current.records).toHaveLength(1);
     expect(cached.result.current.total).toBe(33);
     expect(cached.result.current.totalPages).toBe(4);
+    expect(cached.result.current.error).toBe("refresh unavailable");
   });
 
   it("sets error when fetch fails", async () => {
@@ -351,5 +367,35 @@ describe("useRequestUsageRecords", () => {
 
     expect(result.current.error).toBe("api down");
     expect(result.current.records).toEqual([]);
+  });
+});
+
+describe("汇总范围", () => {
+  it("无usage字段保留未知，合法零不被混淆", async () => {
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({records:[],totals:{total_tokens:null,input_tokens:null},queue_history_record_count:1,queue_baseline_totals:{total_tokens:0},page:{}} as any);
+    const {result}=setup(["codex"]);await waitFor(()=>expect(result.current.loading).toBe(false));
+    expect(result.current.totals?.total_tokens).toBeNull();expect(result.current.totals?.input_tokens).toBeNull();expect(result.current.totals?.cache_hit_rate).toBeNull();
+    expect(result.current.queueHistory).toEqual({recordCount:1,tokens:0});
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({records:[],totals:makeTotals({total_tokens:0}),queue_history_record_count:0,queue_baseline_totals:{total_tokens:0},page:{}} as any);
+    await act(async()=>{await result.current.refresh();});expect(result.current.totals?.total_tokens).toBe(0);expect(result.current.queueHistory?.recordCount).toBe(0);
+  });
+  it("无请求仍保留队列历史证据，旧接口缺证据不猜零", async () => {
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({records:[],totals:makeTotals(),queue_history_record_count:2,queue_baseline_totals:{total_tokens:300},page:{totals_scope:"unknown"}} as any);
+    const first=setup(["codex"],{recordKind:"request_event"});
+    await waitFor(()=>expect(first.result.current.loading).toBe(false));
+    expect(first.result.current.queueHistory).toEqual({recordCount:2,tokens:300});first.unmount();
+    vi.mocked(getRequestUsageRecords).mockRejectedValueOnce(new Error("offline"));
+    const cached=setup(["codex"],{recordKind:"request_event"});await waitFor(()=>expect(cached.result.current.loading).toBe(false));
+    expect(cached.result.current.queueHistory).toEqual({recordCount:2,tokens:300});
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({records:[],totals:makeTotals(),page:{}} as any);
+    await act(async()=>{await cached.result.current.refresh();});expect(cached.result.current.queueHistory).toBeNull();
+  });
+  it("保留截断状态，旧接口缺字段不得声称完整", async () => {
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({ records: [], totals: makeTotals(), page: { totals_scope: "returned_subset", total: 1000 } } as any);
+    const {result}=setup(["codex"]);
+    await waitFor(()=>expect(result.current.totalsScope).toBe("returned_subset"));
+    vi.mocked(getRequestUsageRecords).mockResolvedValue({ records: [], totals: makeTotals(), page: {} } as any);
+    await act(async()=>{await result.current.refresh();});
+    expect(result.current.totalsScope).toBe("unknown");
   });
 });

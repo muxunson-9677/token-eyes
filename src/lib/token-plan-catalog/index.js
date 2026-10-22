@@ -206,6 +206,10 @@ function resolveEntitlementWindow(window, nowMs) {
   };
 }
 
+function entitlementEvidenceIsStale(window, nowMs = Date.now()) {
+  return evidenceIsStale({ ...window, stale_after_seconds: Number(window.stale_after_seconds) || DEFAULT_STALE_AFTER_SECONDS }, nowMs);
+}
+
 function loadCatalogs() {
   if (catalogCache) return catalogCache;
 
@@ -298,6 +302,7 @@ function listProviderOptions() {
 }
 
 module.exports = {
+  entitlementEvidenceIsStale,
   getProviderCatalog,
   getPlanById,
   listProviderOptions,

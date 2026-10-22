@@ -28,8 +28,8 @@ async function call(handler, endpoint) {
 test("realtime keeps completed child rollout usage across state changes and filters each selected range", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-eyes-completed-child-"));
   const reads = new Map();
-  const createReadStream = fs.createReadStream;
-  t.mock.method(fs, "createReadStream", function (file, ...args) {
+  const createReadStream = fs.promises.open;
+  t.mock.method(fs.promises, "open", function (file, ...args) {
     if (String(file).startsWith(root)) reads.set(String(file), (reads.get(String(file)) || 0) + 1);
     return createReadStream.call(this, file, ...args);
   });
@@ -75,7 +75,7 @@ test("realtime keeps completed child rollout usage across state changes and filt
     }
     const parentFile = sessions[0][Symbol.for("token-eyes.codex-rollout-path")];
     for (let update = 1; update <= 129; update += 1) {
-      fs.appendFileSync(parentFile, `\n${JSON.stringify({ timestamp: "2026-09-21T09:04:00Z", type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 7, total_tokens: 7 } } } })}`);
+      fs.appendFileSync(parentFile, `\n${JSON.stringify({ timestamp: new Date(Date.parse("2026-09-21T09:04:00Z") + update * 1000).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 7, total_tokens: 7 } } } })}`);
       const refreshed = await call(handler, "/functions/tokentracker-realtime-sessions?range=today&tz=UTC");
       assert.equal(refreshed.sessions.find((session) => session.state === "running").total_tokens.value, 10 + update * 7, "changed file signature invalidates live usage");
     }

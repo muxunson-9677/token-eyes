@@ -177,6 +177,7 @@ test("parseRolloutIncremental skips same-day fork replay and counts only live tu
     // The cumulative-delta chain must stay anchored at the final live totals so
     // later appends produce correct deltas.
     assert.equal(cursors.files[rolloutPath].lastTotal.total_tokens, 158139380);
+    assert.equal(cursors.files[rolloutPath].sessionId, FORK_ID);
     assert.equal(cursors.files[rolloutPath].forked, true);
     assert.equal(cursors.files[rolloutPath].replayDone, true);
   } finally {
@@ -456,6 +457,14 @@ test("parseRolloutIncremental resumes a forked file after replay without re-ente
     await fs.appendFile(rolloutPath, lines[8] + "\n", "utf8");
     const second = await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
     assert.equal(second.eventsAggregated, 1);
+    assert.equal(cursors.files[rolloutPath].sessionId, FORK_ID);
+    const archived = path.join(tmp, "archived", path.basename(rolloutPath));
+    await fs.mkdir(path.dirname(archived));
+    await fs.copyFile(rolloutPath, archived);
+    const reread = await parseRolloutIncremental({ rolloutFiles: [archived, rolloutPath], cursors, queuePath });
+    assert.equal(reread.eventsAggregated, 0);
+    assert.equal(cursors.files[rolloutPath].sessionId, FORK_ID);
+    assert.equal(cursors.files[archived].sessionId, FORK_ID);
 
     const queued = await readJsonLines(queuePath);
     const latestTotal = queued.reduce((max, row) => Math.max(max, row.total_tokens), 0);
@@ -481,6 +490,7 @@ test("collectRolloutRequestUsageRecords skips fork replay token counts and lifec
     assert.deepEqual(timestamps, ["2026-08-10T15:26:07.295Z", "2026-08-10T15:26:17.286Z"]);
     assert.equal(result.totals.total_tokens, 43044 + 44756);
     assert.ok(result.records.every((r) => r.model === "gpt-5.6-sol"));
+    assert.ok(result.records.every((r) => r.id.startsWith(`codex:${FORK_ID}:`)));
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

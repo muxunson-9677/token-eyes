@@ -3,7 +3,6 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
-const { readCodexUsageLines } = require("./codex-usage-lines");
 const agentRegistry = require("../../shared/agent-registry.json");
 const codexResetReviewed = require("../../shared/codex-reset-reviewed.json");
 const { verifySignedStaticFeed } = require("./signed-static-feed");
@@ -63,6 +62,7 @@ const {
   createConfiguredTokenPlanResolver,
   normalizeBillingMode,
   normalizeUsageAttribution,
+  expandUsageIdentitySnapshot,
   queueUsageIdentity,
 } = require("./usage-attribution");
 
@@ -199,6 +199,8 @@ function queueFileMtimeKey(queuePath) {
 
 function buildRequestUsageRecordsListCacheKey({
   queuePath,
+  collectionStatusPath,
+  pricingOptions,
   effectiveSources,
   from,
   to,
@@ -206,12 +208,15 @@ function buildRequestUsageRecordsListCacheKey({
   tzOffset,
   models,
   limit,
+  recordKindFilter,
 }) {
   const sourcesKey = effectiveSources ? effectiveSources.slice().sort().join(",") : "__all__";
   const modelsKey = models && models.length > 0 ? models.slice().sort().join(",") : "";
   return [
     queuePath,
     queueFileMtimeKey(queuePath),
+    queueFileMtimeKey(collectionStatusPath),
+    JSON.stringify(pricingOptions || {}),
     sourcesKey,
     from || "",
     to || "",
@@ -219,6 +224,7 @@ function buildRequestUsageRecordsListCacheKey({
     String(tzOffset ?? ""),
     modelsKey,
     String(limit),
+    recordKindFilter || "",
   ].join("\u0001");
 }
 
@@ -268,19 +274,15 @@ async function buildRequestUsageRecordsList({
   limit,
   models,
   pricingOptions,
+  recordKindFilter,
 }) {
   const allRecords = [];
+  let sourceTruncated = false;
   const allRows = readQueueData(qp);
   let aggregateOnlySources = [];
 
-  const fromPartsRur = from
-    ? getZonedParts(new Date(`${from}T00:00:00Z`), timeZoneContext)
-    : null;
-  const toPartsRur = to
-    ? getZonedParts(new Date(`${to}T00:00:00Z`), timeZoneContext)
-    : null;
-  const fromKeyRur = fromPartsRur ? formatPartsDayKey(fromPartsRur) : null;
-  const toKeyRur = toPartsRur ? formatPartsDayKey(toPartsRur) : null;
+  const fromKeyRur = from || null;
+  const toKeyRur = to || null;
 
   const wantsCodex = !effectiveSources || effectiveSources.includes("codex");
   // V2 Task 6 (W3): Claude gets true message-level events from its session
@@ -318,17 +320,18 @@ async function buildRequestUsageRecordsList({
           to: to || undefined,
           timeZoneContext,
           limit,
+          models,
           pricingOptions,
         });
         claudeEventRecords = claudeResult.records || [];
+        sourceTruncated ||= Boolean(claudeResult.truncated);
       }
     } catch (e) {
-      console.error("[LocalAPI] request-usage-records claude branch error:", e?.message || e);
+      throw new Error("Request usage source unavailable: claude", { cause: e });
     }
   }
-  if (claudeEventRecords.length > 0) {
-    aggregateOnlySources = aggregateOnlySources.filter((s) => s !== "claude");
-  }
+  // Keep historical buckets unless the selected raw records prove full bucket coverage.
+  aggregateOnlySources = effectiveSources || [...new Set(allRows.map(row => normalizeSource(row.source)))];
 
   const aggregateRecords = buildAggregateUsageRecords(allRows, {
     fromKey: fromKeyRur,
@@ -337,6 +340,7 @@ async function buildRequestUsageRecordsList({
     pricingOptions,
     sources: aggregateOnlySources.length > 0 ? aggregateOnlySources : [],
     models,
+    includeCodex: true,
   });
   allRecords.push(...aggregateRecords);
 
@@ -349,6 +353,7 @@ async function buildRequestUsageRecordsList({
     try {
       const rolloutFiles = await listCodexRolloutFilesFromHomes(
         dataDirectoryPaths.codexHomes?.length ? dataDirectoryPaths.codexHomes : [dataDirectoryPaths.codexHome],
+        { forceRefresh: true },
       );
 
       const codexResult = await collectRolloutRequestUsageRecords({
@@ -358,9 +363,11 @@ async function buildRequestUsageRecordsList({
         to: to || undefined,
         timeZoneContext,
         limit,
+        models,
         pricingOptions,
       });
 
+      sourceTruncated ||= Boolean(codexResult.truncated);
       for (const record of codexResult.records || []) {
         record.source_display_name = getSourceDisplayName("codex");
         if (record.status === undefined) record.status = null;
@@ -371,12 +378,30 @@ async function buildRequestUsageRecordsList({
         allRecords.push(record);
       }
     } catch (e) {
-      console.error("[LocalAPI] request-usage-records codex branch error:", e?.message || e);
+      throw new Error("Request usage source unavailable: codex", { cause: e });
     }
   }
 
+  const identity = row => JSON.stringify([row.source, row.model || "unknown", toUtcHalfHourStart(row.hour_start) || row.hour_start]);
+  const rawKeys = new Set(allRecords.filter(row => row.record_kind !== "aggregate_bucket" && row.usage_available !== false).map(identity));
+  // Request evidence and queue snapshots have independent coverage. Preserve both,
+  // but never add overlapping aggregates to the request list or infer replacement
+  // from equal totals (which says nothing about account or billing attribution).
+  const queueBaselineRecords = buildAggregateUsageRecords(allRows, {
+    fromKey: fromKeyRur, toKey: toKeyRur, timeZoneContext, pricingOptions,
+    sources: effectiveSources, models, includeCodex: true,
+  }).filter(row => rawKeys.has(identity(row)));
+  const merged = allRecords.filter(row => row.record_kind !== "aggregate_bucket" || !rawKeys.has(identity(row)));
+  allRecords.splice(0, allRecords.length, ...merged);
+  if (recordKindFilter) {
+    allRecords.splice(0, allRecords.length, ...allRecords.filter((row) => {
+      const kind = row.record_kind === "aggregate_bucket" ? "aggregate_bucket" : "request_event";
+      return kind === recordKindFilter;
+    }));
+  }
+  aggregateOnlySources = [...new Set(allRecords.filter(row => row.record_kind === "aggregate_bucket").map(row => row.source))];
   for (const record of allRecords) {
-    Object.assign(record, computeRowCostDetailed(record, pricingOptions));
+    if (record.usage_available !== false) Object.assign(record, computeRowCostDetailed(record, pricingOptions));
   }
 
   allRecords.sort((a, b) => {
@@ -385,11 +410,10 @@ async function buildRequestUsageRecordsList({
     if (ta === tb) return 0;
     return ta < tb ? 1 : -1;
   });
-  if (allRecords.length > limit) {
-    allRecords.length = limit;
-  }
+  const hasMore = sourceTruncated || allRecords.length > limit;
+  if (allRecords.length > limit) allRecords.length = limit;
 
-  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur };
+  return { allRecords, aggregateOnlySources, allRows, fromKeyRur, toKeyRur, hasMore, queueBaselineRecords, queueHistoryRecordCount: aggregateRecords.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +502,7 @@ function resolveQueuePath() {
   return path.join(home, ".tokentracker", "tracker", "queue.jsonl");
 }
 
-function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath()) {
+function readProjectQueueData(projectQueuePath) {
   let raw;
   try {
     raw = fs.readFileSync(projectQueuePath, "utf8");
@@ -494,36 +518,13 @@ function readProjectQueueData(projectQueuePath, mainQueuePath = resolveQueuePath
     try {
       const row = JSON.parse(line);
       const billingMode = normalizeUsageAttribution(row).billing_mode;
-      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}|${billingMode}`;
+      const key = `${row.project_key || ""}|${row.source || ""}|${row.model || "unknown"}|${row.hour_start || ""}|${billingMode}`;
       seen.set(key, normalizeQueueRow(row));
     } catch {
       // skip malformed
     }
   }
-  const projectRows = Array.from(seen.values());
-  const missingModelRows = projectRows.filter((row) => !row.model);
-  if (missingModelRows.length > 0) {
-    const mainQueueRows = readQueueData(mainQueuePath);
-    const sourceHourModelMap = new Map();
-    for (const r of mainQueueRows) {
-      const mainKey = `${r.source || ""}|${r.hour_start || ""}`;
-      if (!r.model) continue;
-      if (!sourceHourModelMap.has(mainKey)) sourceHourModelMap.set(mainKey, new Map());
-      const models = sourceHourModelMap.get(mainKey);
-      models.set(r.model, (models.get(r.model) || 0) + Number(r.total_tokens || 0));
-    }
-    for (const row of missingModelRows) {
-      const mainKey = `${row.source || ""}|${row.hour_start || ""}`;
-      const models = sourceHourModelMap.get(mainKey);
-      if (!models || models.size === 0) continue;
-      if (models.size === 1) {
-        row.model = models.keys().next().value;
-        continue;
-      }
-      row.model_breakdown = Array.from(models.entries()).map(([model, tokens]) => ({ model, tokens }));
-    }
-  }
-  return projectRows;
+  return Array.from(seen.values());
 }
 
 function isLegacyInclusiveCodexRow(row) {
@@ -597,7 +598,7 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
     // don't want to hide behind an empty array forever 鈥?the dashboard would
     // otherwise render "0 tokens" with no clue the queue was unreadable.
     if (e?.code !== "ENOENT") {
-      console.error("[LocalAPI] readQueueData: failed to read queue:", e?.message || e);
+      throw Object.assign(new Error("Usage queue unavailable", { cause: e }), { code: e.code || "queue_read_error" });
     }
     return [];
   }
@@ -621,12 +622,14 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
   // Deduplicate: each sync appends cumulative totals per bucket, so for
   // each (source, model, hour_start, billing_mode) keep only the latest entry.
   const seen = new Map();
+  const snapshotBases = new Set(parsed.filter(row => row.usage_identity_version === 1).map(row => queueUsageIdentity(row)));
   for (const row of parsed) {
     // A pre-release OpenClaw smoke check accidentally wrote this exact
     // synthetic fixture to the default queue. Ignore only its full fingerprint;
     // genuine OpenClaw history remains untouched.
     if (isKnownSyntheticOpenClawSmokeRow(row)) continue;
-    const key = dedupeMode === "realtime"
+    const key = snapshotBases.has(queueUsageIdentity(row)) ? queueUsageIdentity(row)
+      : dedupeMode === "realtime"
       ? queueUsageIdentity(row, { dimensionsKey: `${providerQueueDimensionsKey(row)}\u0001session:${row.session_key || row.session_id || ""}` })
       : dedupeMode === "dimensions"
       ? queueUsageIdentity(row, { dimensionsKey: queueRowDimensionsKey(row) })
@@ -637,7 +640,7 @@ function readQueueData(queuePath, { dedupeMode = "legacy" } = {}) {
         : queueUsageIdentity(row);
     seen.set(key, normalizeQueueRow(row));
   }
-  const rows = Array.from(seen.values());
+  const rows = Array.from(seen.values()).flatMap(expandUsageIdentitySnapshot);
   queueDataCache.delete(cacheKey);
   queueDataCache.set(cacheKey, { fingerprint, rows });
   while (queueDataCache.size > QUEUE_DATA_CACHE_MAX_ENTRIES) {
@@ -920,7 +923,7 @@ async function listCodexRolloutFilesFromHome(codexHome) {
   const seen = new Set();
   const files = [];
   for (const dir of dirs) {
-    const found = await listRolloutFilesDeep(dir).catch(() => []);
+    const found = await listRolloutFilesDeep(dir);
     for (const filePath of found) {
       const key = String(filePath || "").toLowerCase();
       if (!key || seen.has(key)) continue;
@@ -956,11 +959,6 @@ function shiftDayKey(dayKey, deltaDays) {
   return date.toISOString().slice(0, 10);
 }
 
-function codexRolloutFileDay(filePath) {
-  const match = path.basename(String(filePath || "")).match(/^rollout-(\d{4}-\d{2}-\d{2})T/);
-  return match ? match[1] : null;
-}
-
 async function collectCodexRolloutQueueRows({
   codexHome,
   codexHomes,
@@ -970,13 +968,6 @@ async function collectCodexRolloutQueueRows({
   timeZoneContext = null,
 } = {}) {
   const directFiles = Array.isArray(rolloutFiles) ? [...new Set(rolloutFiles)] : [];
-  if (directFiles.length > 1) {
-    const rows = [];
-    for (const filePath of directFiles) {
-      rows.push(...await collectCodexRolloutQueueRows({ codexHome, codexHomes, rolloutFiles: [filePath], from, to, timeZoneContext }));
-    }
-    return rows;
-  }
   const requestedFrom = from;
   const requestedTo = to;
   // A live parent's signature must not invalidate completed child files, and
@@ -1002,14 +993,7 @@ async function collectCodexRolloutQueueRows({
     const files = usesDirectRolloutFiles
       ? [...new Set(rolloutFiles.map((filePath) => path.resolve(String(filePath))))]
       : await listCodexRolloutFilesFromHomes(homes, { forceRefresh: true });
-    const minFileDay = from ? shiftDayKey(from, -1) : null;
-    const maxFileDay = to ? shiftDayKey(to, 1) : null;
-    const relevantFiles = usesDirectRolloutFiles ? files : files.filter((filePath) => {
-      const fileDay = codexRolloutFileDay(filePath);
-      if (fileDay && minFileDay && fileDay < minFileDay) return false;
-      if (fileDay && maxFileDay && fileDay > maxFileDay) return false;
-      return true;
-    });
+    const relevantFiles = files;
     if (relevantFiles.length === 0) return [];
     const cacheKey = [
       scanScopeKey,
@@ -1021,101 +1005,7 @@ async function collectCodexRolloutQueueRows({
       CODEX_ROLLOUT_QUEUE_CACHE.set(cacheKey, cached);
       return cached.rows;
     }
-    const buckets = new Map();
-
-    for (const filePath of relevantFiles) {
-      const stat = await fs.promises.stat(filePath).catch(() => null);
-      if (!stat || !stat.isFile()) continue;
-
-      let model = "unknown";
-      let sessionId = null;
-        for await (const line of readCodexUsageLines(filePath)) {
-          if (!line) continue;
-          if (
-            !line.includes('"token_count"') &&
-            !line.includes('"turn_context"') &&
-            !line.includes('"session_meta"')
-          ) {
-            continue;
-          }
-
-          let obj;
-          try {
-            obj = JSON.parse(line);
-          } catch {
-            continue;
-          }
-
-          if (
-            (obj?.type === "turn_context" || obj?.type === "session_meta") &&
-            obj?.payload &&
-            typeof obj.payload === "object"
-          ) {
-            if (typeof obj.payload.model === "string" && obj.payload.model.trim()) {
-              model = obj.payload.model.trim();
-            }
-            if (
-              obj.type === "session_meta" &&
-              typeof obj.payload.id === "string" &&
-              obj.payload.id.trim()
-            ) {
-              sessionId = obj.payload.id.trim();
-            }
-            continue;
-          }
-
-          const token = extractCodexTokenCount(obj);
-          if (!token?.info || typeof token.info !== "object") continue;
-          const timestamp = typeof token.timestamp === "string" ? token.timestamp : "";
-          if (!timestamp) continue;
-          const dayKey = codexTimestampDayKey(timestamp, timeZoneContext);
-          if (!dayKey) continue;
-          if (from && dayKey < from) continue;
-          if (to && dayKey > to) continue;
-
-          const usage = normalizeCodexUsage(token.info.last_token_usage);
-          if (!usage || !Number(usage.total_tokens || 0)) continue;
-          const hourStart = toUtcHalfHourStart(timestamp);
-          if (!hourStart) continue;
-
-          const bucketKey = `codex|${sessionId || "aggregate"}|${model}|${hourStart}|${dayKey}`;
-          if (!buckets.has(bucketKey)) {
-            buckets.set(bucketKey, {
-              hour_start: hourStart,
-              codex_usage_day: dayKey,
-              source: "codex",
-              ...(sessionId ? { session_id: sessionId } : {}),
-              model,
-              input_tokens: 0,
-              output_tokens: 0,
-              cached_input_tokens: 0,
-              cache_creation_input_tokens: 0,
-              reasoning_output_tokens: 0,
-              total_tokens: 0,
-              billable_total_tokens: 0,
-              conversation_count: 0,
-            });
-          }
-          const row = buckets.get(bucketKey);
-          if (!row.last_activity_at || Date.parse(timestamp) > Date.parse(row.last_activity_at)) {
-            row.last_activity_at = timestamp;
-          }
-          row.input_tokens += Number(usage.input_tokens || 0);
-          row.output_tokens += Number(usage.output_tokens || 0);
-          row.cached_input_tokens += Number(usage.cached_input_tokens || 0);
-          row.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
-          row.reasoning_output_tokens += Number(usage.reasoning_output_tokens || 0);
-          row.total_tokens += Number(usage.total_tokens || 0);
-          row.billable_total_tokens += Number(usage.total_tokens || 0);
-          row.conversation_count += 1;
-        }
-    }
-
-    const rows = Array.from(buckets.values()).sort((a, b) => {
-      const timeCmp = a.hour_start.localeCompare(b.hour_start);
-      if (timeCmp !== 0) return timeCmp;
-      return String(a.model || "").localeCompare(String(b.model || ""));
-    });
+    const rows = await require("./rollout").collectRolloutQueueRows(relevantFiles, { dayKey: timestamp => codexTimestampDayKey(timestamp, timeZoneContext) });
     // Keep only the latest signature for this file/range scope. A frequently
     // growing parent must not crowd unchanged children out of the bounded cache.
     for (const [key, entry] of CODEX_ROLLOUT_QUEUE_CACHE) {
@@ -1332,7 +1222,7 @@ function buildAggregateUsageRecords(rows, options = {}) {
   for (const row of rows) {
     if (!row || !row.hour_start) continue;
     const src = normalizeSource(row.source);
-    if (!src || src === "codex") continue;
+    if (!src || (src === "codex" && !options.includeCodex)) continue;
     if (sources && !sources.includes(src)) continue;
     const model = String(row.model || "unknown");
     const modelKey = model.trim().toLowerCase();
@@ -1361,6 +1251,7 @@ function buildAggregateUsageRecords(rows, options = {}) {
       status: null,
       latency_ms: null,
       first_token_ms: null,
+      ...normalizeUsageAttribution(row),
       request_source: "queue_aggregate",
       record_kind: "aggregate_bucket",
     });
@@ -1465,6 +1356,12 @@ function computeRecordTotals(records) {
     totals.pricing_coverage = "unpriced";
   } else {
     totals.pricing_coverage = "partial";
+  }
+  const knownUsageCount = records.filter(record => record.usage_available !== false).length;
+  totals.usage_coverage = knownUsageCount === records.length ? "complete" : knownUsageCount ? "partial" : "unavailable";
+  if (records.length && !knownUsageCount) {
+    for (const field of ["input_tokens", "cached_input_tokens", "cache_creation_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens", "cache_hit_rate"]) totals[field] = null;
+    totals.pricing_coverage = "unpriced";
   }
   return Object.assign(totals, summarizePricingProvenance(records));
 }
@@ -3569,7 +3466,6 @@ function createLocalApiHandler({
 
   async function withCodexRolloutRows(rows, { from = "", to = "", timeZoneContext = null, sources = null } = {}) {
     if (Array.isArray(sources) && !sources.includes("codex")) return rows;
-    if (hasCodexQueueRowsForRange(rows, { from, to, timeZoneContext })) return rows;
     const config = readTrackerConfig();
     const configuredCodexHome = normalizeDataDirectories(config.dataDirectories).codex;
     const usesDefaultQueue = path.resolve(qp).toLowerCase() === path.resolve(resolveQueuePath()).toLowerCase();
@@ -3588,10 +3484,11 @@ function createLocalApiHandler({
       timeZoneContext,
     });
     if (codexRows.length === 0) return rows;
-    return [
-      ...rows.filter((row) => normalizeSource(row.source) !== "codex"),
-      ...codexRows,
-    ];
+    const key = row => JSON.stringify([row.source, row.model || "unknown", toUtcHalfHourStart(row.hour_start) || row.hour_start]);
+    const queued = new Set(rows.filter(row => row.source === "codex").map(key));
+    // Queue snapshots retain historical and attribution evidence. Raw logs only
+    // fill buckets absent from the queue; request detail is available separately.
+    return [...rows, ...codexRows.filter(row => !queued.has(key(row)))];
   }
 
   function normalizeAgentDefaultPricingUpdatedAt(raw, pricing, legacyUpdatedAt) {
@@ -5559,11 +5456,10 @@ function createLocalApiHandler({
         rows = rows.filter((r) => sourcesSet.has((r.source || "").toLowerCase()));
       }
       const pricingOptions = getPricingOptions();
-      const daily = aggregateByDay(rows, timeZoneContext, pricingOptions).filter((d) => d.day >= fromDate.toISOString().slice(0, 10) && d.day <= toDate.toISOString().slice(0, 10));
-      return daily.reduce((sum, d) => sum + (d.total_cost_usd || 0), 0);
+      const totals = computeQueueTotals(rows, { fromKey: fromDate.toISOString().slice(0,10), toKey: toDate.toISOString().slice(0,10), timeZoneContext, pricingOptions });
+      return totals.unpriced_tokens > 0 ? null : totals.cost_usd;
     } catch (e) {
-      // If queue data is unavailable, return 0 (no API cost data)
-      return 0;
+      return null;
     }
   }
 
@@ -5656,17 +5552,17 @@ function createLocalApiHandler({
 
     const periodSubscriptionCny = periodSubscriptionUsd * usdToCny;
     const periodOtherAiCny = periodOtherAiUsd * usdToCny;
-    const periodApiCny = periodApiUsd * usdToCny;
-    const periodCombinedUsd = periodSubscriptionUsd + periodOtherAiUsd + periodApiUsd;
-    const periodCombinedCny = periodCombinedUsd * usdToCny;
+    const periodApiCny = periodApiUsd === null ? null : periodApiUsd * usdToCny;
+    const periodCombinedUsd = periodApiUsd === null ? null : periodSubscriptionUsd + periodOtherAiUsd + periodApiUsd;
+    const periodCombinedCny = periodCombinedUsd === null ? null : periodCombinedUsd * usdToCny;
 
     const lifetimeSubscriptionCny = lifetimeSubscriptionUsd * usdToCny;
     const lifetimeOtherAiCny = lifetimeOtherAiUsd * usdToCny;
-    const lifetimeApiCny = lifetimeApiUsd * usdToCny;
-    const lifetimeCombinedUsd = lifetimeSubscriptionUsd + lifetimeOtherAiUsd + lifetimeApiUsd;
-    const lifetimeCombinedCny = lifetimeCombinedUsd * usdToCny;
+    const lifetimeApiCny = lifetimeApiUsd === null ? null : lifetimeApiUsd * usdToCny;
+    const lifetimeCombinedUsd = lifetimeApiUsd === null ? null : lifetimeSubscriptionUsd + lifetimeOtherAiUsd + lifetimeApiUsd;
+    const lifetimeCombinedCny = lifetimeCombinedUsd === null ? null : lifetimeCombinedUsd * usdToCny;
 
-    const round6 = (v) => Number(v.toFixed(6));
+    const round6 = (v) => v === null ? null : Number(v.toFixed(6));
 
     // Build by_source array
     const bySource = Array.from(bySourceMap.values())
@@ -5678,9 +5574,9 @@ function createLocalApiHandler({
         other_ai_usd: round6(entry.other_ai_usd),
         other_ai_cny: round6(entry.other_ai_usd * usdToCny),
         api_usd: round6(entry.api_usd),
-        api_cny: round6(entry.api_usd * usdToCny),
-        combined_usd: round6(entry.subscription_usd + entry.other_ai_usd + entry.api_usd),
-        combined_cny: round6((entry.subscription_usd + entry.other_ai_usd + entry.api_usd) * usdToCny),
+        api_cny: entry.api_usd === null ? null : round6(entry.api_usd * usdToCny),
+        combined_usd: entry.api_usd === null ? null : round6(entry.subscription_usd + entry.other_ai_usd + entry.api_usd),
+        combined_cny: entry.api_usd === null ? null : round6((entry.subscription_usd + entry.other_ai_usd + entry.api_usd) * usdToCny),
       }));
 
     return {
@@ -7239,7 +7135,7 @@ function createLocalApiHandler({
           agent: model.source,
           model: model.model,
           tokens: model.tokens,
-          costUsd: model.cost_usd,
+          costUsd: model.pricing_coverage === "complete" ? model.cost_usd : null,
         }));
         const viewModel = buildWidgetViewModel({
           agent: url.searchParams.get("agent") || "all",
@@ -7395,7 +7291,17 @@ function createLocalApiHandler({
         const lifecycleSessionsInRange = range.to === todayRange.to
           ? lifecycleSessionsWithMessageSpans
           : [];
-        privateLocalJson(req, res, buildRealtimeSessionViewModel({
+        let collectionStatus = {};
+        try {
+          const stored = JSON.parse(fs.readFileSync(path.join(trackerDataDir, "collection-status.json"), "utf8"));
+          collectionStatus = Object.fromEntries(Object.entries(stored).map(([source, state]) => [source, {
+            status: ["ok", "missing", "error"].includes(state?.status) ? state.status : "unknown",
+            last_successful_at: typeof state?.last_successful_at === "string" ? state.last_successful_at : null,
+          }]));
+        } catch (error) {
+          if (error.code !== "ENOENT") collectionStatus = { tracker: { status: "error", last_successful_at: null } };
+        }
+        privateLocalJson(req, res, { ...buildRealtimeSessionViewModel({
           observedAt: nowDate.toISOString(),
           range: range.range,
           rangeFrom: range.from,
@@ -7413,7 +7319,7 @@ function createLocalApiHandler({
             now: nowDate,
           }), nativeResources),
           nativeResources,
-        }));
+        }), collection_status: collectionStatus });
       } catch (_error) {
         privateLocalJson(req, res, { ok: false, error: "realtime_sessions_unavailable" }, 500);
       }
@@ -9244,6 +9150,8 @@ function createLocalApiHandler({
         try {
           const listCacheKey = buildRequestUsageRecordsListCacheKey({
             queuePath: qp,
+            collectionStatusPath: path.join(trackerDataDir, "collection-status.json"),
+            pricingOptions,
             effectiveSources,
             from,
             to,
@@ -9251,6 +9159,7 @@ function createLocalApiHandler({
             tzOffset: Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : null,
             models,
             limit,
+            recordKindFilter,
           });
 
           let allRecords;
@@ -9258,6 +9167,9 @@ function createLocalApiHandler({
           let allRows;
           let fromKeyRur;
           let toKeyRur;
+          let hasMore;
+          let queueBaselineRecords;
+          let queueHistoryRecordCount;
 
           const cachedList = readRequestUsageRecordsListCache(listCacheKey);
           if (cachedList) {
@@ -9266,6 +9178,9 @@ function createLocalApiHandler({
             allRows = cachedList.allRows;
             fromKeyRur = cachedList.fromKeyRur;
             toKeyRur = cachedList.toKeyRur;
+            hasMore = cachedList.hasMore;
+            queueBaselineRecords = cachedList.queueBaselineRecords;
+            queueHistoryRecordCount = cachedList.queueHistoryRecordCount;
           } else {
             const built = await buildRequestUsageRecordsList({
               qp,
@@ -9278,6 +9193,7 @@ function createLocalApiHandler({
               timeZoneContext,
               limit,
               models,
+              recordKindFilter,
               pricingOptions,
             });
             allRecords = built.allRecords;
@@ -9285,12 +9201,18 @@ function createLocalApiHandler({
             allRows = built.allRows;
             fromKeyRur = built.fromKeyRur;
             toKeyRur = built.toKeyRur;
+            hasMore = built.hasMore;
+            queueBaselineRecords = built.queueBaselineRecords;
+            queueHistoryRecordCount = built.queueHistoryRecordCount;
             writeRequestUsageRecordsListCache(listCacheKey, {
               allRecords,
               aggregateOnlySources,
               allRows,
               fromKeyRur,
               toKeyRur,
+              hasMore,
+              queueBaselineRecords,
+              queueHistoryRecordCount,
             });
           }
 
@@ -9354,7 +9276,8 @@ function createLocalApiHandler({
               limit: Number(limit),
               returned_count: pagedRecords.length,
               total_count: totalCount,
-              totals_scope: "all_matching",
+              totals_scope: queueBaselineRecords.length > 0 || (recordKindFilter === "request_event" && queueHistoryRecordCount > 0) || totals.usage_coverage !== "complete" ? "unknown" : hasMore ? "returned_subset" : "all_matching",
+              has_more: Boolean(hasMore),
             },
             availability: {
               request_records: requestRecordsAvailability,
@@ -9362,36 +9285,11 @@ function createLocalApiHandler({
               latency: hasLatencyData ? "measured" : "unavailable",
             },
             queue_baseline_totals: queueBaselineTotals,
+            queue_baseline_records: queueBaselineRecords,
+            queue_history_record_count: queueHistoryRecordCount,
           });
         } catch (e) {
-          console.error("[LocalAPI] tokentracker-request-usage-records error:", e?.message || e);
-          json(res, {
-            ok: false,
-            source: singleSource || "all",
-            from: from || null,
-            to: to || null,
-            records: [],
-            items: [],
-            totals: computeRecordTotals([]),
-            granularity: "request_event",
-            aggregate_only_sources: [],
-            page: {
-              page: 1,
-              pageSize: pageSize,
-              total: 0,
-              total_pages: 1,
-              limit: Number(limit),
-              returned_count: 0,
-              total_count: 0,
-              totals_scope: "all_matching",
-            },
-            availability: {
-              request_records: "unavailable",
-              status: "unavailable",
-              latency: "unavailable",
-            },
-            queue_baseline_totals: computeQueueTotals([], {}),
-          });
+          json(res, { ok: false, error: "request_usage_source_unavailable" }, 503);
         }
         return true;
       }
