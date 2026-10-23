@@ -23,7 +23,7 @@ on the user's own machine — they are not public URLs:
 - Install command: `npx tokentracker-cli`
 - macOS app: `brew install --cask mm7894215/tokentracker/tokentracker`
 - [npm package](https://www.npmjs.com/package/tokentracker-cli)
-- [Source repository](https://github.com/mm7894215/TokenTracker)
+- [Source repository](https://github.com/muxunson-9677/token-eyes)
 - [Homebrew tap](https://github.com/mm7894215/homebrew-tokentracker)
 
 ## Supported AI coding agent CLIs (13)
@@ -50,4 +50,4 @@ on the user's own machine — they are not public URLs:
 - Local-first: all parsing, aggregation, and dashboard rendering happen on-device. Cloud sync is optional.
 
 ## Contact
-- [GitHub issues](https://github.com/mm7894215/TokenTracker/issues)
+- [GitHub issues](https://github.com/muxunson-9677/token-eyes/issues)
