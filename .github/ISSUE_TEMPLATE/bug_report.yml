@@ -7,7 +7,7 @@ body:
     id: version
     attributes:
       label: Token Eyes 版本与安装方式
-      placeholder: 例如 0.54.49，Windows x64 安装包
+      placeholder: 例如 0.54.50，Windows x64 安装包
     validations:
       required: true
   - type: input

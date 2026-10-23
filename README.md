@@ -6,7 +6,23 @@
 
 [下载 Windows x64 安装包](https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.50/Token-Eyes-0.54.50-Windows-x64-setup.exe) · [发布说明与 SHA256](https://github.com/muxunson-9677/token-eyes/releases/tag/v0.54.50) · [反馈问题](https://github.com/muxunson-9677/token-eyes/issues/new/choose) · [交流讨论](https://github.com/muxunson-9677/token-eyes/discussions) · [参与贡献](CONTRIBUTING.md)
 
+## 能用它做什么
+
+- 在概览中查看本机 AI 编程工具的 Token 用量与趋势。
+- 在使用明细中按来源、模型查看请求级统计，在实时会话中查看会话用量状态。
+- 查看费用估算，辅助理解用量；估算不等同于供应商实际账单。
+
+各来源是否有数据取决于本机工具、日志和授权状态，支持入口存在不代表每种环境都已验证。
+
+## 界面预览
+
+![Token Eyes 0.54.50 Windows 概览，隔离环境空数据状态](docs/screenshots/community-preview-0.54.50.png)
+
+截图来自公开 `v0.54.50` 安装包的原生窗口，使用隔离测试资料，展示空数据状态；不包含真实账号或个人用量。[截图来源及验证边界](docs/getting-started.md#截图与验证范围)。
+
 ## 下载与使用
+
+下载页请选名称包含 `Windows-x64-setup.exe` 的附件；`Source code` 是开发者源码，不是安装包。完整步骤见[首次使用、SHA256 校验与常见问题](docs/getting-started.md)。
 
 1. Windows 10/11 x64 用户下载上方的 `setup.exe`，运行安装后打开 Token Eyes。无需自行安装 Node.js 或 Rust。
 2. 安装包未做 Authenticode 签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。请确认下载来源与本仓库一致；校验和见 Release 附件。受组织策略限制的设备请联系管理员。
