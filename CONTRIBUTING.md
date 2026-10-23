@@ -12,11 +12,35 @@
 
 ## 开发环境
 
-建议使用 Node.js 24（锁定依赖要求高于旧文档中的 Node 20）。
+首次贡献可以先选文档、复现步骤或脱敏测试，不需要购买云服务，也不需要打包所有平台。安装软件后反馈问题，无需配置下面的开发环境。
+
+### Fork 后开始修改
+
+先在 GitHub 点击 Fork，再把下方 `YOUR_GITHUB_NAME` 替换成自己的用户名：
 
 ```bash
-git clone https://github.com/muxunson-9677/token-eyes.git
+git clone https://github.com/YOUR_GITHUB_NAME/token-eyes.git
 cd token-eyes
+git remote add upstream https://github.com/muxunson-9677/token-eyes.git
+git fetch upstream
+git switch -c docs/my-first-contribution upstream/main
+```
+
+分支名按任务取名。修改并验证后：
+
+```bash
+git add <本次修改的文件>
+git commit -m "docs: clarify installation instructions"
+git push -u origin docs/my-first-contribution
+```
+
+到自己的 Fork 点击 **Compare & pull request**，确认目标为 `muxunson-9677/token-eyes` 的 `main`，填写修改原因和实际验证结果。按审核意见在同一分支继续提交即可。
+
+### 安装开发依赖
+
+建议使用 Node.js 24（锁定依赖要求高于旧文档中的 Node 20）。在上面已克隆的 Fork 根目录执行：
+
+```bash
 npm ci
 npm --prefix dashboard ci
 npm run dashboard:dev
@@ -51,7 +75,7 @@ npm --prefix dashboard run test
 npm --prefix dashboard run build
 ```
 
-完整检查为 `npm run ci:local`，Rust 检查为 `cargo test --manifest-path src-tauri/Cargo.toml`。当前 main 存在已知 CI 失败，不要把旧失败冒称为本次改动造成，也不要为了绿色结果删除有效断言。
+完整检查为 `npm run ci:local`，Rust 检查为 `cargo test --manifest-path src-tauri/Cargo.toml`。0.54.50 发布时的本地全量 Node 检查有 3 项已复现的历史失败，见 [Release](https://github.com/muxunson-9677/token-eyes/releases/tag/v0.54.50)；这不代表 GitHub CI 的实时状态。请记录自己的实际结果，不要为了绿色结果删除有效断言。
 
 - 一次 PR 尽量解决一个清楚的问题，附修改原因和验证方式。
 - 新增界面文字走 `dashboard/src/content/copy.csv`。

@@ -2,7 +2,7 @@
 
 执行合同：[2026-10-22-community-preview-main-release.md](./2026-10-22-community-preview-main-release.md)
 
-更新时间：2026-10-23。当前阶段：main 保护、修复 PR 合并已完成；正在准备 0.54.50 精确 main 构建。
+更新时间：2026-10-23。当前阶段：A1–A5 已按社区预览合同执行，0.54.50 已公开。下方执行记录保留历史过程，以本节和验收表为最终状态；不代表全功能验收通过。
 
 ## 验收状态
 
@@ -10,9 +10,25 @@
 | --- | --- | --- |
 | A1 main 保护 | PASS | 保护 API 回读要求1批准，禁止强推/删除，保留所有者管理权限 |
 | A2 修复审查与合并 | PASS（社区预览范围） | PR #28，merge d31bfb418e2e59e3906bc2427a6ecbeedff3a468；已披露P2及3项旧失败 |
-| A3 新 main 构建 | NOT_RUN | 0.54.50 版本清单及入口变更通过独立审查，待合并构建 |
-| A4 新包原生安装与基本界面 | NOT_RUN | 旧包证据不继承 |
-| A5 新预览匿名下载与复核 | NOT_RUN | 现有 v0.54.49 保留 |
+| A3 新 main 构建 | PASS | PR #30、#31 合并后，以 2a864bc70d7fced8d99b25ef0991c0bb9a3d4237 构建；runtime manifest 与安装后 manifest 一致 |
+| A4 新包原生安装与基本界面 | PASS（基础路径） | install-main-result.json；native-main-*：首次检测、概览、使用明细、实时会话、结束进程后重开；空数据环境 |
+| A5 新预览匿名下载与复核 | PASS（基础路径） | anonymous-download-result.json、install-anonymous-result.json、native-anonymous-*；匿名下载 SHA256 一致，第二个隔离目录与资料重走基础页面 |
+
+公开结果：[v0.54.50 Release](https://github.com/muxunson-9677/token-eyes/releases/tag/v0.54.50)、[验证摘要](https://github.com/muxunson-9677/token-eyes/releases/download/v0.54.50/preview-verification.json)。安装包 SHA256：`93b321cb53a6010df6b90f3b20969dff5bb14618e84ac270c71983c4e2266368`。上述原始证据位于项目内 `.tmp/community-main-release/`，不作为公共仓库文件提供。
+
+发布时 main/tag/安装包 SHA 完全一致；之后的文档完善不重建安装包、不移动 tag。两轮检查仅证明合同列出的基础路径，不证明真实供应商采集、OAuth、云同步或全量统计准确性。
+
+### 文档完善范围与验收（2026-10-23）
+
+用户确认完善 GitHub 展示与共创文档。本次仅 README、使用指南、贡献说明、Issue 模板、截图和状态记录，新增费用为 0。
+
+| 操作 | 应见结果 | 不允许的结果 / 核对方式 |
+| --- | --- | --- |
+| 新用户打开 README、打开安装指南 | 找到安装包、校验方法、首次使用与空数据排查 | 不把源码当安装包；检查公开链接及 Markdown 渲染 |
+| 查看截图 | 看到 0.54.50 原生概览和空数据说明 | 不使用私人账号数据或把截图作为统计正确证明；目视检查原图 |
+| 贡献者打开贡献指南和反馈模板 | 找到 Fork → 分支 → PR 的命令和隐私提示 | 不要求付费服务或直接推上游 main；独立只读复核 |
+
+本轮文档核对：13 个本地链接有效；README、贡献指南和使用指南经 GitHub Markdown API 渲染成功；社区入口合同测试 1/1 通过。独立只读审查发现的重复 clone 问题已修正，复审无剩余阻断。合并与远端内容核对以对应文档 PR 的记录为准；原三项发布任务不再重跑。
 
 ## 执行记录
 
